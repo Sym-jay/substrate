@@ -1,6 +1,7 @@
 import type { HostStatus, InstanceState, Status } from '@substrate/protocol'
 import type { ReactNode } from 'react'
 import { useStatus } from './useStatus.ts'
+import { WorkspacePanel } from './workspaces/WorkspacePanel.tsx'
 
 const stateStyle: Record<InstanceState, { dot: string; label: string }> = {
   running: { dot: 'bg-emerald-500', label: 'Running' },
@@ -27,6 +28,8 @@ export function App() {
         </div>
       </header>
 
+      <WorkspacePanel />
+
       {state.kind === 'error' && (
         <p
           role="alert"
@@ -44,14 +47,6 @@ export function App() {
       ) : (
         state.kind === 'loading' && <p className="text-sm text-zinc-500">Loading…</p>
       )}
-
-      <section className="rounded-xl border border-dashed border-zinc-300 p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
-        <p className="font-medium text-zinc-900 dark:text-zinc-100">M0: infrastructure</p>
-        <p className="mt-1">
-          The control box and sandbox host are up. Creating microVMs arrives in M1, and
-          browser terminals in M2.
-        </p>
-      </section>
 
       {state.kind === 'ok' && (
         <p className="text-center text-xs text-zinc-400 dark:text-zinc-500">

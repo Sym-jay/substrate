@@ -20,7 +20,8 @@
     "ssm": "bun scripts/ssm.ts",
     "vm": "bun scripts/vm.ts",
     "check:m0": "bun scripts/check-m0.ts",
-    "check:m1": "bun scripts/check-m1.ts"
+    "check:m1": "bun scripts/check-m1.ts",
+    "secrets": "bun scripts/secrets.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-budgets": "^3.1156.0",

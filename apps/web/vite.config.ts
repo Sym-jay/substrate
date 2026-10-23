@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     // The control API: local by default, or set API_URL to use a deployed one.
     proxy: {
-      '/api': { target: process.env.API_URL ?? 'http://localhost:8080', changeOrigin: true },
+      '/api': { target: process.env.API_URL ?? 'http://localhost:8080', changeOrigin: true, ws: true },
     },
   },
 })

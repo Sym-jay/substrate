@@ -1,6 +1,8 @@
-import { CreateVm, ExecRequest, type HostdHealth } from '@substrate/protocol'
+import { CreateSession, CreateVm, ExecRequest, type HostdHealth } from '@substrate/protocol'
+import { relayTo } from '@substrate/protocol/relay'
 import { Hono, type Context } from 'hono'
 import { bearerAuth } from 'hono/bearer-auth'
+import { upgradeWebSocket } from 'hono/bun'
 import { HTTPException } from 'hono/http-exception'
 import type { z } from 'zod'
 import { HttpError, type VmService } from './vms.ts'
@@ -30,6 +32,20 @@ export function createApp({ token, version, image, vms }: Options) {
     return c.body(null, 204)
   })
   app.post('/vms/:id/exec', async (c) => c.json(await vms.exec(c.req.param('id'), await body(c, ExecRequest))))
+
+  // Terminal sessions live in guestd; hostd only knows how to reach it.
+  app.get('/vms/:id/sessions', async (c) => c.json(await (await vms.guest(c.req.param('id'))).sessions()))
+  app.post('/vms/:id/sessions', async (c) => {
+    const guest = await vms.guest(c.req.param('id'))
+    return c.json(await guest.createSession(await body(c, CreateSession)), 201)
+  })
+  app.get(
+    '/vms/:id/sessions/:session/terminal',
+    upgradeWebSocket(async (c) => {
+      const { url, headers } = (await vms.guest(c.req.param('id')!)).terminal(c.req.param('session')!)
+      return relayTo(url, headers)
+    }),
+  )
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse()

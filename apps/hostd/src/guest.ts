@@ -1,7 +1,8 @@
-import { ExecResult, GUESTD_PORT, GuestHealth, type ExecRequest } from '@substrate/protocol'
+import { ExecResult, GUESTD_PORT, GuestHealth, Session, type CreateSession, type ExecRequest } from '@substrate/protocol'
+import { HttpError } from './errors.ts'
 
-export function guestClient(guestIp: string, token: string) {
-  const base = `http://${guestIp}:${GUESTD_PORT}`
+export function guestClient(guestIp: string, token: string, port = GUESTD_PORT) {
+  const base = `http://${guestIp}:${port}`
   const headers = { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }
 
   return {
@@ -21,12 +22,34 @@ export function guestClient(guestIp: string, token: string) {
       if (!res.ok) throw new Error(`guest exec returned ${res.status}: ${await res.text()}`)
       return ExecResult.parse(await res.json())
     },
+
+    async sessions() {
+      return Session.array().parse(await sessionCall(`${base}/sessions`, { headers }))
+    },
+
+    async createSession(req: CreateSession) {
+      return Session.parse(await sessionCall(`${base}/sessions`, { method: 'POST', headers, body: JSON.stringify(req) }))
+    },
+
+    // For relaying a browser's terminal straight to guestd.
+    terminal(sessionId: string) {
+      return { url: `ws://${guestIp}:${port}/sessions/${encodeURIComponent(sessionId)}/terminal`, headers }
+    },
   }
+}
+
+// guestd's 404 (no such session) and 409 (too many) reach the browser as they are.
+async function sessionCall(url: string, init: RequestInit) {
+  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(10_000) })
+  const data = (await res.json().catch(() => null)) as { error?: string } | null
+  if (res.ok) return data
+  const status = res.status === 404 ? 404 : res.status === 409 ? 409 : 502
+  throw new HttpError(status, data?.error ?? `guest returned ${res.status}`)
 }
 
 // Polls until the guest agent answers. Gives up early if the VM process died.
 export async function waitForGuest(
-  client: ReturnType<typeof guestClient>,
+  client: GuestClient,
   { timeoutMs, alive }: { timeoutMs: number; alive: () => Promise<boolean> },
 ) {
   const deadline = Date.now() + timeoutMs
@@ -41,3 +64,5 @@ export async function waitForGuest(
     }
   }
 }
+
+export type GuestClient = ReturnType<typeof guestClient>

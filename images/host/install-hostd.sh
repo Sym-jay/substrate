@@ -21,6 +21,18 @@ define="BUILD_VERSION=\"${version}\""
 bun build --compile --minify --define "$define" apps/hostd/src/index.ts --outfile bin/substrate-hostd >/dev/null
 bun build --compile --minify --define "$define" apps/guestd/src/index.ts --outfile bin/substrate-guestd >/dev/null
 
+# hostd's token comes from Parameter Store (`bun run secrets`), so the control
+# box can share it. Without one, hostd generates its own and only this host knows it.
+# shellcheck source=/dev/null
+source /etc/substrate/host.env # SUBSTRATE_REGION
+if token=$(aws ssm get-parameter --region "$SUBSTRATE_REGION" --name /substrate/hostd-token --with-decryption --query Parameter.Value --output text 2>/dev/null); then
+  mkdir -p /var/lib/substrate
+  (umask 077 && printf %s "$token" >/var/lib/substrate/hostd-token)
+  log "hostd token from Parameter Store"
+else
+  log "no /substrate/hostd-token in Parameter Store (run \`bun run secrets\`): the control box can't reach hostd"
+fi
+
 ln -sfn "$release" /opt/substrate/hostd/current
 # At a fixed path, because running VM units refer to it.
 install -D -m 0755 "$release/images/host/vm-stop.sh" /usr/local/lib/substrate/vm-stop

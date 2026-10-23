@@ -5,5 +5,7 @@ cdk.out/
 cdk.context.json
 .env
 .env.*
+# Local AWS credentials.
+/substrate-dev-aws-credentials
 *.tar.gz
 .DS_Store
