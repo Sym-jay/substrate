@@ -22,7 +22,9 @@
     "check:m0": "bun scripts/check-m0.ts",
     "check:m1": "bun scripts/check-m1.ts",
     "check:m3": "bun scripts/check-m3.ts",
+    "check:m6": "bun scripts/check-m6.ts",
     "generate:firecracker": "bun scripts/generate-firecracker.ts",
+    "github:token": "bun scripts/github-token.ts",
     "secrets": "bun scripts/secrets.ts"
   },
   "devDependencies": {

@@ -120,8 +120,9 @@ Only me and a friend helping build it use it. Nothing here is production.
   or phone. The URL isn't written in this repo; share it directly.
 - Sign-in is Clerk (M4). Without Clerk keys on the control box, VM routes stay
   off on the public URL; `bun run dev --host` works with VMs locally meanwhile.
-- Preview URLs (M6) need a scheme that works through CloudFront; propose one
-  before M6.
+- Preview URLs (M6) use a second CloudFront distribution, separate from the
+  control UI, with `/p/<vm-id>/<port>/` paths and short-lived owner access.
+  No custom domain is needed; apps configure that base path.
 
 ## Milestones
 **M0 AWS setup:** the CDK stack, host setup script, ZFS pool, budget, and the

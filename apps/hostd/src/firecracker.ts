@@ -64,19 +64,21 @@ export const apiSocket = (id: string) => `${config.paths.run}/${id}.sock`
 // touches running VMs. Serial console output goes to the unit's journal.
 // Stopping the unit, from hostd or because the host is shutting down, runs
 // vm-stop first, which shuts the guest down cleanly so no writes are lost.
-export async function launch(spec: LaunchSpec, files: { config: string; metadata: string }) {
-  return launchProcess(spec.id, files.metadata, ['--config-file', files.config, '--metadata', files.metadata])
+export async function launch(spec: LaunchSpec, files: { config: string; metadata: string }, root?: { source: string; target: string }) {
+  return launchProcess(spec.id, files.metadata, ['--config-file', files.config, '--metadata', files.metadata], root)
 }
 
 // Snapshot loading requires a fresh, unconfigured Firecracker process.
-export async function launchForRestore(id: string, metadata: string) {
-  return launchProcess(id, metadata, [])
+export async function launchForRestore(id: string, metadata: string, root?: { source: string; target: string }) {
+  return launchProcess(id, metadata, [], root)
 }
 
-async function launchProcess(id: string, metadata: string, args: string[]) {
+async function launchProcess(id: string, metadata: string, args: string[], root?: { source: string; target: string }) {
   const socket = apiSocket(id)
   await rm(socket, { force: true })
-  await sh`systemd-run --unit=${unitName(id)} --description=${`Substrate VM ${id}`} --collect --quiet ${`--property=ExecStop=${config.vmStop} ${metadata}`} --property=TimeoutStopSec=30 --property=After=zfs.target -- ${config.firecracker} --api-sock ${socket} ${args} --level Warning`
+  if (root) await Bun.write(root.target, '', { mode: 0o600 })
+  const mounts = root ? ['--property=PrivateMounts=yes', `--property=BindPaths=${root.source}:${root.target}`] : []
+  await sh`systemd-run --unit=${unitName(id)} --description=${`Substrate VM ${id}`} --collect --quiet ${`--property=ExecStop=${config.vmStop} ${metadata}`} --property=TimeoutStopSec=30 --property=After=zfs.target ${mounts} -- ${config.firecracker} --api-sock ${socket} ${args} --level Warning`
 }
 
 export const api = (id: string) => firecrackerClient(apiSocket(id))

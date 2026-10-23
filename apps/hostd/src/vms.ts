@@ -8,9 +8,14 @@ import {
   type ExecRequest,
   type ExecResult,
   type UpdateVm,
+  type ResizeVm,
+  type ForkVm,
+  type CreateSession,
+  type Session,
+  type RunCheckpoint,
   type Vm,
 } from '@substrate/protocol'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { hostCapacity } from './capacity.ts'
 import { config } from './config.ts'
 import { HttpError } from './errors.ts'
@@ -21,18 +26,25 @@ import { Mutex } from './mutex.ts'
 import { createTap, deleteTap, lowestFreeSlot, slotAddresses } from './network.ts'
 import { listRecords, readRecord, vmDir, writeRecord, type VmRecord } from './state.ts'
 import { Snapshots } from './snapshots.ts'
+import { Checkpoints } from './checkpoints.ts'
+import { importRepository } from './repositories.ts'
 import * as zfs from './zfs.ts'
 
 // What the HTTP API needs; tests substitute a fake.
 export interface VmService {
   list(): Promise<Vm[]>
   get(id: string): Promise<Vm>
-  create(input: CreateVm): Promise<Vm>
+  create(input: CreateVm, githubToken?: string, targetId?: string): Promise<Vm>
   start(id: string): Promise<Vm>
   stop(id: string): Promise<Vm>
   pause(id: string): Promise<Vm>
   resume(id: string): Promise<Vm>
   update(id: string, input: UpdateVm): Promise<Vm>
+  resize(id: string, input: ResizeVm): Promise<Vm>
+  fork(id: string, input: ForkVm, targetId?: string): Promise<Vm>
+  checkpoints(id: string): Promise<RunCheckpoint[]>
+  rollback(id: string, checkpointId: string): Promise<Vm>
+  createSession(id: string, input: CreateSession): Promise<Session>
   remove(id: string): Promise<void>
   exec(id: string, req: ExecRequest): Promise<ExecResult>
   guest(id: string): Promise<GuestClient>
@@ -52,8 +64,9 @@ const rootVolume = (id: string) => `${dataset(id)}/root`
 export class VmManager implements VmService {
   // Lifecycle changes (and the capacity and slot checks before them) happen one at a time.
   private lock = new Mutex()
-  private transitions = new Map<string, 'starting' | 'stopping' | 'pausing' | 'resuming'>()
+  private transitions = new Map<string, 'starting' | 'stopping' | 'pausing' | 'resuming' | 'forking' | 'checkpointing' | 'resizing'>()
   private snapshots = new Snapshots()
+  private runCheckpoints = new Checkpoints()
 
   async list() {
     const records = await listRecords()
@@ -64,7 +77,7 @@ export class VmManager implements VmService {
     return this.toVm(await this.record(id))
   }
 
-  async create(input: CreateVm) {
+  async create(input: CreateVm, githubToken?: string, targetId?: string) {
     const image = await currentImage()
     if (!image) throw new HttpError(409, 'no VM image yet: run `bun run images:build`')
     const size = VmSizes[input.size ?? DEFAULT_VM_SIZE]
@@ -77,7 +90,8 @@ export class VmManager implements VmService {
       }
       await this.ensureFits(size.memMib)
 
-      const id = newVmId()
+      const id = targetId ?? newVmId()
+      if (await zfs.datasetExists(dataset(id))) throw new HttpError(409, 'workspace destination already exists')
       const record: VmRecord = {
         id,
         name: input.name ?? id,
@@ -97,6 +111,11 @@ export class VmManager implements VmService {
         resumeMs: null,
         awakeSince: null,
         autoPauseMinutes: DEFAULT_AUTO_PAUSE_MINUTES,
+        runCheckpoints: [],
+        repository: input.repository ?? null,
+        parentId: null,
+        rootPath: `${config.paths.run}/rootfs`,
+        forkCapable: false,
       }
       try {
         await zfs.createFilesystem(dataset(id))
@@ -109,7 +128,17 @@ export class VmManager implements VmService {
         await this.cleanUp(record).catch(() => {})
         throw err
       }
-      return this.awaitBoot(record)
+      await this.awaitBoot(record)
+      if (record.repository) {
+        try { await importRepository(record, githubToken) }
+        catch (error) {
+          record.lastError = error instanceof Error ? error.message : String(error)
+          await writeRecord(record)
+          // Preserve the newly created VM for retry instead of leaking an
+          // unreachable workspace behind a failed create response.
+        }
+      }
+      return this.get(record.id)
     })
   }
 
@@ -205,6 +234,116 @@ export class VmManager implements VmService {
     })
   }
 
+  async resize(id: string, input: ResizeVm) {
+    return this.lock.run(async () => {
+      const record = await this.record(id)
+      if (record.paused || await firecracker.isRunning(id)) throw new HttpError(409, 'Stop the workspace before resizing; paused sessions cannot be resized')
+      const diskGib = input.diskGib ?? record.diskGib
+      if (diskGib < record.diskGib) throw new HttpError(400, 'Disks can only be grown, not shrunk')
+      if (diskGib > await zfs.poolSizeGib(config.pool)) throw new HttpError(400, 'The disk cannot be larger than the host storage pool')
+      this.transitions.set(id, 'resizing')
+      try {
+        await this.runCheckpoints.create(record, 'Before resize')
+        if (diskGib > record.diskGib) {
+          await zfs.resizeVolume(rootVolume(id), diskGib)
+          record.diskGib = diskGib
+          await writeRecord(record)
+        }
+        await zfs.growFilesystem(zfs.zvolDevice(rootVolume(id)))
+        if (input.size) Object.assign(record, VmSizes[input.size])
+        record.lastError = null
+        await writeRecord(record)
+      } catch (error) {
+        record.lastError = error instanceof Error ? error.message : String(error)
+        await writeRecord(record)
+        throw error
+      } finally { this.transitions.delete(id) }
+      return this.get(id)
+    })
+  }
+
+  async checkpoints(id: string) { return (await this.record(id)).runCheckpoints }
+
+  async rollback(id: string, checkpointId: string) {
+    return this.lock.run(async () => {
+      const record = await this.record(id)
+      if (!record.runCheckpoints.some((point) => point.id === checkpointId)) throw new HttpError(404, 'checkpoint not found')
+      if (record.paused || await firecracker.isRunning(id)) throw new HttpError(409, 'Stop the workspace before rolling back its disk')
+      await this.runCheckpoints.restore(record, checkpointId)
+      return this.get(id)
+    })
+  }
+
+  async createSession(id: string, input: CreateSession) {
+    return this.lock.run(async () => {
+      const record = await this.record(id)
+      const guest = await this.guest(id)
+      if (!input.agent) return guest.createSession({})
+      this.transitions.set(id, 'checkpointing')
+      try {
+        const point = await this.runCheckpoints.create(record, `Before ${input.agent}`, input.agent, input.mode ?? 'ask')
+        const session = await guest.createSession({ agent: input.agent, mode: input.mode ?? 'ask', checkpointId: point.id })
+        point.sessionId = session.id
+        await writeRecord(record)
+        return { ...session, mode: input.mode ?? 'ask', checkpointId: point.id }
+      } finally { this.transitions.delete(id) }
+    })
+  }
+
+  async fork(id: string, input: ForkVm, targetId?: string): Promise<Vm> {
+    return this.lock.run(async () => {
+      const source = await this.record(id)
+      if (!source.forkCapable || !source.rootPath) throw new HttpError(409, 'This VM needs a newer guest image for running-state forks. Create a workspace from the latest image first.')
+      const records = await listRecords()
+      if (input.name && records.some((record) => record.name === input.name)) throw new HttpError(409, `a VM named ${input.name} already exists`)
+      await this.ensureFits(source.memMib)
+      const wasRunning = await firecracker.isRunning(id)
+      if (!wasRunning && !source.paused) throw new HttpError(409, 'Start or pause this workspace before forking its running state')
+      const childId = targetId ?? newVmId()
+      if (await zfs.datasetExists(dataset(childId))) throw new HttpError(409, 'fork destination already exists')
+      const filesystemSnapshot = `${dataset(id)}@fork-${randomUUID()}`
+      let filesystemSaved = false
+      let child: VmRecord | null = null
+      this.transitions.set(id, 'forking')
+      try {
+        if (wasRunning) await this.snapshots.pause(source)
+        const point = source.checkpoint!
+        child = { ...source, id: childId, name: input.name ?? childId,
+          slot: lowestFreeSlot(records.map((record) => record.slot)), token: randomBytes(32).toString('hex'),
+          parentId: id, createdAt: new Date().toISOString(), lastError: null, runCheckpoints: [],
+          paused: true, checkpoint: { ...point }, resumeMs: null }
+        await zfs.snapshot(filesystemSnapshot)
+        filesystemSaved = true
+        await zfs.copySnapshot(filesystemSnapshot, dataset(childId), true)
+        await zfs.copySnapshot(this.snapshots.paths(source, point).disk, rootVolume(childId))
+        await zfs.waitForDevice(zfs.zvolDevice(rootVolume(childId)))
+        await writeRecord(child)
+        await this.writeMetadata(child)
+        await this.snapshots.resume(child)
+      } catch (error) {
+        if (child) {
+          await firecracker.kill(childId)
+          await this.cleanUp(child)
+        }
+        throw error
+      } finally {
+        if (filesystemSaved) await zfs.destroy(filesystemSnapshot).catch((error) => console.error('fork staging cleanup:', error))
+        try {
+          if (wasRunning && source.paused) {
+            try { await this.snapshots.resume(source) }
+            catch (error) {
+              // The original remains durably paused and can be retried. Don't
+              // hide a successfully created child behind a failed response.
+              console.error(`fork source ${id} could not resume:`, error)
+            }
+          }
+        }
+        finally { this.transitions.delete(id) }
+      }
+      return this.get(childId)
+    })
+  }
+
   async exec(id: string, req: ExecRequest) {
     return (await this.guest(id)).exec(req)
   }
@@ -240,7 +379,7 @@ export class VmManager implements VmService {
     const running = await firecracker.isRunning(record.id)
     const state =
       this.transitions.get(record.id) ?? (record.paused ? 'paused' : running ? 'running' : record.lastError ? 'failed' : 'stopped')
-    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, ...rest } = record
+    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, runCheckpoints: _runs, rootPath: _root, forkCapable: _fork, ...rest } = record
     return { ...rest, state, pausedAt: record.paused ? record.checkpoint?.createdAt ?? null : null, guestIp: slotAddresses(slot).guestIp }
   }
 
@@ -285,19 +424,17 @@ export class VmManager implements VmService {
       vcpus: record.vcpus,
       memMib: record.memMib,
       kernel: record.kernel,
-      rootDevice: zfs.zvolDevice(rootVolume(record.id)),
+      rootDevice: record.rootPath ?? zfs.zvolDevice(rootVolume(record.id)),
       ...net,
     }
     await Bun.write(`${dir}/firecracker.json`, JSON.stringify(firecracker.firecrackerConfig(spec), null, 2))
-    const metadata = {
-      substrate: { vmId: record.id, name: record.name, token: record.token, guestIp: net.guestIp, hostIp: net.hostIp },
-    }
-    await Bun.write(`${dir}/metadata.json`, JSON.stringify(metadata), { mode: 0o600 })
+    await this.writeMetadata(record)
 
     await createTap(record.slot)
     this.transitions.set(record.id, 'starting')
     try {
-      await firecracker.launch(spec, { config: `${dir}/firecracker.json`, metadata: `${dir}/metadata.json` })
+      const root = record.rootPath ? { source: zfs.zvolDevice(rootVolume(record.id)), target: record.rootPath } : undefined
+      await firecracker.launch(spec, { config: `${dir}/firecracker.json`, metadata: `${dir}/metadata.json` }, root)
     } catch (err) {
       this.transitions.delete(record.id)
       await deleteTap(record.slot)
@@ -311,10 +448,12 @@ export class VmManager implements VmService {
     const launched = performance.now()
     const client = guestClient(slotAddresses(record.slot).guestIp, record.token)
     try {
-      await waitForGuest(client, {
+      const health = await waitForGuest(client, {
         timeoutMs: config.bootTimeoutMs,
         alive: () => firecracker.isRunning(record.id),
       })
+      if (health.vmId !== record.id) throw new Error('guest identity does not match this VM')
+      record.forkCapable = health.features?.forkNetwork === true
       record.bootMs = Math.round(performance.now() - launched)
       record.lastError = null
       await writeRecord(record)
@@ -335,6 +474,12 @@ export class VmManager implements VmService {
     await firecracker.stop(id)
     const record = await readRecord(id)
     if (record) await deleteTap(record.slot)
+  }
+
+  private async writeMetadata(record: VmRecord) {
+    const net = slotAddresses(record.slot)
+    const metadata = { substrate: { vmId: record.id, name: record.name, token: record.token, guestIp: net.guestIp, hostIp: net.hostIp } }
+    await Bun.write(`${vmDir(record.id)}/metadata.json`, JSON.stringify(metadata), { mode: 0o600 })
   }
 
   private async cleanUp(record: VmRecord) {

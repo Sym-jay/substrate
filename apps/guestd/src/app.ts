@@ -1,4 +1,7 @@
-import { CreateSession, ExecRequest, type ExecResult, type GuestHealth } from '@substrate/protocol'
+import { CreateSession, ExecRequest, GitHubRepo, SshKey, type ExecResult, type GuestHealth } from '@substrate/protocol'
+import { z } from 'zod'
+import { setupRepository } from './repository.ts'
+import { authorizeSsh } from './ssh.ts'
 import type { ServerWebSocket } from 'bun'
 import { Hono } from 'hono'
 import { bearerAuth } from 'hono/bearer-auth'
@@ -27,7 +30,7 @@ export function createApp({ vmId, token, version, run, sessions, activity }: Opt
   app.use('*', bearerAuth({ token }))
 
   app.get('/health', (c) =>
-    c.json({ ok: true, vmId, version, uptimeMs: Math.round(performance.now() - started) } satisfies GuestHealth),
+    c.json({ ok: true, vmId, version, uptimeMs: Math.round(performance.now() - started), features: { forkNetwork: true } } satisfies GuestHealth),
   )
 
   // hostd polls this for alerts and auto-pause.
@@ -37,6 +40,19 @@ export function createApp({ vmId, token, version, run, sessions, activity }: Opt
     const parsed = ExecRequest.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? 'invalid request' }, 400)
     return c.json(await run(parsed.data))
+  })
+
+  app.post('/repository', async (c) => {
+    const parsed = z.object({ repository: GitHubRepo, token: z.string().max(4096).optional() }).safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ error: 'invalid repository request' }, 400)
+    try { await setupRepository(parsed.data.repository, parsed.data.token); return c.json({ ok: true }) }
+    catch { return c.json({ error: 'Repository setup failed; verify its name and token access' }, 502) }
+  })
+  app.post('/ssh/keys', async (c) => {
+    const parsed = SshKey.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ error: 'invalid SSH public key' }, 400)
+    await authorizeSsh(parsed.data.publicKey)
+    return c.json({ ok: true })
   })
 
   app.get('/sessions', (c) => c.json(sessions.list()))

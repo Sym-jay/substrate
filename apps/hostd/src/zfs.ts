@@ -30,6 +30,21 @@ export async function cloneVolume(snapshot: string, name: string, sizeGib: numbe
   await sh`zfs set volsize=${sizeGib}G ${name}`
 }
 
+export async function resizeVolume(name: string, sizeGib: number) {
+  await sh`zfs set volsize=${sizeGib}G ${name}`
+}
+
+// Full compressed sends give a fork independent ownership of its blocks:
+// deleting either VM never needs to delete snapshots belonging to the other.
+export async function copySnapshot(snapshot: string, destination: string, filesystem = false) {
+  if (filesystem) {
+    await sh`zfs send -c ${snapshot} | zfs receive -u -x mountpoint ${destination}`
+    await sh`zfs mount ${destination}`
+  } else {
+    await sh`zfs send -c ${snapshot} | zfs receive -u ${destination}`
+  }
+}
+
 // Grows the ext4 filesystem to fill its (bigger) volume, before the VM first
 // boots. The guest can't do it itself: Firecracker's kernel config refuses
 // writes to a mounted disk (BLK_DEV_WRITE_MOUNTED), which online resize needs.

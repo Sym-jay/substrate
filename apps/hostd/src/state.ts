@@ -1,6 +1,7 @@
 import { open, readdir, rename } from 'node:fs/promises'
 import { AutoPauseMinutes, DEFAULT_AUTO_PAUSE_MINUTES } from '@substrate/protocol'
 import { z } from 'zod'
+import { RunCheckpoint } from '@substrate/protocol'
 import { config } from './config.ts'
 
 // Everything hostd knows about a VM, in vm.json inside the VM's own ZFS
@@ -33,6 +34,12 @@ export const VmRecord = z.object({
   // When it last booted or resumed, so auto-pause gives it a full idle period.
   awakeSince: z.string().nullable().default(null),
   autoPauseMinutes: AutoPauseMinutes.default(DEFAULT_AUTO_PAUSE_MINUTES),
+  runCheckpoints: RunCheckpoint.array().default([]),
+  repository: z.string().nullable().default(null),
+  parentId: z.string().nullable().default(null),
+  // New images use a stable path inside each VMM's private mount namespace.
+  rootPath: z.string().nullable().default(null),
+  forkCapable: z.boolean().default(false),
 })
 export type VmRecord = z.infer<typeof VmRecord>
 
@@ -53,7 +60,10 @@ export async function writeRecord(record: VmRecord) {
 export async function readRecord(id: string): Promise<VmRecord | null> {
   const file = Bun.file(recordPath(id))
   if (!(await file.exists())) return null
-  return VmRecord.parse(await file.json())
+  const record = VmRecord.parse(await file.json())
+  // A copied filesystem is not published as a fork until its own record is
+  // written. Ignore the parent's record during that short staging window.
+  return record.id === id ? record : null
 }
 
 export async function listRecords(): Promise<VmRecord[]> {

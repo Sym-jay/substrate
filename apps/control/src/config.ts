@@ -32,6 +32,7 @@ export const config = {
   maxVmsPerUser: Number(process.env.SUBSTRATE_MAX_VMS_PER_USER ?? 3),
   // Who owns which VM (SQLite).
   db: process.env.SUBSTRATE_DB ?? '.data/control.db',
+  previewOrigin: process.env.SUBSTRATE_PREVIEW_ORIGIN || null,
   // The built web app, relative to the working directory.
   webDir: process.env.SUBSTRATE_WEB_DIR ?? 'web',
   version: typeof BUILD_VERSION === 'string' ? BUILD_VERSION : 'dev',

@@ -1,4 +1,4 @@
-import { Agents, TerminalInput, type CreateSession, type Session, type TerminalOutput } from '@substrate/protocol'
+import { TerminalInput, type AgentMode, type CreateSession, type Session, type TerminalOutput } from '@substrate/protocol'
 
 type Listener = (message: TerminalOutput) => void
 // What counts as someone using the VM (see activity.ts).
@@ -13,10 +13,16 @@ export const withControllingTerminal = (argv: string[]) => ['setsid', '--ctty', 
 
 // `runuser -l` gives the same login shell (PATH, HOME) as exec.ts. When an
 // agent exits, a shell takes over, so the session stays usable.
-export function sessionArgv({ agent }: CreateSession): string[] {
-  return withControllingTerminal(
-    agent ? ['runuser', '-l', 'dev', '-c', `${Agents[agent]}; exec bash -l`] : ['runuser', '-l', 'dev'],
-  )
+export function sessionArgv({ agent, mode = 'ask' }: CreateSession): string[] {
+  const cwd = 'if [ -d /home/dev/workspace ]; then cd /home/dev/workspace; fi; '
+  if (!agent) return withControllingTerminal(['runuser', '-l', 'dev', '-c', `${cwd}exec bash -l`])
+  const commands = {
+    claude: mode === 'auto' ? 'claude --dangerously-skip-permissions' : 'claude --permission-mode default',
+    codex: mode === 'auto' ? 'codex --dangerously-bypass-approvals-and-sandbox' : 'codex --sandbox workspace-write --ask-for-approval on-request',
+    opencode: mode === 'auto' ? 'opencode --auto' : `OPENCODE_CONFIG_CONTENT='{"permission":"ask"}' opencode`,
+    agy: mode === 'auto' ? 'agy --dangerously-skip-permissions' : 'agy',
+  }
+  return withControllingTerminal(['runuser', '-l', 'dev', '-c', `${cwd}${commands[agent]}; exec bash -l`])
 }
 
 // One terminal: a process on a PTY plus its scrollback. It runs whether or not
@@ -39,6 +45,8 @@ export class TerminalSession {
     argv: string[],
     cwd: string,
     private readonly activity: ActivitySink = noActivity,
+    readonly mode: AgentMode = 'ask',
+    readonly checkpointId: string | null = null,
   ) {
     const decoder = new TextDecoder()
     this.terminal = new Bun.Terminal({
@@ -66,7 +74,7 @@ export class TerminalSession {
   }
 
   get info(): Session {
-    return { id: this.id, agent: this.agent, createdAt: this.createdAt, state: this.state, exitCode: this.exitCode }
+    return { id: this.id, agent: this.agent, createdAt: this.createdAt, state: this.state, exitCode: this.exitCode, mode: this.mode, checkpointId: this.checkpointId }
   }
 
   attach(listener: Listener) {
@@ -148,7 +156,7 @@ export class Sessions {
       if (!ended) return null
       this.sessions.delete(ended.id)
     }
-    const session = new TerminalSession(req.agent ?? null, this.argv(req), this.cwd, this.activity)
+    const session = new TerminalSession(req.agent ?? null, this.argv(req), this.cwd, this.activity, req.mode ?? 'ask', req.agent ? req.checkpointId ?? null : null)
     this.sessions.set(session.id, session)
     return session
   }

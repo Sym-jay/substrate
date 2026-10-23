@@ -80,6 +80,10 @@ else
   exit 0
 fi
 
+if preview_origin=$(aws ssm get-parameter --region "$AWS_REGION" --name /substrate/preview-origin --query Parameter.Value --output text 2>/dev/null); then
+  (umask 077 && printf 'SUBSTRATE_PREVIEW_ORIGIN=%s\n' "$preview_origin" >>"$secrets")
+fi
+
 systemctl restart substrate-control
 for _ in $(seq 1 30); do
   if curl -fsS "http://localhost:${PORT}/api/health" >/dev/null 2>&1; then

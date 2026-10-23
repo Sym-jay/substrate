@@ -44,3 +44,5 @@ export type Status = z.infer<typeof Status>
 export * from './vm.ts'
 export * from './terminal.ts'
 export * from './activity.ts'
+export * from './github.ts'
+export * from './management.ts'

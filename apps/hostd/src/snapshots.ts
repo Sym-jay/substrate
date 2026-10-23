@@ -86,7 +86,8 @@ export class Snapshots {
       // Also resets disk writes made by a restore that failed after unpausing.
       await d.zfs.rollback(files.disk)
       await d.createTap(record.slot)
-      await d.firecracker.launchForRestore(record.id, `${d.vmDir(record.id)}/metadata.json`)
+      const root = record.rootPath ? { source: d.zfs.zvolDevice(`${config.pool}/vms/${record.id}/root`), target: record.rootPath } : undefined
+      await d.firecracker.launchForRestore(record.id, `${d.vmDir(record.id)}/metadata.json`, root)
       const info = await d.firecracker.waitForApi(record.id)
       if (info.vmm_version !== checkpoint.firecrackerVersion) {
         throw new Error(`snapshot needs Firecracker ${checkpoint.firecrackerVersion}; installed ${info.vmm_version}`)
@@ -94,6 +95,7 @@ export class Snapshots {
       const api = d.firecracker.api(record.id)
       await api('PUT /snapshot/load', {
         snapshot_path: files.state, mem_backend: { backend_type: 'File', backend_path: files.memory },
+        network_overrides: [{ iface_id: 'eth0', host_dev_name: slotAddresses(record.slot).tap }],
         resume_vm: false, clock_realtime: true,
       })
       // MMDS configuration survives a snapshot; its contents do not.
@@ -102,10 +104,11 @@ export class Snapshots {
         substrate: { vmId: record.id, name: record.name, token: record.token, guestIp: net.guestIp, hostIp: net.hostIp },
       })
       await api('PATCH /vm', { state: 'Resumed' })
-      await d.waitForGuest(d.guestClient(net.guestIp, record.token), {
+      const health = await d.waitForGuest(d.guestClient(net.guestIp, record.token), {
         timeoutMs: config.bootTimeoutMs,
         alive: () => d.firecracker.isRunning(record.id),
       })
+      if (health.vmId !== record.id) throw new Error('restored guest identity does not match this VM')
       const next = {
         ...record, paused: false, lastError: null, resumeMs: Math.round(performance.now() - started),
         awakeSince: new Date().toISOString(),

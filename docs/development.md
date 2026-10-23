@@ -95,3 +95,12 @@ automatically. The control box is cheap and stays on.
 
 The public URL is a CloudFront address. Ask the owner for it; it isn't written
 in this repo.
+
+## M6 everyday features
+
+The M6 implementation and deployment/acceptance steps are in [m6.md](m6.md).
+It adds UI management, running-state forks, private app previews, GitHub imports,
+agent permission modes with disk rollback points, and SSH/VS Code access.
+Run `bun run check:m6` only after deploying M6 hostd and rebuilding the guest
+image; it creates and cleans up its own test workspaces without restarting the
+shared host. M6 AWS acceptance is pending.

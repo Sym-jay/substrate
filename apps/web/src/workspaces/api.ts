@@ -1,4 +1,4 @@
-import { Session, Vm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
+import { Session, Vm, RunCheckpoint, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
 import { authHeaders } from '../auth.ts'
 
 export class WorkspaceApiError extends Error {
@@ -14,7 +14,7 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
     const message = body && typeof body.error === 'string' ? body.error : `Request failed (${response.status})`
     throw new WorkspaceApiError(response.status, message)
   }
-  return response.json()
+  return response.status === 204 ? null : response.json()
 }
 
 const post = (body: unknown): RequestInit => ({
@@ -24,12 +24,22 @@ const post = (body: unknown): RequestInit => ({
 })
 
 const vmPath = (id: string) => `/api/vms/${encodeURIComponent(id)}`
+async function waitForVmJob(job: { id: string; vmId: string }) {
+  for (;;) {
+    const status = await request(`/api/jobs/${encodeURIComponent(job.id)}`) as { state: string; error: string | null }
+    if (status.state === 'failed') throw new Error(status.error ?? 'Workspace operation failed')
+    if (status.state === 'done') return Vm.parse(await request(vmPath(job.vmId)))
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+  }
+}
 export const workspaceApi = {
   async list(signal?: AbortSignal) {
     return Vm.array().parse(await request('/api/vms', { signal }))
   },
   async create(input: CreateVm) {
-    return Vm.parse(await request('/api/vms', post(input)))
+    const result = await request('/api/vms', post(input))
+    const vm = Vm.safeParse(result)
+    return vm.success ? vm.data : waitForVmJob(result as { id: string; vmId: string })
   },
   async start(vmId: string) {
     return Vm.parse(await request(`${vmPath(vmId)}/start`, post({})))
@@ -43,6 +53,18 @@ export const workspaceApi = {
   async update(vmId: string, input: UpdateVm) {
     return Vm.parse(await request(vmPath(vmId), { ...post(input), method: 'PATCH' }))
   },
+  async stop(vmId: string) { return Vm.parse(await request(`${vmPath(vmId)}/stop`, post({}))) },
+  async remove(vmId: string) { await request(vmPath(vmId), { method: 'DELETE' }) },
+  async resize(vmId: string, input: ResizeVm) { return Vm.parse(await request(`${vmPath(vmId)}/resize`, post(input))) },
+  async fork(vmId: string, input: ForkVm) {
+    const job = await request(`${vmPath(vmId)}/fork`, post(input)) as { id: string; vmId: string }
+    return waitForVmJob(job)
+  },
+  async checkpoints(vmId: string) { return RunCheckpoint.array().parse(await request(`${vmPath(vmId)}/checkpoints`)) },
+  async rollback(vmId: string, id: string) { return Vm.parse(await request(`${vmPath(vmId)}/checkpoints/${encodeURIComponent(id)}/restore`, post({}))) },
+  async preview(vmId: string, port: number) { return await request(`${vmPath(vmId)}/previews`, post({ port })) as { url: string; basePath: string } },
+  async authorizeSsh(vmId: string, publicKey: string) { await request(`${vmPath(vmId)}/ssh/keys`, post({ publicKey })) },
+  async sshAccess(vmId: string) { return await request(`${vmPath(vmId)}/ssh/access`, post({})) as { url: string; expiresAt: string } },
   async sessions(vmId: string, signal?: AbortSignal) {
     return Session.array().parse(await request(`${vmPath(vmId)}/sessions`, { signal }))
   },

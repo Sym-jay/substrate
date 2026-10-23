@@ -6,7 +6,7 @@
 //   bun run vm exec VM [--root] -- COMMAND...
 //   bun run vm capacity
 // VM is an id (vm-xxxxxxxx) or a name.
-import type { Capacity, ExecResult, Vm } from '@substrate/protocol'
+import type { Capacity, ExecResult, RunCheckpoint, Vm } from '@substrate/protocol'
 import { stackOutputs } from './lib/aws.ts'
 import { errorMessage, hostd } from './lib/hostd.ts'
 
@@ -14,7 +14,7 @@ const [command, ...args] = process.argv.slice(2)
 const { HostInstanceId: host } = await stackOutputs()
 
 const usage = () => {
-  console.error('usage: bun run vm list | create [--name N] [--size S] [--disk GIB] | start|stop|pause|resume|delete VM | auto-pause VM MINUTES|off | exec VM [--root] -- CMD | capacity')
+  console.error('usage: bun run vm list | create [--name N] [--size S] [--disk GIB] [--repo OWNER/REPO] | start|stop|pause|resume|delete VM | resize VM [--size S] [--disk GIB] | fork VM [--name N] | checkpoints VM | rollback VM CHECKPOINT | auto-pause VM MINUTES|off | exec VM [--root] -- CMD | capacity')
   process.exit(1)
 }
 
@@ -63,6 +63,7 @@ switch (command) {
       name: option('name'),
       size: option('size'),
       diskGib: disk === undefined ? undefined : Number(disk),
+      repository: option('repo'),
     })
     console.log(describe(vm))
     break
@@ -83,6 +84,23 @@ switch (command) {
   case 'delete':
     await call('DELETE', `/vms/${await resolve(args[0])}`)
     console.log('deleted')
+    break
+  case 'resize': {
+    const disk = option('disk')
+    console.log(describe(await call<Vm>('POST', `/vms/${await resolve(args[0])}/resize`, {
+      size: option('size'), diskGib: disk === undefined ? undefined : Number(disk),
+    })))
+    break
+  }
+  case 'fork':
+    console.log(describe(await call<Vm>('POST', `/vms/${await resolve(args[0])}/fork`, { name: option('name') })))
+    break
+  case 'checkpoints':
+    for (const point of await call<RunCheckpoint[]>('GET', `/vms/${await resolve(args[0])}/checkpoints`)) console.log(`${point.id} ${point.createdAt} ${point.label}`)
+    break
+  case 'rollback':
+    if (!args[1] || !/^[a-f0-9-]{36}$/.test(args[1])) usage()
+    console.log(describe(await call<Vm>('POST', `/vms/${await resolve(args[0])}/checkpoints/${args[1]}/restore`)))
     break
   case 'exec': {
     const dash = args.indexOf('--')

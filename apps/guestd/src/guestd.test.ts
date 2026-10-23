@@ -52,8 +52,12 @@ describe('guestd API', () => {
 describe('sessions', () => {
   test('run as dev in a login shell, agents falling back to a shell', () => {
     const ctty = ['setsid', '--ctty', '--wait']
-    expect(sessionArgv({})).toEqual([...ctty, 'runuser', '-l', 'dev'])
-    expect(sessionArgv({ agent: 'claude' })).toEqual([...ctty, 'runuser', '-l', 'dev', '-c', 'claude; exec bash -l'])
+    expect(sessionArgv({}).slice(0, 5)).toEqual([...ctty, 'runuser', '-l'])
+    expect(sessionArgv({ agent: 'claude' }).at(-1)).toContain('claude --permission-mode default; exec bash -l')
+    expect(sessionArgv({ agent: 'claude', mode: 'auto' }).at(-1)).toContain('--dangerously-skip-permissions')
+    expect(sessionArgv({ agent: 'codex', mode: 'auto' }).at(-1)).toContain('--dangerously-bypass-approvals-and-sandbox')
+    expect(sessionArgv({ agent: 'codex' }).at(-1)).toContain('--ask-for-approval on-request')
+    expect(sessionArgv({ agent: 'opencode' }).at(-1)).toContain('"permission":"ask"')
   })
 
   test('reject unknown agents and missing sessions', async () => {

@@ -9,6 +9,8 @@ cdk.context.json
 .env.*
 # Local AWS credentials.
 /substrate-dev-aws-credentials
+# Downloaded, short-lived SSH transport credentials.
+vm-*-ssh.json
 *.tar.gz
 .DS_Store
 # Left behind by `bun build --compile`.

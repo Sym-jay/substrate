@@ -42,6 +42,7 @@ async function rig() {
       await Bun.write(paths.snapshot_path, 'state')
     }
     if (operation === 'PUT /snapshot/load') {
+      expect(body).toHaveProperty('network_overrides', [{ iface_id: 'eth0', host_dev_name: `sbx${record.slot}` }])
       const path = (body as { mem_backend: { backend_path: string } }).mem_backend.backend_path
       memory = memories.get(path)!
       state = 'Paused'
@@ -211,5 +212,16 @@ describe('snapshot lifecycle', () => {
     expect(r.saved.paused).toBe(true)
     expect(r.running).toBe(false)
     expect(r.events).not.toContain('PUT /snapshot/load')
+  })
+
+  test('a restore refuses the wrong guest identity and retains the saved checkpoint', async () => {
+    const r = await rig()
+    await r.snapshots.pause(r.record)
+    const snapshots = new Snapshots({ ...r.dependencies,
+      waitForGuest: async () => ({ ok: true, vmId: 'vm-other', version: 'test', uptimeMs: 100 }),
+    })
+    await expect(snapshots.resume(r.record)).rejects.toThrow('identity')
+    expect(r.saved.paused).toBe(true)
+    expect(r.running).toBe(false)
   })
 })

@@ -5,10 +5,12 @@ import { Hono } from 'hono'
 import { createApp } from './app.ts'
 import { Owners } from './owners.ts'
 import { Tickets } from './tickets.ts'
+import { Jobs } from './jobs.ts'
 
 const hostdToken = 'h'.repeat(64)
 const hostdVms = new Map<string, Vm>()
 let created = 0
+let lastCreation: Record<string, unknown> = {}
 
 // Just enough of hostd: list, create, get, update, delete.
 const fakeHostd = new Hono()
@@ -18,8 +20,9 @@ fakeHostd.use('*', async (c, next) => {
 })
 fakeHostd.get('/vms', (c) => c.json([...hostdVms.values()]))
 fakeHostd.post('/vms', async (c) => {
-  const { name } = (await c.req.json()) as { name?: string }
-  const id = `vm-${String(++created).padStart(8, '0')}`
+  lastCreation = await c.req.json() as Record<string, unknown>
+  const { name } = lastCreation as { name?: string }
+  const id = lastCreation.targetId as string ?? `vm-${String(++created).padStart(8, '0')}`
   const vm: Vm = {
     id,
     name: name ?? id,
@@ -43,6 +46,13 @@ fakeHostd.patch('/vms/:id', async (c) => {
   hostdVms.set(vm.id, vm)
   return c.json(vm)
 })
+fakeHostd.post('/vms/:id/fork', async (c) => {
+  const input = await c.req.json() as { targetId: string; name?: string }
+  await Bun.sleep(30)
+  const vm = { ...hostdVms.get(c.req.param('id'))!, id: input.targetId, name: input.name ?? input.targetId, parentId: c.req.param('id') }
+  hostdVms.set(vm.id, vm)
+  return c.json(vm, 201)
+})
 fakeHostd.delete('/vms/:id', (c) => {
   hostdVms.delete(c.req.param('id'))
   return c.body(null, 204)
@@ -62,8 +72,36 @@ const app = createApp({
     authenticate: async (req) => (req.headers.get('x-test-user') ? { id: req.headers.get('x-test-user')! } : null),
     owners: new Owners(':memory:'),
     tickets: new Tickets(),
+    jobs: new Jobs(':memory:'),
+    githubToken: async (userId) => `private-token-for-${userId}`,
     maxVmsPerUser: 2,
   },
+})
+
+test('forks run as user-scoped jobs and reserve quota before the copy finishes', async () => {
+  const charlie = as('charlie')
+  const source = await (await create(charlie, 'charlie-source')).json() as Vm
+  const fork = () => charlie(`/api/vms/${source.id}/fork`, { method: 'POST', body: '{}' })
+  const responses = await Promise.all([fork(), fork()])
+  expect(responses.map((res) => res.status).sort()).toEqual([202, 409])
+  const job = await responses.find((res) => res.status === 202)!.json() as { id: string; vmId: string }
+  expect((await bob(`/api/jobs/${job.id}`)).status).toBe(404)
+  for (let i = 0; ; i++) {
+    const status = await (await charlie(`/api/jobs/${job.id}`)).json() as { state: string }
+    if (status.state === 'done') break
+    if (i > 50) throw new Error('job did not finish')
+    await Bun.sleep(10)
+  }
+  expect(((await (await charlie('/api/vms')).json()) as Vm[]).map((vm) => vm.id)).toContain(job.vmId)
+  expect((await bob(`/api/vms/${job.vmId}`)).status).toBe(404)
+})
+
+test('GitHub setup uses the current user credential and strips a browser-supplied token', async () => {
+  const dave = as('dave')
+  const res = await completeJob(dave, await dave('/api/vms', { method: 'POST', body: JSON.stringify({ name: 'repo', repository: 'harryfrzz/substrate', githubToken: 'browser-token' }) }))
+  expect(res.status).toBe(201)
+  expect(lastCreation.githubToken).toBe('private-token-for-dave')
+  expect(await res.text()).not.toContain('private-token')
 })
 
 const as = (user: string | null) => (path: string, init: RequestInit = {}) =>
@@ -71,7 +109,17 @@ const as = (user: string | null) => (path: string, init: RequestInit = {}) =>
 const alice = as('alice')
 const bob = as('bob')
 const anonymous = as(null)
-const create = (call: typeof alice, name: string) => call('/api/vms', { method: 'POST', body: JSON.stringify({ name }) })
+async function completeJob(call: typeof alice, response: Response) {
+  if (response.status !== 202) return response
+  const job = await response.json() as { id: string; vmId: string }
+  for (let i = 0; ; i++) {
+    const status = await (await call(`/api/jobs/${job.id}`)).json() as { state: string }
+    if (status.state === 'done') return new Response(await (await call(`/api/vms/${job.vmId}`)).text(), { status: 201 })
+    if (status.state === 'failed' || i > 100) throw new Error('create job failed')
+    await Bun.sleep(5)
+  }
+}
+const create = async (call: typeof alice, name: string) => completeJob(call, await call('/api/vms', { method: 'POST', body: JSON.stringify({ name }) }))
 
 describe('VMs per user', () => {
   let aliceVm: Vm

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { GitHubRepo } from './github.ts'
 
 // Preset sizes. `large` is the default: enough for Claude Code plus a build.
 export const VmSizes = {
@@ -10,7 +11,7 @@ export const VmSizeName = z.enum(['large', 'medium', 'small'])
 export type VmSizeName = z.infer<typeof VmSizeName>
 export const DEFAULT_VM_SIZE: VmSizeName = 'large'
 
-export const VmState = z.enum(['starting', 'running', 'stopping', 'stopped', 'failed', 'pausing', 'paused', 'resuming'])
+export const VmState = z.enum(['starting', 'running', 'stopping', 'stopped', 'failed', 'pausing', 'paused', 'resuming', 'forking', 'checkpointing', 'resizing'])
 export type VmState = z.infer<typeof VmState>
 
 export const Vm = z.object({
@@ -37,6 +38,8 @@ export const Vm = z.object({
   // Pause the VM after this many idle minutes; null never does. Optional so
   // the client can still read a hostd from before M4.
   autoPauseMinutes: z.number().int().nullable().optional(),
+  repository: z.string().nullable().optional(),
+  parentId: z.string().nullable().optional(),
 })
 export type Vm = z.infer<typeof Vm>
 
@@ -50,6 +53,7 @@ export const CreateVm = z.object({
   size: VmSizeName.optional(),
   // hostd also holds this between the image's own size and the host's storage pool.
   diskGib: z.number().int().min(8).max(1024).optional(),
+  repository: GitHubRepo.optional(),
 })
 export type CreateVm = z.infer<typeof CreateVm>
 
@@ -83,6 +87,7 @@ export const GuestHealth = z.object({
   vmId: z.string(),
   version: z.string(),
   uptimeMs: z.number(),
+  features: z.object({ forkNetwork: z.boolean() }).optional(),
 })
 export type GuestHealth = z.infer<typeof GuestHealth>
 
