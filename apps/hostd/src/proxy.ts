@@ -24,8 +24,8 @@ export async function proxyHttp(request: Request, target: URL, prefix = '', onAc
   return new Response(body, { status: response.status, headers })
 }
 
-// A WebSocket carrying raw SSH bytes. No public port is opened on either box.
-export function tcpRelay(host: string, port: number, onActivity?: () => void): WSEvents {
+// A WebSocket carrying raw TCP bytes (SSH, VNC). No public port is opened on either box.
+export function tcpRelay(host: string, port: number, onActivity?: () => void, unavailable = 'SSH is not available; add your public key first'): WSEvents {
   let socket: Socket | undefined
   return {
     onOpen(_event, peer) {
@@ -38,7 +38,7 @@ export function tcpRelay(host: string, port: number, onActivity?: () => void): W
         }
         peer.send(typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data))
       })
-      socket.on('error', () => peer.close(1011, 'SSH is not available; add your public key first'))
+      socket.on('error', () => peer.close(1011, unavailable))
       socket.on('end', () => peer.close(1000))
     },
     onMessage(event, peer) {

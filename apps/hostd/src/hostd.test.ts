@@ -1,5 +1,8 @@
 import { Vm } from '@substrate/protocol'
 import { describe, expect, test } from 'bun:test'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createApp } from './app.ts'
 import { computeCapacity, parseMemTotalMib } from './capacity.ts'
 import { bootArgs, firecrackerConfig } from './firecracker.ts'
@@ -159,6 +162,73 @@ describe('hostd API', () => {
     })
     const res = await withPool.request('/health', { headers: { Authorization: `Bearer ${token}` } })
     expect(((await res.json()) as { pool: unknown }).pool).toEqual({ health: 'ONLINE', sizeGib: 49, usedPct: 23 })
+  })
+
+  describe('desktop and SSH keys', () => {
+    const commands: string[] = []
+    let stateOut = 'off'
+    let open = false
+    const started: string[] = []
+    const withGuest = createApp({
+      token, version: 'test', image: async () => null,
+      vms: {
+        ...fake,
+        start: async (id) => { started.push(id); return vm },
+        exec: async (_id, req) => { commands.push(req.command); return { exitCode: 0, stdout: stateOut, stderr: '', durationMs: 1, timedOut: false } },
+      },
+      probe: async (host, port) => open && host === vm.guestIp && port === 5900,
+    })
+    const req = (path: string, init: RequestInit = {}) =>
+      withGuest.request(path, { ...init, headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' } })
+
+    test("a VM's desktop is ready when VNC answers, and otherwise says why not", async () => {
+      expect(await (await req('/vms/vm-abc/gui')).json()).toEqual({ state: 'off', available: false })
+      stateOut = 'setting-up\n'
+      expect(await (await req('/vms/vm-abc/gui')).json()).toEqual({ state: 'setting-up', available: false })
+      open = true
+      expect(await (await req('/vms/vm-abc/gui')).json()).toEqual({ state: 'ready', available: true })
+      open = false
+    })
+
+    test('setting up a desktop runs the bundled script in the background', async () => {
+      commands.length = 0
+      const res = await req('/vms/vm-abc/gui/setup', { method: 'POST' })
+      expect(await res.json()).toEqual({ state: 'setting-up', available: false })
+      expect(commands[0]).toContain('systemd-run --unit=substrate-desktop-setup')
+      const encoded = /printf %s '([A-Za-z0-9+/=]+)' \| base64 -d >\/var\/lib\/substrate-desktop\/setup\.sh/.exec(commands[0]!)?.[1]
+      const script = Buffer.from(encoded!, 'base64').toString()
+      expect(script).toContain('x11vnc -display :1 -rfbport 5900')
+      // It must at least be valid bash.
+      const check = Bun.spawnSync(['bash', '-n'], { stdin: Buffer.from(script) })
+      expect(check.exitCode).toBe(0)
+    })
+
+    test('account keys are validated, and can start the VM first', async () => {
+      commands.length = 0
+      const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOxzQ7 me@laptop'
+      expect((await req('/vms/vm-abc/ssh/keys', { method: 'PUT', body: JSON.stringify({ publicKeys: ['not a key'] }) })).status).toBe(400)
+      expect((await req('/vms/vm-abc/ssh/keys', { method: 'PUT', body: JSON.stringify({ publicKeys: [key], start: true }) })).status).toBe(200)
+      expect(started).toContain('vm-abc')
+      expect(commands[0]).toContain(Buffer.from(`# substrate:begin (keys from your Substrate account)\n${key}\n# substrate:end\n`).toString('base64'))
+    })
+  })
+
+  test('the key sync replaces only its own block of authorized_keys', async () => {
+    const { sshSyncCommand } = await import('./desktop.ts')
+    const dir = await mkdtemp(join(tmpdir(), 'keys-'))
+    const file = join(dir, 'authorized_keys')
+    const run = async (keys: string[]) => {
+      // The command, minus what needs root or systemd, against a temporary file.
+      const script = sshSyncCommand(keys).split('\n')
+        .filter((line) => !/^(install|chown|chmod|systemctl)/.test(line))
+        .join('\n').replace('f=/home/dev/.ssh/authorized_keys', `f=${file}`)
+      expect(Bun.spawnSync(['bash', '-c', script]).exitCode).toBe(0)
+      return readFile(file, 'utf8')
+    }
+    await writeFile(file, 'ssh-ed25519 AAAAhand-added mine\n')
+    expect(await run(['ssh-ed25519 AAAAone a', 'ssh-rsa AAAAtwo b'])).toBe('ssh-ed25519 AAAAhand-added mine\n# substrate:begin (keys from your Substrate account)\nssh-ed25519 AAAAone a\nssh-rsa AAAAtwo b\n# substrate:end\n')
+    expect(await run(['ssh-rsa AAAAtwo b'])).toBe('ssh-ed25519 AAAAhand-added mine\n# substrate:begin (keys from your Substrate account)\nssh-rsa AAAAtwo b\n# substrate:end\n')
+    expect(await run([])).toBe('ssh-ed25519 AAAAhand-added mine\n')
   })
 
   test('a disk can only be grown to a sensible size', async () => {

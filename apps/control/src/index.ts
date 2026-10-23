@@ -6,6 +6,7 @@ import { createHostReader } from './host.ts'
 import { Owners } from './owners.ts'
 import { Tickets } from './tickets.ts'
 import { Capabilities } from './capabilities.ts'
+import { SshAccess } from './ssh-access.ts'
 import { previewRoutes } from './previews.ts'
 import { githubTokens } from './github.ts'
 import { Jobs } from './jobs.ts'
@@ -24,6 +25,7 @@ const authenticate = config.clerk
 const owners = new Owners(config.db)
 const tickets = new Tickets()
 const capabilities = new Capabilities(config.db)
+const sshAccess = new SshAccess(config.db)
 const jobs = new Jobs(config.db)
 
 // Windows workspaces (M9), on the deployed control box.
@@ -65,6 +67,7 @@ const app = createApp({
           owners,
           tickets,
           capabilities,
+          sshAccess,
           jobs,
           previewOrigin: config.previewOrigin,
           githubToken: githubTokens(config.region),

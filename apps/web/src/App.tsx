@@ -2,6 +2,7 @@ import type { HostStatus, InstanceState, Status } from '@substrate/protocol'
 import type { ReactNode } from 'react'
 import { useStatus } from './useStatus.ts'
 import { WindowsPanel } from './workspaces/WindowsPanel.tsx'
+import { SshAccessPanel } from './workspaces/SshAccessPanel.tsx'
 import { WorkspacePanel } from './workspaces/WorkspacePanel.tsx'
 
 const stateStyle: Record<InstanceState, { dot: string; label: string }> = {
@@ -32,6 +33,7 @@ export function App({ account }: { account?: ReactNode }) {
       </header>
 
       <WorkspacePanel />
+      {account && <SshAccessPanel />}
       <WindowsPanel />
 
       {state.kind === 'error' && (

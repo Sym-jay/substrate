@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { VmName, VmSizes, type Agent, type AgentMode, type UpdateVm, type Session, type Vm, type VmSizeName } from '@substrate/protocol'
 import { workspaceApi, WorkspaceApiError } from './api.ts'
 import { TerminalView, type Asleep } from './TerminalView.tsx'
+import { DesktopSetup, DesktopTab, VmDesktopView, useVmGui } from './VmDesktop.tsx'
 import { WorkspaceTools } from './WorkspaceTools.tsx'
 import './workspaces.css'
 
@@ -190,6 +191,9 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
   const [error, setError] = useState('')
   const generation = useRef(0)
   const selected = sessions.find((session) => session.id === active)
+  // The terminal, or the workspace's desktop when it has one.
+  const [view, setView] = useState<'terminal' | 'desktop'>('terminal')
+  const gui = useVmGui(vm)
 
   useEffect(() => {
     if (vm.state !== 'running') { setLoading(false); return }
@@ -244,6 +248,7 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
       if (current !== generation.current) return
       setSessions((previous) => [...previous.filter((s) => s.id !== session.id), session])
       setActive(session.id)
+      setView('terminal')
     } catch (error) { if (current === generation.current) setError(errorMessage(error)) }
     finally { if (current === generation.current) setBusy(false) }
   }
@@ -287,10 +292,13 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
         : loading ? <p className="workspace-hint" role="status">Loading sessions…</p>
         : sessions.length === 0 && !error ? <p className="workspace-hint">Start a session to open a terminal.</p> : null}
       {error && <p role="alert" className="workspace-error">{error}</p>}
-      {sessions.length > 0 && <div className="session-picker" role="group" aria-label="Select terminal session">
-        {sessions.map((session, i) => <button type="button" key={session.id} aria-pressed={session.id === active} onClick={() => setActive(session.id)}>{label(session, i)}{session.state === 'exited' ? ' · ended' : ''}</button>)}
+      {(sessions.length > 0 || vm.state === 'running') && <div className="session-picker" role="group" aria-label="Select terminal session or desktop">
+        {sessions.map((session, i) => <button type="button" key={session.id} aria-pressed={view === 'terminal' && session.id === active} onClick={() => { setActive(session.id); setView('terminal') }}>{label(session, i)}{session.state === 'exited' ? ' · ended' : ''}</button>)}
+        <DesktopTab gui={gui} selected={view === 'desktop'} onOpen={() => setView('desktop')} />
       </div>}
-      {selected && (vm.state === 'running' || asleep) && <TerminalView
+      {vm.state === 'running' && <DesktopSetup gui={gui} />}
+      {view === 'desktop' && gui.available && vm.state === 'running' ? <VmDesktopView vm={vm} />
+        : selected && (vm.state === 'running' || asleep) && <TerminalView
         key={selected.id} path={workspaceApi.terminalPath(vm.id, selected.id)} title={label(selected, sessions.indexOf(selected))}
         asleep={asleep} onWake={() => void changeState('resume')}
       />}
