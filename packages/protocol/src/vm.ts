@@ -144,6 +144,10 @@ export const Capacity = z.object({
 })
 export type Capacity = z.infer<typeof Capacity>
 
+// A VM's recent logs: its console, and what hostd said about it.
+export const VmLogs = z.object({ console: z.string(), host: z.string() })
+export type VmLogs = z.infer<typeof VmLogs>
+
 export const ApiError = z.object({ error: z.string() })
 export type ApiError = z.infer<typeof ApiError>
 

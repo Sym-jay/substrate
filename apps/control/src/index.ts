@@ -1,6 +1,6 @@
 import { websocket } from 'hono/bun'
 import { createApp } from './app.ts'
-import { clerkAuth, localDevAuth } from './auth.ts'
+import { clerkAuth, localDevAuth, type Authenticate } from './auth.ts'
 import { config } from './config.ts'
 import { createHostReader } from './host.ts'
 import { Owners } from './owners.ts'
@@ -10,6 +10,12 @@ import { previewRoutes } from './previews.ts'
 import { githubTokens } from './github.ts'
 import { Jobs } from './jobs.ts'
 import { Workflows, WorkflowStore } from './workflows.ts'
+import { awsWindowsCloud } from './windows/cloud.ts'
+import { windowsRoutes } from './windows/routes.ts'
+import { WindowsSsh } from './windows/ssh.ts'
+import { WindowsStore } from './windows/store.ts'
+import { WindowsTerminals, withControllingTerminal } from './windows/terminals.ts'
+import { WindowsWorkspaces } from './windows/workspaces.ts'
 
 const authenticate = config.clerk
   ? clerkAuth({ ...config.clerk, authorizedParties: config.authorizedParties, allowedEmails: config.allowedEmails })
@@ -25,12 +31,34 @@ const workflows = config.hostd && authenticate ? new Workflows({
 }) : undefined
 workflows?.start()
 
+// Windows workspaces (M9), on the deployed control box.
+const windows = config.windows && authenticate ? await setUpWindows(config.windows, authenticate) : undefined
+
+async function setUpWindows(windows: NonNullable<typeof config.windows>, authenticate: Authenticate) {
+  const ssh = new WindowsSsh(windows.sshDir)
+  await ssh.init()
+  const workspaces = new WindowsWorkspaces({
+    store: new WindowsStore(config.db),
+    cloud: awsWindowsCloud({ region: config.region, ...windows }),
+    ssh,
+    terminals: new WindowsTerminals(),
+    instanceType: windows.instanceType,
+    maxRunning: windows.maxRunning,
+    maxPerUser: windows.maxPerUser,
+    idleStopMinutes: windows.idleStopMinutes,
+    shell: withControllingTerminal,
+  })
+  workspaces.run()
+  return windowsRoutes({ authenticate, workspaces, tickets })
+}
+
 const app = createApp({
   version: config.version,
   region: config.region,
   webDir: config.webDir,
   readHost: createHostReader(config.hostInstanceId, config.region),
   clerkPublishableKey: config.clerk?.publishableKey ?? null,
+  windows,
   previews: config.hostd && config.previewOrigin ? previewRoutes({ hostd: config.hostd, owners, tickets, capabilities }) : undefined,
   vms: !config.hostd
     ? { unavailable: 'no sandbox host configured' }

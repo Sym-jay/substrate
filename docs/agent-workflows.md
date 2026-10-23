@@ -4,8 +4,8 @@ Branch: `feat/agent-workflows`, based on `main` at `eb38652`.
 
 ## Using it
 
-The Inbox is the first view after sign-in. Workspaces and existing terminal links
-remain available through the main navigation.
+Open **Inbox** from the main navigation. Workspaces and existing terminal links
+remain available.
 
 Choose **New task**, a workspace, a name, and either a shell command or a prompt
 for Claude Code, Codex, or OpenCode. Agent tasks use credentials already configured
@@ -156,3 +156,18 @@ Adapter references checked during implementation:
 [Codex non-interactive execution](https://learn.chatgpt.com/docs/non-interactive-mode),
 [OpenCode CLI](https://opencode.ai/docs/cli/) and
 [permission configuration](https://opencode.ai/docs/permissions/).
+
+## Integration with the deployed dashboard
+
+The shared deployment already had dashboard/Windows changes from `c428e4b` that
+were not on `main`. The deployment branch `deploy/agent-workflows-dashboard`
+combines that exact deployed revision with `feat/agent-workflows`; it does not
+replace the dashboard with the earlier main UI. Inbox joins the existing sidebar
+and mobile tab bar. Task and comparison links use `#/inbox/task/:id` and
+`#/inbox/comparison/:id`; earlier query-style links remain readable. The existing
+Home, Workspaces, Windows, Jobs, Compute, Logs, and Settings pages remain.
+
+Combined-release local checks: 145 tests passed, one Linux-only PTY test skipped
+on macOS, type checking passed, and the production web build passed with its
+existing large-bundle warning. AWS deployment and acceptance results are recorded
+separately after they run.

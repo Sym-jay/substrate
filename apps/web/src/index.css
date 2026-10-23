@@ -1,4 +1,8 @@
 @import 'tailwindcss';
+@import './app/theme.css' layer(components);
+
+/* dark: follows the theme setting (app/settings.ts), not just the system's. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -10,5 +14,5 @@ html {
 }
 
 body {
-  @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  @apply antialiased;
 }

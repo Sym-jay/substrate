@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { TaskSpec, taskIsPending, type Comparison, type Task, type TaskRunner, type Vm } from '@substrate/protocol'
 import { workspaceApi } from '../workspaces/api.ts'
+import { parse, navigate, useRoute } from '../app/router.ts'
 import { workflowApi } from './api.ts'
 import '../workspaces/workspaces.css'
 import './workflows.css'
@@ -14,12 +15,13 @@ const message = (error: unknown) => error instanceof Error ? error.message : 'So
 const newSpec = (title = ''): TaskSpec => ({ title, runner: 'command', input: '', mode: 'ask', verificationCommand: '', timeoutSeconds: 3600 })
 type Selection = { kind: 'task' | 'comparison'; id: string } | null
 function selection(): Selection {
-  const hash = new URLSearchParams(window.location.hash.slice(1))
-  return hash.get('comparison') ? { kind: 'comparison', id: hash.get('comparison')! }
-    : hash.get('task') ? { kind: 'task', id: hash.get('task')! } : null
+  const { page, params } = parse(window.location.hash)
+  return page === 'inbox' && (params[0] === 'task' || params[0] === 'comparison') && params[1]
+    ? { kind: params[0], id: params[1] } : null
 }
 
 export function WorkflowPanel({ onOpenWorkspace }: { onOpenWorkspace: (vmId: string) => void }) {
+  const route = useRoute()
   const [tasks, setTasks] = useState<Task[]>([])
   const [comparisons, setComparisons] = useState<Comparison[]>([])
   const [vms, setVms] = useState<Vm[]>([])
@@ -34,10 +36,8 @@ export function WorkflowPanel({ onOpenWorkspace }: { onOpenWorkspace: (vmId: str
   const [refresh, setRefresh] = useState(0)
 
   useEffect(() => {
-    const change = () => { setSelected(selection()); setDetail(null); setComparison(null); setBranches([]) }
-    window.addEventListener('hashchange', change)
-    return () => window.removeEventListener('hashchange', change)
-  }, [])
+    setSelected(selection()); setDetail(null); setComparison(null); setBranches([])
+  }, [route])
   useEffect(() => {
     const controller = new AbortController()
     let pending = false
@@ -71,7 +71,7 @@ export function WorkflowPanel({ onOpenWorkspace }: { onOpenWorkspace: (vmId: str
 
   const open = (next: Selection) => {
     setSelected(next); setDetail(null); setComparison(null); setBranches([]); setForm(null)
-    window.location.hash = new URLSearchParams({ view: 'inbox', ...(next ? { [next.kind]: next.id } : {}) }).toString()
+    navigate('inbox', ...(next ? [next.kind, next.id] : []))
   }
   const changed = () => setRefresh((value) => value + 1)
   const visible = tasks.filter((task) => filter === 'review' ? needsReview(task) : filter === 'running' ? active(task) : true)

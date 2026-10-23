@@ -96,6 +96,15 @@ test('forks run as user-scoped jobs and reserve quota before the copy finishes',
   expect((await bob(`/api/vms/${job.vmId}`)).status).toBe(404)
 })
 
+test('each user sees their own jobs, newest first, with what they were', async () => {
+  const listed = await (await as('charlie')('/api/jobs')).json() as { kind: string; state: string; createdAt: string }[]
+  expect(listed[0]).toMatchObject({ kind: 'fork', state: 'done' })
+  expect(listed[0]!.createdAt).toBeString()
+  expect(listed.some((job) => job.kind === 'create')).toBe(true)
+  expect(await (await as('nobody-else')('/api/jobs')).json()).toEqual([])
+  expect((await app.request('/api/jobs')).status).toBe(401)
+})
+
 test('GitHub setup uses the current user credential and strips a browser-supplied token', async () => {
   const dave = as('dave')
   const res = await completeJob(dave, await dave('/api/vms', { method: 'POST', body: JSON.stringify({ name: 'repo', repository: 'harryfrzz/substrate', githubToken: 'browser-token' }) }))
