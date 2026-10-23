@@ -25,7 +25,8 @@ import * as firecracker from './firecracker.ts'
 import { guestClient, waitForGuest, type GuestClient } from './guest.ts'
 import { currentImage } from './images.ts'
 import { Mutex } from './mutex.ts'
-import { createTap, deleteTap, lowestFreeSlot, slotAddresses } from './network.ts'
+import { deleteTap, lowestFreeSlot, setProxied, slotAddresses } from './network.ts'
+import * as vmm from './vmm.ts'
 import { logOnly, type Notify } from './notify.ts'
 import { listRecords, readRecord, vmDir, writeRecord, type VmRecord } from './state.ts'
 import { Snapshots } from './snapshots.ts'
@@ -132,6 +133,8 @@ export class VmManager implements VmService {
         balloonEnabled: true,
         maxAwakeHours: DEFAULT_MAX_AWAKE_HOURS,
         shouldRun: true,
+        isolation: 'none',
+        egress: input.egress ?? { mode: 'open', allow: [] },
       }
       try {
         await zfs.createFilesystem(dataset(id))
@@ -275,6 +278,8 @@ export class VmManager implements VmService {
       const record = await this.record(id)
       if (input.autoPauseMinutes !== undefined) record.autoPauseMinutes = input.autoPauseMinutes
       if (input.maxAwakeHours !== undefined) record.maxAwakeHours = input.maxAwakeHours
+      // The firewall and the guest's proxy settings change at its next start.
+      if (input.egress !== undefined) record.egress = input.egress
       await writeRecord(record)
       return this.get(id)
     })
@@ -296,7 +301,7 @@ export class VmManager implements VmService {
       if (await firecracker.isRunning(id)) {
         // Firecracker rereads the size and tells the guest, which then grows
         // its filesystem with the resize ioctl.
-        await firecracker.api(id)('PATCH /drives/rootfs', { drive_id: 'rootfs', path_on_host: record.rootPath ?? device })
+        await firecracker.api(id)('PATCH /drives/rootfs', { drive_id: 'rootfs', path_on_host: vmm.rootDrivePath(record) })
         const result = await (await this.guest(id)).exec({ command: growFilesystemInGuest(diskGib), user: 'root', timeoutMs: 60_000 })
         if (result.exitCode !== 0) {
           throw new HttpError(502, `the disk grew, but the guest couldn't grow its filesystem: ${(result.stderr || result.stdout).trim()}`)
@@ -435,7 +440,6 @@ export class VmManager implements VmService {
         await zfs.copySnapshot(this.snapshots.paths(source, point).disk, rootVolume(childId))
         await zfs.waitForDevice(zfs.zvolDevice(rootVolume(childId)))
         await writeRecord(child)
-        await this.writeMetadata(child)
         await this.snapshots.resume(child)
       } catch (error) {
         if (child) {
@@ -500,6 +504,10 @@ export class VmManager implements VmService {
     for (const record of await listRecords()) {
       await this.snapshots.reconcile(record)
       await this.snapshots.prune(record)
+      // hostd's start rebuilt the firewall, emptying its set of allowlisted VMs.
+      if (record.egress.mode === 'allowlist' && !record.paused && (await firecracker.isRunning(record.id))) {
+        await setProxied(vmm.hostInterface(record), true).catch((err) => console.error(`egress ${record.id}: ${message(err)}`))
+      }
       // VMs that were running before hostd knew to record it.
       if (!record.shouldRun && !record.paused && (await firecracker.isRunning(record.id))) {
         record.shouldRun = true
@@ -564,29 +572,16 @@ export class VmManager implements VmService {
   }
 
   // `resumeSessions` asks guestd to reopen the sessions the VM had (see sessions.ts).
+  // A cold boot is when a VM changes isolation (config.isolation).
   private async launch(record: VmRecord, { resumeSessions = false } = {}) {
     this.balloons.forget(record.id)
     record.balloonEnabled = true
+    record.isolation = vmm.isolationForBoot()
     await writeRecord(record)
-    const net = slotAddresses(record.slot)
-    const dir = vmDir(record.id)
-    const spec = {
-      id: record.id,
-      hostname: record.name,
-      vcpus: record.vcpus,
-      memMib: record.memMib,
-      kernel: record.kernel,
-      rootDevice: record.rootPath ?? zfs.zvolDevice(rootVolume(record.id)),
-      ...net,
-    }
-    await Bun.write(`${dir}/firecracker.json`, JSON.stringify(firecracker.firecrackerConfig(spec), null, 2))
-    await this.writeMetadata(record, resumeSessions)
-
-    await createTap(record.slot)
+    await vmm.startNetwork(record)
     this.transitions.set(record.id, 'starting')
     try {
-      const root = record.rootPath ? { source: zfs.zvolDevice(rootVolume(record.id)), target: record.rootPath } : undefined
-      await firecracker.launch(spec, { config: `${dir}/firecracker.json`, metadata: `${dir}/metadata.json` }, root)
+      await vmm.launch(record, resumeSessions)
     } catch (err) {
       this.transitions.delete(record.id)
       await deleteTap(record.slot)
@@ -626,12 +621,6 @@ export class VmManager implements VmService {
     await firecracker.stop(id)
     const record = await readRecord(id)
     if (record) await deleteTap(record.slot)
-  }
-
-  private async writeMetadata(record: VmRecord, resumeSessions = false) {
-    const net = slotAddresses(record.slot)
-    const metadata = { substrate: { vmId: record.id, name: record.name, token: record.token, guestIp: net.guestIp, hostIp: net.hostIp, resumeSessions } }
-    await Bun.write(`${vmDir(record.id)}/metadata.json`, JSON.stringify(metadata), { mode: 0o600 })
   }
 
   private async cleanUp(record: VmRecord) {

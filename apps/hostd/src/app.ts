@@ -1,4 +1,4 @@
-import { CreateSession, CreateVm, ResizeVm, ForkVm, SshKey, ExecRequest, GrowDisk, UpdateVm, type PoolStatus, type HostdHealth } from '@substrate/protocol'
+import { AgentEnv, CreateSession, CreateVm, ResizeVm, ForkVm, SshKey, ExecRequest, GrowDisk, UpdateVm, type PoolStatus, type HostdHealth } from '@substrate/protocol'
 import { relayTo } from '@substrate/protocol/relay'
 import { Hono, type Context } from 'hono'
 import { bearerAuth } from 'hono/bearer-auth'
@@ -9,7 +9,8 @@ import { HttpError, type VmService } from './vms.ts'
 import { appHeaders, proxyHttp, tcpRelay } from './proxy.ts'
 
 type Options = {
-  token: string
+  // The current token, or a check that also takes the previous one (tokens.ts).
+  token: string | ((token: string) => Promise<boolean>)
   version: string
   image: () => Promise<string | null>
   pool?: () => Promise<PoolStatus>
@@ -19,7 +20,7 @@ type Options = {
 export function createApp({ token, version, image, pool, vms }: Options) {
   const app = new Hono()
 
-  app.use('*', bearerAuth({ token }))
+  app.use('*', typeof token === 'string' ? bearerAuth({ token }) : bearerAuth({ verifyToken: (given) => token(given) }))
 
   app.get('/health', async (c) => {
     const storage = pool ? await pool().catch(() => null) : null
@@ -76,6 +77,11 @@ export function createApp({ token, version, image, pool, vms }: Options) {
     return c.body(null, 204)
   })
   app.post('/vms/:id/exec', async (c) => c.json(await vms.exec(c.req.param('id'), await body(c, ExecRequest))))
+
+  app.put('/vms/:id/agent-env', async (c) => {
+    await (await vms.guest(c.req.param('id'))).agentEnv(await body(c, AgentEnv))
+    return c.body(null, 204)
+  })
 
   // Terminal sessions live in guestd; hostd only knows how to reach it.
   app.get('/vms/:id/sessions', async (c) => c.json(await (await vms.guest(c.req.param('id'))).sessions()))

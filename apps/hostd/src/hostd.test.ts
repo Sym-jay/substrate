@@ -29,6 +29,7 @@ describe('network', () => {
   test('VMs only reach the internet', () => {
     const rules = firewallRules('ens5')
     expect(rules).toContain('iifname "sbx*" drop')
+    expect(rules).toContain('iifname "vh*" drop')
     expect(rules).toContain('169.254.0.0/16')
     expect(rules).toContain('ip saddr 172.30.0.0/16 oifname "ens5" masquerade')
   })
