@@ -8,6 +8,8 @@ export const config = {
   version: typeof BUILD_VERSION === 'string' ? BUILD_VERSION : 'dev',
   pool: 'substrate',
   firecracker: '/usr/local/bin/firecracker',
+  // ExecStop for VM units; installed by images/host/install-hostd.sh.
+  vmStop: '/usr/local/lib/substrate/vm-stop',
   // Kept back from VMs for the host itself, ZFS and Firecracker overhead.
   memReserveMib: 4_096,
   // How long a VM may take from launch to its guest agent answering.

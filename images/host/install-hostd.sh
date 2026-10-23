@@ -22,6 +22,8 @@ bun build --compile --minify --define "$define" apps/hostd/src/index.ts --outfil
 bun build --compile --minify --define "$define" apps/guestd/src/index.ts --outfile bin/substrate-guestd >/dev/null
 
 ln -sfn "$release" /opt/substrate/hostd/current
+# At a fixed path, because running VM units refer to it.
+install -D -m 0755 "$release/images/host/vm-stop.sh" /usr/local/lib/substrate/vm-stop
 # Keep the three newest releases.
 ls -1dt /opt/substrate/hostd/releases/* | tail -n +4 | xargs -r rm -rf
 
