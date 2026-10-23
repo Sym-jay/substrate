@@ -1,6 +1,9 @@
 import { Agents, TerminalInput, type CreateSession, type Session, type TerminalOutput } from '@substrate/protocol'
 
 type Listener = (message: TerminalOutput) => void
+// What counts as someone using the VM (see activity.ts).
+export type ActivitySink = { touch(): void; input(): void }
+const noActivity: ActivitySink = { touch() {}, input() {} }
 const MAX_SCROLLBACK_BYTES = 1024 * 1024
 const MAX_SESSIONS = 32
 
@@ -35,6 +38,7 @@ export class TerminalSession {
     readonly agent: Session['agent'],
     argv: string[],
     cwd: string,
+    private readonly activity: ActivitySink = noActivity,
   ) {
     const decoder = new TextDecoder()
     this.terminal = new Bun.Terminal({
@@ -66,6 +70,7 @@ export class TerminalSession {
   }
 
   attach(listener: Listener) {
+    this.activity.touch()
     listener({
       type: 'ready',
       scrollback: this.chunks.join(''),
@@ -86,8 +91,10 @@ export class TerminalSession {
     const message = TerminalInput.safeParse(value)
     if (!message.success) return false
     if (this.state === 'exited') return true
-    if (message.data.type === 'input') this.terminal.write(message.data.data)
-    else {
+    if (message.data.type === 'input') {
+      this.activity.input()
+      this.terminal.write(message.data.data)
+    } else {
       this.cols = message.data.cols
       this.rows = message.data.rows
       this.terminal.resize(this.cols, this.rows)
@@ -101,6 +108,7 @@ export class TerminalSession {
   }
 
   private output(data: string) {
+    this.activity.touch()
     this.chunks.push(data)
     this.bytes += Buffer.byteLength(data)
     while (this.bytes > MAX_SCROLLBACK_BYTES && this.chunks.length > 1) {
@@ -121,6 +129,7 @@ export class Sessions {
   constructor(
     private argv = sessionArgv,
     private cwd = '/home/dev',
+    private activity: ActivitySink = noActivity,
   ) {}
 
   list() {
@@ -139,7 +148,7 @@ export class Sessions {
       if (!ended) return null
       this.sessions.delete(ended.id)
     }
-    const session = new TerminalSession(req.agent ?? null, this.argv(req), this.cwd)
+    const session = new TerminalSession(req.agent ?? null, this.argv(req), this.cwd, this.activity)
     this.sessions.set(session.id, session)
     return session
   }

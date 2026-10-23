@@ -124,6 +124,7 @@ describe('hostd API', () => {
     stop: async () => ({ ...vm, state: 'stopped' }),
     pause: async () => ({ ...vm, state: 'paused' }),
     resume: async () => ({ ...vm, state: 'running' }),
+    update: async (_id, input) => ({ ...vm, ...input }),
     remove: async () => {},
     exec: async (_id, req) => ({ exitCode: 0, stdout: req.user, stderr: '', durationMs: 5, timedOut: false }),
     guest: async () => {
@@ -183,6 +184,14 @@ describe('hostd API', () => {
   test('pause and resume return the updated lifecycle state', async () => {
     expect(Vm.parse(await (await call('/vms/vm-abc/pause', { method: 'POST' })).json()).state).toBe('paused')
     expect(Vm.parse(await (await call('/vms/vm-abc/resume', { method: 'POST' })).json()).state).toBe('running')
+  })
+
+  test('auto-pause can be changed or turned off, within limits', async () => {
+    const patch = (body: unknown) => call('/vms/vm-abc', { method: 'PATCH', body: JSON.stringify(body) })
+    expect(Vm.parse(await (await patch({ autoPauseMinutes: 30 })).json()).autoPauseMinutes).toBe(30)
+    expect(Vm.parse(await (await patch({ autoPauseMinutes: null })).json()).autoPauseMinutes).toBeNull()
+    expect((await patch({ autoPauseMinutes: 0 })).status).toBe(400)
+    expect((await patch({})).status).toBe(400)
   })
 
   test('delete returns no content', async () => {

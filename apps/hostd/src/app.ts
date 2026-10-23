@@ -1,4 +1,4 @@
-import { CreateSession, CreateVm, ExecRequest, type HostdHealth } from '@substrate/protocol'
+import { CreateSession, CreateVm, ExecRequest, UpdateVm, type HostdHealth } from '@substrate/protocol'
 import { relayTo } from '@substrate/protocol/relay'
 import { Hono, type Context } from 'hono'
 import { bearerAuth } from 'hono/bearer-auth'
@@ -25,6 +25,7 @@ export function createApp({ token, version, image, vms }: Options) {
   app.get('/vms', async (c) => c.json(await vms.list()))
   app.post('/vms', async (c) => c.json(await vms.create(await body(c, CreateVm)), 201))
   app.get('/vms/:id', async (c) => c.json(await vms.get(c.req.param('id'))))
+  app.patch('/vms/:id', async (c) => c.json(await vms.update(c.req.param('id'), await body(c, UpdateVm))))
   app.post('/vms/:id/start', async (c) => c.json(await vms.start(c.req.param('id'))))
   app.post('/vms/:id/stop', async (c) => c.json(await vms.stop(c.req.param('id'))))
   app.post('/vms/:id/pause', async (c) => c.json(await vms.pause(c.req.param('id'))))
