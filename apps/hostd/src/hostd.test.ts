@@ -55,6 +55,8 @@ describe('firecracker config', () => {
     expect(cfg.drives[0]).toMatchObject({ path_on_host: spec.rootDevice, is_root_device: true, cache_type: 'Writeback' })
     expect(cfg['network-interfaces'][0]).toEqual({ iface_id: 'eth0', guest_mac: spec.mac, host_dev_name: 'sbx3' })
     expect(cfg['mmds-config'].network_interfaces).toEqual(['eth0'])
+    expect(cfg.balloon).toEqual({ amount_mib: 12_288, deflate_on_oom: true, stats_polling_interval_s: 1, free_page_reporting: true })
+    expect(firecrackerConfig({ ...spec, memMib: 4096 }).balloon.amount_mib).toBe(0)
   })
 })
 

@@ -31,6 +31,7 @@ import { listRecords, readRecord, vmDir, writeRecord, type VmRecord } from './st
 import { Snapshots } from './snapshots.ts'
 import { Checkpoints } from './checkpoints.ts'
 import { ExternalActivity } from './activity.ts'
+import { Balloons } from './balloon.ts'
 import { importRepository } from './repositories.ts'
 import * as zfs from './zfs.ts'
 
@@ -74,6 +75,7 @@ export class VmManager implements VmService {
   private snapshots = new Snapshots()
   private runCheckpoints = new Checkpoints()
   private activity = new ExternalActivity()
+  private balloons = new Balloons()
 
   touch(id: string) { this.activity.touch(id) }
 
@@ -127,6 +129,7 @@ export class VmManager implements VmService {
         parentId: null,
         rootPath: `${config.paths.run}/rootfs`,
         forkCapable: false,
+        balloonEnabled: true,
         maxAwakeHours: DEFAULT_MAX_AWAKE_HOURS,
         shouldRun: true,
       }
@@ -314,18 +317,21 @@ export class VmManager implements VmService {
         record.shouldRun = false
         await writeRecord(record)
       }
-      if (!(await firecracker.isRunning(id))) return
-      this.transitions.set(id, 'stopping')
-      try {
-        await this.shutDown(id)
-        if (record.checkpoint) {
-          const previous = record.checkpoint
-          record.checkpoint = null
-          await writeRecord(record)
-          await this.snapshots.discard(record, previous)
+      if (await firecracker.isRunning(id)) {
+        this.transitions.set(id, 'stopping')
+        try {
+          await this.shutDown(id)
+        } finally {
+          this.transitions.delete(id)
         }
-      } finally {
-        this.transitions.delete(id)
+      }
+      // A save is useless once the VM has shut down (or crashed) since it was
+      // made, so delete it, including for a VM that had already gone down.
+      if (record.checkpoint) {
+        const previous = record.checkpoint
+        record.checkpoint = null
+        await writeRecord(record)
+        await this.snapshots.discard(record, previous)
       }
     })
     return this.get(id)
@@ -337,6 +343,7 @@ export class VmManager implements VmService {
       await firecracker.kill(id)
       await this.cleanUp(record)
       this.activity.forget(id)
+      this.balloons.forget(id)
     })
   }
 
@@ -375,7 +382,11 @@ export class VmManager implements VmService {
       const record = await this.record(id)
       if (!record.runCheckpoints.some((point) => point.id === checkpointId)) throw new HttpError(404, 'checkpoint not found')
       if (record.paused || await firecracker.isRunning(id)) throw new HttpError(409, 'Stop the workspace before rolling back its disk')
+      const save = record.checkpoint
       await this.runCheckpoints.restore(record, checkpointId)
+      // The rollback forgets the VM's last save (it no longer matches the
+      // disk), so delete its files too.
+      if (save) await this.snapshots.discard(record, save)
       return this.get(id)
     })
   }
@@ -468,11 +479,27 @@ export class VmManager implements VmService {
     return hostCapacity(await this.memInUse(), config.memReserveMib)
   }
 
+  // The same lifecycle lock protects snapshot creation, resize and balloon
+  // adjustments. Admission still reserves each VM's ceiling, so emergency
+  // guest-driven deflation cannot overcommit the host.
+  async balanceMemory() {
+    return this.lock.run(async () => {
+      for (const record of await listRecords()) {
+        if (record.paused || this.transitions.has(record.id) || !(await firecracker.isRunning(record.id))) {
+          this.balloons.forget(record.id); continue
+        }
+        try { await this.balloons.balance(record) }
+        catch (error) { console.error(`memory ${record.id}:`, error instanceof Error ? error.message : error) }
+      }
+    })
+  }
+
   // After hostd restarts: VMs that are still running keep going; for the rest,
   // drop TAP devices left behind (e.g. by a host reboot).
   async reconcile() {
     for (const record of await listRecords()) {
       await this.snapshots.reconcile(record)
+      await this.snapshots.prune(record)
       // VMs that were running before hostd knew to record it.
       if (!record.shouldRun && !record.paused && (await firecracker.isRunning(record.id))) {
         record.shouldRun = true
@@ -491,8 +518,13 @@ export class VmManager implements VmService {
     const running = await firecracker.isRunning(record.id)
     const state =
       this.transitions.get(record.id) ?? (record.paused ? 'paused' : running ? 'running' : record.lastError ? 'failed' : 'stopped')
-    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, shouldRun: _shouldRun, runCheckpoints: _runs, rootPath: _root, forkCapable: _fork, ...rest } = record
-    return { ...rest, state, pausedAt: record.paused ? record.checkpoint?.createdAt ?? null : null, guestIp: slotAddresses(slot).guestIp }
+    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, shouldRun: _shouldRun, runCheckpoints: _runs, rootPath: _root, forkCapable: _fork, balloonEnabled: _balloon, ...rest } = record
+    const memory = running && !record.paused && record.balloonEnabled ? this.balloons.get(record.id) ?? {
+      floorMib: Math.min(config.memory.floorMib, record.memMib), limitMib: record.memMib,
+      targetMib: null, actualMib: null,
+      availableMib: null, residentMib: null, proportionalMib: null, sampledAt: null,
+    } : null
+    return { ...rest, memory, state, pausedAt: record.paused ? record.checkpoint?.createdAt ?? null : null, guestIp: slotAddresses(slot).guestIp }
   }
 
   private async memInUse() {
@@ -533,6 +565,9 @@ export class VmManager implements VmService {
 
   // `resumeSessions` asks guestd to reopen the sessions the VM had (see sessions.ts).
   private async launch(record: VmRecord, { resumeSessions = false } = {}) {
+    this.balloons.forget(record.id)
+    record.balloonEnabled = true
+    await writeRecord(record)
     const net = slotAddresses(record.slot)
     const dir = vmDir(record.id)
     const spec = {

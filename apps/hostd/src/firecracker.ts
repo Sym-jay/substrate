@@ -1,5 +1,6 @@
 import { $ } from 'bun'
 import { rm } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { config } from './config.ts'
 import { sh } from './sh.ts'
 import { firecrackerClient } from './firecracker-api.ts'
@@ -50,6 +51,12 @@ export function firecrackerConfig(spec: LaunchSpec) {
       },
     ],
     'machine-config': { vcpu_count: spec.vcpus, mem_size_mib: spec.memMib, smt: false },
+    balloon: {
+      amount_mib: Math.max(0, spec.memMib - 4096),
+      deflate_on_oom: true,
+      stats_polling_interval_s: 1,
+      free_page_reporting: true,
+    },
     'network-interfaces': [{ iface_id: 'eth0', guest_mac: spec.mac, host_dev_name: spec.tap }],
     'mmds-config': { version: 'V2', network_interfaces: ['eth0'], ipv4_address: '169.254.169.254' },
     // virtio-rng, so the guest never waits on entropy during boot.
@@ -97,6 +104,20 @@ export async function waitForApi(id: string, timeoutMs = 5_000) {
 export async function isRunning(id: string) {
   const state = (await $`systemctl show -p ActiveState --value ${unitName(id)}`.quiet().nothrow()).text().trim()
   return state === 'active' || state === 'activating' || state === 'deactivating'
+}
+
+export function parseMemoryUsage(text: string) {
+  const read = (field: string) => {
+    const match = new RegExp(`^${field}:\\s+(\\d+) kB$`, 'm').exec(text)
+    return match ? Number(match[1]) / 1024 : null
+  }
+  return { residentMib: read('Rss'), proportionalMib: read('Pss') }
+}
+
+export async function memoryUsage(id: string) {
+  const pid = (await $`systemctl show -p MainPID --value ${unitName(id)}`.quiet().nothrow()).text().trim()
+  if (!/^[1-9]\d*$/.test(pid)) return { residentMib: null, proportionalMib: null }
+  return readFile(`/proc/${pid}/smaps_rollup`, 'utf8').then(parseMemoryUsage, () => ({ residentMib: null, proportionalMib: null }))
 }
 
 // A clean shutdown through the unit's ExecStop; returns once the VM is down.

@@ -8,6 +8,7 @@ import { applyFirewall, defaultUplink } from './network.ts'
 import { AutoPause } from './autopause.ts'
 import { logOnly, ntfy } from './notify.ts'
 import { Supervisor } from './supervisor.ts'
+import { MemoryController } from './balloon.ts'
 import { VmManager } from './vms.ts'
 import * as zfs from './zfs.ts'
 
@@ -37,6 +38,7 @@ const pool = () => zfs.poolStatus(config.pool)
 new AutoPause({ vms, notify, quietMs: config.autoPause.quietMs }).start(config.autoPause.pollMs)
 // Its first pass, right away, brings back VMs that were running before a host crash.
 new Supervisor({ vms, pool, notify }).start(config.autoPause.pollMs)
+new MemoryController(() => vms.balanceMemory()).start()
 
 const app = createApp({
   token,

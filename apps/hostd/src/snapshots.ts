@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, rm } from 'node:fs/promises'
+import { mkdir, readdir, rm } from 'node:fs/promises'
 import { config } from './config.ts'
+import { message } from './errors.ts'
 import * as firecracker from './firecracker.ts'
 import { guestClient, waitForGuest } from './guest.ts'
 import { createTap, deleteTap, slotAddresses } from './network.ts'
 import { vmDir, writeRecord, type Checkpoint, type VmRecord } from './state.ts'
 import * as zfs from './zfs.ts'
 
-export const snapshotDependencies = { firecracker, zfs, mkdir, rm, vmDir, writeRecord, createTap, deleteTap, guestClient, waitForGuest }
+export const snapshotDependencies = { firecracker, zfs, mkdir, readdir, rm, vmDir, writeRecord, createTap, deleteTap, guestClient, waitForGuest }
 
 // VmManager holds its lifecycle mutex around these operations. Each generation
 // is immutable: a resumed Firecracker process demand-pages its memory file for
@@ -140,6 +141,41 @@ export class Snapshots {
     } else {
       await d.deleteTap(record.slot)
     }
+  }
+
+  // Deletes saves the VM's record doesn't refer to: a crash mid-pause or
+  // mid-fork, or a rollback, can leave their memory files (as big as the VM's
+  // RAM) and ZFS snapshots behind. Only for hostd's startup, when no pause or
+  // fork can be under way. The save the record names stays, since a VM
+  // resumed from it reads its memory file for as long as it runs.
+  async prune(record: VmRecord) {
+    const d = this.deps
+    const keep = record.checkpoint?.id
+    const removed: string[] = []
+    const attempt = async (what: string, remove: () => Promise<unknown>) => {
+      try {
+        await remove()
+        removed.push(what)
+      } catch (err) {
+        console.error(`prune ${record.id}: couldn't remove ${what}: ${message(err)}`)
+      }
+    }
+    const dir = `${d.vmDir(record.id)}/snapshots`
+    for (const name of await d.readdir(dir).catch(() => [] as string[])) {
+      if (name !== keep) await attempt(`saved memory ${name}`, () => d.rm(`${dir}/${name}`, { recursive: true, force: true }))
+    }
+    const dataset = `${config.pool}/vms/${record.id}`
+    const snapshots = [
+      ...(await d.zfs.snapshots(`${dataset}/root`).catch(() => [] as string[])),
+      ...(await d.zfs.snapshots(dataset).catch(() => [] as string[])),
+    ]
+    for (const snapshot of snapshots) {
+      const name = snapshot.slice(snapshot.indexOf('@') + 1)
+      const stale = (name.startsWith('pause-') && name !== `pause-${keep}`) || name.startsWith('fork-')
+      if (stale) await attempt(`snapshot ${name}`, () => d.zfs.destroy(snapshot))
+    }
+    if (removed.length) console.log(`prune ${record.id}: removed ${removed.join(', ')}`)
+    return removed
   }
 
   async discard(record: VmRecord, checkpoint: Checkpoint) {

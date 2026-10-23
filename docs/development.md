@@ -90,6 +90,11 @@ Keep the key private: never commit it, paste it into chats, or share it.
 | `bun run logs host` / `control` / `VM` | Recent logs over SSM: hostd, the control API, or a VM's console plus its own journal. `-n LINES` for more or fewer |
 | `bun run check:m0` / `check:m1` | Checks a milestone's "Done when" list against the real deployment. `check:m1` creates and deletes a VM |
 
+Each deploy uploads its own release to S3 (`host/releases/…`, `control/releases/…`;
+they expire after 14 days). Once it has worked, it also copies what a replacement
+box would boot from to the fixed keys the stack's user data reads:
+`host/setup-host.sh`, and `control/setup-control.sh` with `control/control.tar.gz`.
+
 **Cost:** the sandbox host (`r8i.4xlarge`) costs about $1.15 an hour while it runs.
 Stop it with `bun run host stop` when you're done, until M5 does that
 automatically. The control box is cheap and stays on.

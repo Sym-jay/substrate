@@ -1,6 +1,6 @@
 import { CloudFormationClient, DescribeStacksCommand } from '@aws-sdk/client-cloudformation'
 import { DescribeInstancesCommand, EC2Client } from '@aws-sdk/client-ec2'
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { CopyObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import {
   DescribeInstanceInformationCommand,
   GetCommandInvocationCommand,
@@ -50,6 +50,11 @@ export async function instanceState(instanceId: string) {
 
 export async function upload(bucket: string, key: string, body: Uint8Array | string) {
   await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body }))
+}
+
+// Server-side, so nothing is uploaded twice.
+export async function copy(bucket: string, from: string, to: string) {
+  await s3.send(new CopyObjectCommand({ Bucket: bucket, CopySource: `${bucket}/${from}`, Key: to }))
 }
 
 export async function isSsmOnline(instanceId: string) {
