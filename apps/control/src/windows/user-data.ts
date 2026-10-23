@@ -19,7 +19,9 @@ Set-ItemProperty -Path $winlogon -Name DefaultUserName -Value 'Administrator'
 Set-ItemProperty -Path $winlogon -Name DefaultPassword -Value '${password}'
 
 # SSH: the control box's key only. Its first start makes this workspace's own
-# host keys and config.
+# host keys and config. Windows' own firewall rule for it covers private
+# networks only, and EC2's count as public.
+Set-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -Profile Any -Enabled True
 Start-Service sshd
 $keys = 'C:\\ProgramData\\ssh\\administrators_authorized_keys'
 Set-Content -Path $keys -Value '${publicKey}' -Encoding ascii

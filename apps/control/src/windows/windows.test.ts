@@ -200,6 +200,8 @@ describe('Windows workspaces', () => {
     expect(script).toStartWith('<powershell>')
     expect(script).toContain("ConvertTo-SecureString 'Abc123'")
     expect(script).not.toContain('net.exe user')
+    // EC2's network is a public one to Windows; sshd's rule must cover it.
+    expect(script).toContain("Set-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -Profile Any")
     expect(() => windowsUserData({ password: "x'; Remove-Item C:\\", vncPassword: 'v', publicKey: 'k' })).toThrow()
   })
 })
