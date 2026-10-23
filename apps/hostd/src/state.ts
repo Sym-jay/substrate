@@ -1,5 +1,5 @@
 import { open, readdir, rename } from 'node:fs/promises'
-import { AutoPauseMinutes, DEFAULT_AUTO_PAUSE_MINUTES } from '@substrate/protocol'
+import { AutoPauseMinutes, DEFAULT_AUTO_PAUSE_MINUTES, DEFAULT_MAX_AWAKE_HOURS, MaxAwakeHours } from '@substrate/protocol'
 import { z } from 'zod'
 import { RunCheckpoint } from '@substrate/protocol'
 import { config } from './config.ts'
@@ -40,6 +40,10 @@ export const VmRecord = z.object({
   // New images use a stable path inside each VMM's private mount namespace.
   rootPath: z.string().nullable().default(null),
   forkCapable: z.boolean().default(false),
+  maxAwakeHours: MaxAwakeHours.default(DEFAULT_MAX_AWAKE_HOURS),
+  // Started and not since stopped or deleted. A VM like this that isn't running
+  // (and isn't paused) went down by itself, so hostd boots it again.
+  shouldRun: z.boolean().default(false),
 })
 export type VmRecord = z.infer<typeof VmRecord>
 

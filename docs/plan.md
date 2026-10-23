@@ -199,13 +199,21 @@ terminal gets me back in under 90 s.
 - VS Code Remote / SSH into a VM through the control box, with no open ports.
 
 **M7 Hardening for 24-hour runs:**
-- A maximum run time or spending cap per VM, so a stuck agent can't run forever.
-- Daily EBS snapshots of the data disk (Data Lifecycle Manager).
-- Recovery: if a paused VM can't be restored, boot it fresh and continue with
-  `claude --resume`. Bring VMs back automatically after a host crash.
-- Diff snapshots, so pausing a VM that has been paused before takes 2–3 s.
-- A disk size limit per VM that can be raised on request.
-- Logs and health checks.
+- A maximum run time per VM (24 h by default, set per VM), so a stuck agent
+  can't run forever: the VM pauses with an alert.
+- Daily EBS snapshots of the data disk (Data Lifecycle Manager), kept a week.
+- Recovery: if a paused VM can't be restored, boot it fresh from the disk saved
+  with it, reopening its sessions with `claude --continue` (and Codex's and
+  OpenCode's equivalents). VMs that go down without being stopped, including in
+  a host crash, come back the same way.
+- A disk size limit per VM that can be raised on request, even while it runs.
+- Logs (`bun run logs`) and health checks: alerts when the storage pool fills up
+  or turns unhealthy, or a guest stops answering.
+- Dropped: diff snapshots for 2–3 s pauses. Pauses stay full (7–42 s).
+See `docs/m7.md`.
+Done when: a VM crash and a save that can't be restored both bring the VM back
+with its sessions and an alert, a running VM's disk grows, and the data disk has
+daily snapshots.
 
 **M8 Elastic memory:** a balloon device lets VMs start at 4 GB, grow to their limit
 (16 GB by default), and hand memory back when idle.

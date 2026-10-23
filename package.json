@@ -18,6 +18,7 @@
     "setup:host": "bun scripts/setup-host.ts",
     "host": "bun scripts/host.ts",
     "ssm": "bun scripts/ssm.ts",
+    "logs": "bun scripts/logs.ts",
     "vm": "bun scripts/vm.ts",
     "check:m0": "bun scripts/check-m0.ts",
     "check:m1": "bun scripts/check-m1.ts",

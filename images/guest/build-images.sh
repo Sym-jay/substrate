@@ -51,5 +51,14 @@ jq -n \
 mv "${images}/current.json.tmp" "${images}/current.json"
 rm -rf "${images}/build/rootfs-${version}"
 
+# Old images fill the storage pool VMs share (1.5 GB each). Keep the newest two,
+# so the previous one is there to go back to, and any a VM's disk is still a
+# clone of: `zfs destroy` refuses those without -R.
+for old in $(zfs list -H -o name -s creation -d 1 substrate/images | grep '/rootfs-' | head -n -2); do
+  if zfs destroy -r "$old" 2>/dev/null; then
+    step "removed old image ${old##*/rootfs-}"
+  fi
+done
+
 step "done: new VMs get image ${version}"
 sed 's/^/  /' <(jq -r '.tools | to_entries[] | "\(.key) \(.value)"' "${images}/current.json")

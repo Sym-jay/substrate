@@ -1,3 +1,4 @@
+import type { PoolStatus } from '@substrate/protocol'
 import { $ } from 'bun'
 import { stat } from 'node:fs/promises'
 import { sh } from './sh.ts'
@@ -30,10 +31,6 @@ export async function cloneVolume(snapshot: string, name: string, sizeGib: numbe
   await sh`zfs set volsize=${sizeGib}G ${name}`
 }
 
-export async function resizeVolume(name: string, sizeGib: number) {
-  await sh`zfs set volsize=${sizeGib}G ${name}`
-}
-
 // Full compressed sends give a fork independent ownership of its blocks:
 // deleting either VM never needs to delete snapshots belonging to the other.
 export async function copySnapshot(snapshot: string, destination: string, filesystem = false) {
@@ -45,9 +42,14 @@ export async function copySnapshot(snapshot: string, destination: string, filesy
   }
 }
 
-// Grows the ext4 filesystem to fill its (bigger) volume, before the VM first
-// boots. The guest can't do it itself: Firecracker's kernel config refuses
-// writes to a mounted disk (BLK_DEV_WRITE_MOUNTED), which online resize needs.
+export async function setVolumeSize(name: string, sizeGib: number) {
+  await sh`zfs set volsize=${sizeGib}G ${name}`
+}
+
+// Grows the ext4 filesystem to fill its (bigger) volume while the VM is
+// stopped. resize2fs can't do it inside a running guest: Firecracker's kernel
+// config refuses writes to a mounted disk (BLK_DEV_WRITE_MOUNTED). A running
+// guest uses the resize ioctl instead (see growDisk in vms.ts).
 export async function growFilesystem(device: string) {
   // e2fsck exits 1 when it fixed something, which is fine here.
   const check = await $`e2fsck -fp ${device}`.quiet().nothrow()
@@ -75,6 +77,11 @@ export async function volumeSizeGib(name: string) {
 
 export async function poolSizeGib(pool: string) {
   return Math.floor(Number((await sh`zpool list -Hp -o size ${pool}`).trim()) / GIB)
+}
+
+export async function poolStatus(pool: string): Promise<PoolStatus> {
+  const [health = '', size = '0', capacity = '0'] = (await sh`zpool list -Hp -o health,size,capacity ${pool}`).trim().split('\t')
+  return { health, sizeGib: Math.floor(Number(size) / GIB), usedPct: Number(capacity) }
 }
 
 export function zvolDevice(name: string) {

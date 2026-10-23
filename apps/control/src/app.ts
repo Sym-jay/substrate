@@ -53,7 +53,8 @@ export function createApp({ version, region, webDir, readHost, clerkPublishableK
   app.get('/*', serveStatic({ root: webDir, path: 'index.html' }))
 
   app.onError((err, c) => {
-    console.error(err)
+    // One line: the bundled binary would print screenfuls of minified source.
+    console.error(`${c.req.method} ${c.req.path}: ${err.message}`)
     return c.json({ error: 'internal error' }, 500)
   })
 

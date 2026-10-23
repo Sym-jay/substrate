@@ -55,6 +55,7 @@ const vms: VmService = {
   checkpoints: unused,
   rollback: unused,
   createSession: async (_id, input) => guestClient('127.0.0.1', guestToken, guestd.port).createSession(input),
+  growDisk: unused,
   remove: unused,
   exec: unused,
   capacity: unused,

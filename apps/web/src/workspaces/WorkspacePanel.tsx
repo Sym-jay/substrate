@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { VmName, VmSizes, type Agent, type AgentMode, type Session, type Vm, type VmSizeName } from '@substrate/protocol'
+import { VmName, VmSizes, type Agent, type AgentMode, type UpdateVm, type Session, type Vm, type VmSizeName } from '@substrate/protocol'
 import { workspaceApi, WorkspaceApiError } from './api.ts'
 import { TerminalView, type Asleep } from './TerminalView.tsx'
 import { WorkspaceTools } from './WorkspaceTools.tsx'
@@ -265,7 +265,7 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
               </>}
         </div>
       </div>
-      <AutoPauseSetting vm={vm} onChange={onChange} />
+      <PauseSettings vm={vm} onChange={onChange} />
       {vm.state === 'running' && <div className="mt-3 flex flex-wrap gap-3">
         <label className="workspace-field flex-1">New session<select value={newAgent} disabled={busy} onChange={(e) => setNewAgent(e.target.value as Agent | '')}>
           <option value="">Shell</option>{Object.entries(agents).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
@@ -298,30 +298,40 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
 }
 
 const autoPauseChoices = [null, 5, 10, 30, 60, 240]
-const after = (minutes: number) => minutes < 60 || minutes % 60 ? `After ${minutes} min idle` : `After ${minutes / 60} h idle`
+const maxRunChoices = [null, 4, 8, 12, 24, 48, 72]
+const idleFor = (minutes: number) => minutes < 60 || minutes % 60 ? `After ${minutes} min idle` : `After ${minutes / 60} h idle`
+const runFor = (hours: number) => `After ${hours} h`
+// A value set elsewhere (the CLI) still shows, among the usual choices.
+const withCurrent = (choices: (number | null)[], current: number | null) =>
+  choices.includes(current) ? choices : [...choices, current].sort((a, b) => (a ?? 0) - (b ?? 0))
 
-// Pauses the VM after it has been idle this long (see docs/m4.md).
-function AutoPauseSetting({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => void }) {
+// When the VM pauses itself: after being idle this long (docs/m4.md), and
+// after running this long even if busy, so a stuck agent can't run forever (docs/m7.md).
+function PauseSettings({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  // An older hostd doesn't have the setting.
+  // An older hostd doesn't have the settings.
   if (vm.autoPauseMinutes === undefined) return null
-  const current = vm.autoPauseMinutes
-  const choices = autoPauseChoices.includes(current) ? autoPauseChoices : [...autoPauseChoices, current].sort((a, b) => (a ?? 0) - (b ?? 0))
-  const change = async (value: string) => {
+  const change = async (input: UpdateVm) => {
     setBusy(true)
     setError('')
-    try { onChange(await workspaceApi.update(vm.id, { autoPauseMinutes: value === 'off' ? null : Number(value) })) }
+    try { onChange(await workspaceApi.update(vm.id, input)) }
     catch (error) { setError(errorMessage(error)) }
     finally { setBusy(false) }
   }
+  const value = (v: string) => (v === 'off' ? null : Number(v))
   return (
     <div className="workspace-autopause">
       <label>Auto-pause
-        <select value={current ?? 'off'} disabled={busy} onChange={(e) => void change(e.target.value)}>
-          {choices.map((minutes) => <option key={minutes ?? 'off'} value={minutes ?? 'off'}>{minutes === null ? 'Off' : after(minutes)}</option>)}
+        <select value={vm.autoPauseMinutes ?? 'off'} disabled={busy} onChange={(e) => void change({ autoPauseMinutes: value(e.target.value) })}>
+          {withCurrent(autoPauseChoices, vm.autoPauseMinutes).map((m) => <option key={m ?? 'off'} value={m ?? 'off'}>{m === null ? 'Off' : idleFor(m)}</option>)}
         </select>
       </label>
+      {vm.maxAwakeHours !== undefined && <label>Max run
+        <select value={vm.maxAwakeHours ?? 'off'} disabled={busy} onChange={(e) => void change({ maxAwakeHours: value(e.target.value) })}>
+          {withCurrent(maxRunChoices, vm.maxAwakeHours).map((h) => <option key={h ?? 'off'} value={h ?? 'off'}>{h === null ? 'No limit' : runFor(h)}</option>)}
+        </select>
+      </label>}
       {error && <p role="alert" className="workspace-error">{error}</p>}
     </div>
   )

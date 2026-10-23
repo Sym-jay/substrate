@@ -130,6 +130,7 @@ describe('hostd API', () => {
     checkpoints: async () => [],
     rollback: async () => vm,
     createSession: async () => { throw new HttpError(409, 'demo isn\'t running') },
+    growDisk: async (_id, input) => ({ ...vm, ...input }),
     remove: async () => {},
     exec: async (_id, req) => ({ exitCode: 0, stdout: req.user, stderr: '', durationMs: 5, timedOut: false }),
     guest: async () => {
@@ -148,8 +149,21 @@ describe('hostd API', () => {
     expect((await app.request('/vms')).status).toBe(401)
   })
 
-  test('health reports the current image', async () => {
-    expect(await (await call('/health')).json()).toEqual({ ok: true, version: 'test', image: '20261023-000000' })
+  test('health reports the current image and the storage pool', async () => {
+    expect(await (await call('/health')).json()).toEqual({ ok: true, version: 'test', image: '20261023-000000', pool: null })
+    const withPool = createApp({
+      token, version: 'test', image: async () => null, vms: fake,
+      pool: async () => ({ health: 'ONLINE', sizeGib: 49, usedPct: 23 }),
+    })
+    const res = await withPool.request('/health', { headers: { Authorization: `Bearer ${token}` } })
+    expect(((await res.json()) as { pool: unknown }).pool).toEqual({ health: 'ONLINE', sizeGib: 49, usedPct: 23 })
+  })
+
+  test('a disk can only be grown to a sensible size', async () => {
+    const grow = (body: unknown) => call('/vms/vm-abc/disk', { method: 'POST', body: JSON.stringify(body) })
+    expect(Vm.parse(await (await grow({ diskGib: 64 })).json()).diskGib).toBe(64)
+    expect((await grow({ diskGib: 4 })).status).toBe(400)
+    expect((await grow({})).status).toBe(400)
   })
 
   test('create validates its input', async () => {
@@ -197,6 +211,8 @@ describe('hostd API', () => {
     expect(Vm.parse(await (await patch({ autoPauseMinutes: null })).json()).autoPauseMinutes).toBeNull()
     expect((await patch({ autoPauseMinutes: 0 })).status).toBe(400)
     expect((await patch({})).status).toBe(400)
+    expect(Vm.parse(await (await patch({ maxAwakeHours: 48 })).json()).maxAwakeHours).toBe(48)
+    expect((await patch({ maxAwakeHours: 0 })).status).toBe(400)
   })
 
   test('delete returns no content', async () => {

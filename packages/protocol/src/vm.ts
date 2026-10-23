@@ -40,6 +40,9 @@ export const Vm = z.object({
   autoPauseMinutes: z.number().int().nullable().optional(),
   repository: z.string().nullable().optional(),
   parentId: z.string().nullable().optional(),
+  // Pause the VM once it has been awake this long, even if busy, so a stuck
+  // agent can't run forever; null never does. Optional for a pre-M7 hostd.
+  maxAwakeHours: z.number().int().nullable().optional(),
 })
 export type Vm = z.infer<typeof Vm>
 
@@ -61,8 +64,17 @@ export type CreateVm = z.infer<typeof CreateVm>
 export const DEFAULT_AUTO_PAUSE_MINUTES = 10
 export const AutoPauseMinutes = z.number().int().min(1).max(1440).nullable()
 
-export const UpdateVm = z.object({ autoPauseMinutes: AutoPauseMinutes })
+export const DEFAULT_MAX_AWAKE_HOURS = 24
+export const MaxAwakeHours = z.number().int().min(1).max(720).nullable()
+
+export const UpdateVm = z
+  .object({ autoPauseMinutes: AutoPauseMinutes.optional(), maxAwakeHours: MaxAwakeHours.optional() })
+  .refine((v) => v.autoPauseMinutes !== undefined || v.maxAwakeHours !== undefined, 'nothing to change')
 export type UpdateVm = z.infer<typeof UpdateVm>
+
+// Disks only grow: shrinking one could cut off data the guest wrote.
+export const GrowDisk = z.object({ diskGib: z.number().int().min(8).max(1024) })
+export type GrowDisk = z.infer<typeof GrowDisk>
 
 export const ExecRequest = z.object({
   command: z.string().min(1),
@@ -91,11 +103,21 @@ export const GuestHealth = z.object({
 })
 export type GuestHealth = z.infer<typeof GuestHealth>
 
+export const PoolStatus = z.object({
+  // ZFS's word for it: ONLINE when all is well, DEGRADED, FAULTED, ...
+  health: z.string(),
+  sizeGib: z.number(),
+  usedPct: z.number(),
+})
+export type PoolStatus = z.infer<typeof PoolStatus>
+
 export const HostdHealth = z.object({
   ok: z.literal(true),
   version: z.string(),
   // The image new VMs get, or null before the first `bun run images:build`.
   image: z.string().nullable(),
+  // The storage pool every VM's disk and saved memory share. Optional for a pre-M7 hostd.
+  pool: PoolStatus.nullable().optional(),
 })
 export type HostdHealth = z.infer<typeof HostdHealth>
 

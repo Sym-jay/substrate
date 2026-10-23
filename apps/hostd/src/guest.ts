@@ -18,6 +18,9 @@ export function guestClient(guestIp: string, token: string, port = GUESTD_PORT) 
         headers,
         body: JSON.stringify(req),
         signal: AbortSignal.timeout(req.timeoutMs + 10_000),
+      }).catch((err: Error) => {
+        // The guest went away mid-command, e.g. it crashed or rebooted.
+        throw new HttpError(502, `lost the VM's guest agent: ${err.message}`)
       })
       if (!res.ok) throw new Error(`guest exec returned ${res.status}: ${await res.text()}`)
       return ExecResult.parse(await res.json())

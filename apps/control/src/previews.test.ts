@@ -28,7 +28,7 @@ const dev = serve(app)
 let wakes = 0
 const unused = async (): Promise<never> => { throw new Error('unused') }
 const vms: VmService = {
-  list: unused, get: unused, create: unused, stop: unused, pause: unused, resume: unused, update: unused,
+  list: unused, get: unused, create: unused, stop: unused, pause: unused, resume: unused, update: unused, growDisk: unused,
   resize: unused, fork: unused, checkpoints: unused, rollback: unused, createSession: unused,
   remove: unused, exec: unused, guest: unused, capacity: unused,
   start: async (id) => { wakes++; return { id, guestIp: '127.0.0.1' } as never },

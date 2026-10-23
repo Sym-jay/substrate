@@ -6,7 +6,7 @@ import { createApp } from './app.ts'
 import { sendEvent, serveEvents } from './events.ts'
 import { exec } from './exec.ts'
 import { readGuestConfig, type GuestConfig } from './mmds.ts'
-import { Sessions } from './sessions.ts'
+import { SESSIONS_FILE, Sessions } from './sessions.ts'
 import { configureFork } from './identity.ts'
 
 // Set by `bun build --define` in images/host/install-hostd.sh.
@@ -31,7 +31,8 @@ for (let attempt = 1; !config; attempt++) {
 }
 
 const activity = new Activity()
-const sessions = new Sessions(undefined, undefined, activity)
+const sessions = new Sessions(undefined, undefined, activity, SESSIONS_FILE)
+await sessions.start(config.resumeSessions)
 // Without it agents can't send alerts, but the VM still works.
 await serveEvents(activity).catch((err) => console.error(`agent events are off: ${err}`))
 const cpu = cpuSampler()

@@ -1,4 +1,4 @@
-import { CreateSession, CreateVm, ResizeVm, ForkVm, SshKey, ExecRequest, UpdateVm, type HostdHealth } from '@substrate/protocol'
+import { CreateSession, CreateVm, ResizeVm, ForkVm, SshKey, ExecRequest, GrowDisk, UpdateVm, type PoolStatus, type HostdHealth } from '@substrate/protocol'
 import { relayTo } from '@substrate/protocol/relay'
 import { Hono, type Context } from 'hono'
 import { bearerAuth } from 'hono/bearer-auth'
@@ -12,15 +12,19 @@ type Options = {
   token: string
   version: string
   image: () => Promise<string | null>
+  pool?: () => Promise<PoolStatus>
   vms: VmService
 }
 
-export function createApp({ token, version, image, vms }: Options) {
+export function createApp({ token, version, image, pool, vms }: Options) {
   const app = new Hono()
 
   app.use('*', bearerAuth({ token }))
 
-  app.get('/health', async (c) => c.json({ ok: true, version, image: await image() } satisfies HostdHealth))
+  app.get('/health', async (c) => {
+    const storage = pool ? await pool().catch(() => null) : null
+    return c.json({ ok: true, version, image: await image(), pool: storage } satisfies HostdHealth)
+  })
   app.get('/capacity', async (c) => c.json(await vms.capacity()))
 
   app.get('/vms', async (c) => c.json(await vms.list()))
@@ -64,6 +68,7 @@ export function createApp({ token, version, image, vms }: Options) {
     try { return await proxyHttp(c.req.raw, target) }
     catch { return c.json({ error: 'The dev server is not listening on this port' }, 502) }
   })
+  app.post('/vms/:id/disk', async (c) => c.json(await vms.growDisk(c.req.param('id'), await body(c, GrowDisk))))
   app.delete('/vms/:id', async (c) => {
     await vms.remove(c.req.param('id'))
     return c.body(null, 204)
@@ -86,7 +91,8 @@ export function createApp({ token, version, image, vms }: Options) {
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse()
     if (err instanceof HttpError) return c.json({ error: err.message }, err.status)
-    console.error(err)
+    // One line: the bundled binary would print screenfuls of minified source.
+    console.error(`${c.req.method} ${c.req.path}: ${err.message}`)
     return c.json({ error: err.message }, 500)
   })
 

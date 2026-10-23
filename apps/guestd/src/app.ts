@@ -98,7 +98,8 @@ export function createApp({ vmId, token, version, run, sessions, activity }: Opt
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse()
-    console.error(err)
+    // One line: the bundled binary would print screenfuls of minified source.
+    console.error(`${c.req.method} ${c.req.path}: ${err.message}`)
     return c.json({ error: err.message }, 500)
   })
 

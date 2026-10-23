@@ -3,6 +3,8 @@
 //   bun run vm create [--name NAME] [--size large|medium|small] [--disk GIB]
 //   bun run vm start|stop|pause|resume|delete VM
 //   bun run vm auto-pause VM MINUTES|off
+//   bun run vm max-run VM HOURS|off
+//   bun run vm disk VM GIB
 //   bun run vm exec VM [--root] -- COMMAND...
 //   bun run vm capacity
 // VM is an id (vm-xxxxxxxx) or a name.
@@ -14,7 +16,7 @@ const [command, ...args] = process.argv.slice(2)
 const { HostInstanceId: host } = await stackOutputs()
 
 const usage = () => {
-  console.error('usage: bun run vm list | create [--name N] [--size S] [--disk GIB] [--repo OWNER/REPO] | start|stop|pause|resume|delete VM | resize VM [--size S] [--disk GIB] | fork VM [--name N] | checkpoints VM | rollback VM CHECKPOINT | auto-pause VM MINUTES|off | exec VM [--root] -- CMD | capacity')
+  console.error('usage: bun run vm list | create [--name N] [--size S] [--disk GIB] [--repo OWNER/REPO] | start|stop|pause|resume|delete VM | resize VM [--size S] [--disk GIB] | fork VM [--name N] | checkpoints VM | rollback VM CHECKPOINT | auto-pause VM MINUTES|off | max-run VM HOURS|off | disk VM GIB | exec VM [--root] -- CMD | capacity')
   process.exit(1)
 }
 
@@ -79,6 +81,19 @@ switch (command) {
     if (minutes !== null && !Number.isInteger(minutes)) usage()
     const vm = await call<Vm>('PATCH', `/vms/${await resolve(args[0])}`, { autoPauseMinutes: minutes })
     console.log(`${vm.id} ${vm.name}: ${vm.autoPauseMinutes == null ? 'never pauses itself' : `pauses after ${vm.autoPauseMinutes} idle minute${vm.autoPauseMinutes === 1 ? '' : 's'}`}`)
+    break
+  }
+  case 'max-run': {
+    const hours = args[1] === 'off' ? null : Number(args[1])
+    if (hours !== null && !Number.isInteger(hours)) usage()
+    const vm = await call<Vm>('PATCH', `/vms/${await resolve(args[0])}`, { maxAwakeHours: hours })
+    console.log(`${vm.id} ${vm.name}: ${vm.maxAwakeHours == null ? 'may run for as long as it likes' : `pauses after running for ${vm.maxAwakeHours} h`}`)
+    break
+  }
+  case 'disk': {
+    const diskGib = Number(args[1])
+    if (!Number.isInteger(diskGib)) usage()
+    console.log(describe(await call<Vm>('POST', `/vms/${await resolve(args[0])}/disk`, { diskGib })))
     break
   }
   case 'delete':
