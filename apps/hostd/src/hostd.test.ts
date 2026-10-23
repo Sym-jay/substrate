@@ -2,6 +2,7 @@ import { Vm } from '@substrate/protocol'
 import { describe, expect, test } from 'bun:test'
 import { createApp } from './app.ts'
 import { computeCapacity, parseMemTotalMib } from './capacity.ts'
+import { vmLogs } from './logs.ts'
 import { bootArgs, firecrackerConfig } from './firecracker.ts'
 import { Mutex } from './mutex.ts'
 import { firewallRules, lowestFreeSlot, slotAddresses } from './network.ts'
@@ -159,6 +160,24 @@ describe('hostd API', () => {
     })
     const res = await withPool.request('/health', { headers: { Authorization: `Bearer ${token}` } })
     expect(((await res.json()) as { pool: unknown }).pool).toEqual({ health: 'ONLINE', sizeGib: 49, usedPct: 23 })
+  })
+
+  test("a VM's logs: its console and hostd's lines about it, within limits", async () => {
+    const asked: string[][] = []
+    const withLogs = createApp({
+      token, version: 'test', image: async () => null, vms: fake,
+      logs: (id, lines) => vmLogs(id, lines, async (args) => {
+        asked.push(args)
+        return args.includes('--grep') ? 'started vm-abc\n' : '-- No entries --\n'
+      }),
+    })
+    const get = (path: string) => withLogs.request(path, { headers: { Authorization: `Bearer ${token}` } })
+    expect(await (await get('/vms/vm-abc/logs?lines=50')).json()).toEqual({ console: '', host: 'started vm-abc' })
+    expect(asked[0]).toEqual(['-u', 'substrate-vm-vm-abc', '-n', '50'])
+    expect(asked[1]).toEqual(['-u', 'substrate-hostd', '-n', '50', '--grep', 'vm-abc'])
+    await get('/vms/vm-abc/logs?lines=999999')
+    expect(asked[2]).toContain('2000')
+    expect((await get('/vms/vm-nope/logs')).status).toBe(404)
   })
 
   test('a disk can only be grown to a sensible size', async () => {
