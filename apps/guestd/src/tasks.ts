@@ -154,8 +154,11 @@ export class Tasks {
   }
 
   private command(command: string, active: Active, output: (text: string, stderr: boolean) => void) {
-    const argv = this.options.argv?.(command) ?? ['runuser', '-l', 'dev', '-c',
-      `if [ -d /home/dev/workspace ]; then cd /home/dev/workspace; fi; exec bash -lc ${quote(command)}`]
+    // runuser's PAM login opens a new session, separating the command from
+    // the process group that cancellation owns. setpriv replaces itself in
+    // place, preserving that group while supplying dev's identity and home.
+    const argv = this.options.argv?.(command) ?? ['setpriv', '--reuid=dev', '--regid=dev', '--init-groups', '--reset-env', 'bash', '-lc',
+      `cd /home/dev; if [ -d /home/dev/workspace ]; then cd /home/dev/workspace; fi; exec bash -lc ${quote(command)}`]
     return new Promise<number | null>((resolve, reject) => {
       const child = spawn(argv[0]!, argv.slice(1), { cwd: this.options.cwd, detached: true,
         env: { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', TERM: 'dumb', NO_COLOR: '1' },

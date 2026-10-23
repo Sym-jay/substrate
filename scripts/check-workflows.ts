@@ -64,9 +64,13 @@ try {
   const resumedResult = await result(children[0], pausedTask.id)
   check('a live task survives full VM pause/resume', resumedResult.state === 'succeeded' && resumedResult.stdout.includes('before pause') && resumedResult.stdout.includes('after resume'), `${resumed.resumeMs} ms resume`)
 
-  const cancelled = await submit(children[1], 'sleep 120; printf should-not-complete')
+  const cancelled = await submit(children[1], "printf 'cancellation started'; (sleep 3; printf leaked > /home/dev/workspace/cancelled-child) & wait")
+  await Bun.sleep(250)
+  const cancellationStarted = Date.now()
   const stopped = GuestTask.parse(await call('POST', `/vms/${children[1]}/tasks/${cancelled.id}/cancel`, { spec: cancelled.spec }))
-  check('cancellation ends the active task', stopped.state === 'cancelled' && !stopped.stdout.includes('should-not-complete'))
+  check('cancellation ends the active task promptly', stopped.state === 'cancelled' && Date.now() - cancellationStarted < 10_000)
+  await Bun.sleep(3500)
+  check('cancellation kills background children too', await execute(children[1], 'test ! -e /home/dev/workspace/cancelled-child && printf safe') === 'safe')
 
   const interrupted = await submit(children[1], 'sleep 120; printf should-not-replay >> /home/dev/workspace/replayed')
   await execute(children[1], "nohup sh -c 'sleep 1; systemctl restart substrate-guestd' >/tmp/workflow-restart.log 2>&1 </dev/null &", 'root')
