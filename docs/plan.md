@@ -39,8 +39,9 @@ Only me and a friend helping build it use it. Nothing here is production.
 ## AWS
 - Region `ap-south-1`. CDK is already bootstrapped there.
 - Use an admin IAM user with MFA for the CLI, not the root account.
-- The host costs about $1.15/h. Stop it whenever you aren't testing on it, until
-  M5 does this automatically.
+- The host costs about $1.15/h. For the hackathon, keep the single host warm,
+  including while workspace VMs are paused, and stop it manually when the
+  hackathon is over. M5's automatic shutdown is deferred.
 - One CDK stack named `Substrate`:
   - VPC with one public subnet and no NAT gateway. Nothing is reachable from the
     internet except through CloudFront; all admin access goes through SSM.
@@ -150,11 +151,18 @@ alerts me through ntfy, and typing into its terminal wakes it.
 Done when: an agent finishing a task sends the alert and pauses the VM, and typing
 resumes it.
 
-**M5 Host auto-stop:** once every VM has been paused or stopped for about 5
+**M5 Host auto-stop — deferred for the hackathon:** keep one EC2 sandbox host
+running throughout the hackathon to avoid host cold starts. Do not add the idle
+shutdown or maximum-uptime shutdown guard for this period. M4's workspace
+auto-pause can still save VM resources while the host stays warm. Stop the host
+manually when the hackathon is over. This is an intentional deferral, not an
+implemented milestone, and it does not block M6.
+
+Future design, to revisit after the hackathon: once every VM has been paused or stopped for about 5
 minutes, the control box stops the host. Clicking Resume or opening a paused VM's
 terminal starts the host first; that takes about 60 s, and the UI shows "waking
 up". A maximum-uptime cost guard (e.g. 12 h) stops the host no matter what.
-Done when: with all VMs idle, the host stops within about 5 minutes, and opening a
+Future acceptance: with all VMs idle, the host stops within about 5 minutes, and opening a
 terminal gets me back in under 90 s.
 
 **M6 Everyday features:**
