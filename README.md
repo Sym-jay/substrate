@@ -43,5 +43,5 @@ See [docs/development.md](docs/development.md) to run it locally and work with t
 
 `bun run cli --help` lists the workspace, task, and comparison commands.
 `bun run cli:build` creates a standalone executable. Browser-approved CLI login
-requires deploying the CLI-enabled control service first. See [docs/cli.md](docs/cli.md)
+is enabled on the deployed control service. See [docs/cli.md](docs/cli.md)
 for installation, authentication, examples, and validation limits.

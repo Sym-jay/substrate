@@ -6,7 +6,8 @@ The first version manages **Linux workspaces, tasks, and comparisons**. It opens
 workspace links in the existing browser UI for terminal access.
 
 This feature is on `feat/cli`, based on the deployed integration branch at
-`9c8521d`. It is not deployed or published to a package registry. The existing
+`9c8521d`. Control/web release `de8ad65` is deployed. The CLI binaries are local
+build artifacts and are not published to a package registry. The existing
 `scripts/vm.ts` remains an AWS administrator tool.
 
 ## Run and build
@@ -33,7 +34,7 @@ Examples below use the compiled executable as `substrate`.
 
 ## Sign in
 
-Deploy the CLI-enabled control/web service first, then:
+The shared control service supports CLI login. With its public URL, run:
 
 ```sh
 substrate login --url https://YOUR-SUBSTRATE-HOST
@@ -224,11 +225,11 @@ interrupt/detach behavior, redirects, no mutation replay, expiry, and API isolat
 Host behavior is simulated; shell tasks run in isolated local directories. No AWS
 resources are mutated and no paid model calls are made for these tests.
 
-The shared control service does not have these CLI login endpoints yet. Real
-Clerk sign-in and authenticated CLI-to-AWS acceptance remain deployment checks.
-The standalone binary and exact local test/build results are recorded in the
-feature handoff; use the existing agent-workflow AWS acceptance separately if
-host/guest code or images change.
+The shared control service now has these CLI login endpoints. A real
+Clerk-approved login and authenticated CLI-to-AWS checks passed. See the
+[deployment record](deployments/2026-10-24-cli.md) for the tested commands, cleanup,
+and comparison quota limit. Use the existing agent-workflow AWS acceptance
+separately if host/guest code or images change.
 
 ### Verified in this change
 
@@ -243,7 +244,8 @@ host/guest code or images change.
   unavailable codes, and offline lookup/retry recovery in dark/light themes.
 - Independent visual review scored the requested retry fix resolved and returned
   `ship` at that fix's scope. Real Clerk login and authenticated CLI-to-AWS
-  acceptance are still pending deployment.
+  acceptance are recorded in the deployment notes; the live comparison execution
+  was quota-limited.
 
 Reproduce local checks with:
 
