@@ -1,7 +1,7 @@
 import { AppWindow, Cpu, HardDrive, MemoryStick, Server } from 'lucide-react'
 import { useData } from '../app/data.tsx'
 import { href } from '../app/router.ts'
-import { Card, Empty, PageHeader, Stat, StateBadge, gb, since } from '../app/ui.tsx'
+import { AsciiBar, Card, Empty, PageHeader, Stat, StateBadge, gb, since } from '../app/ui.tsx'
 
 // The account's on-demand vCPU quota in ap-south-1, shared by everything here.
 const VCPU_QUOTA = 64
@@ -18,7 +18,6 @@ export function ComputePage() {
   const used = hostVcpus + CONTROL_VCPUS + windowsOn * WINDOWS_VCPUS
   const memVms = capacity?.memUsedMib ?? 0
   const memReserved = capacity?.memReservedMib ?? 0
-  const pct = (n: number, of: number) => `${Math.min(100, (n / of) * 100)}%`
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
@@ -34,10 +33,8 @@ export function ComputePage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Host memory" className="rise">
           {capacity ? <>
-            <div className="meter !h-3">
-              <span style={{ width: pct(memReserved, capacity.memTotalMib) }} className="is-dim" title="Kept for the host itself" />
-              <span style={{ width: pct(memVms, capacity.memTotalMib) }} title="Held by VMs" />
-            </div>
+            <AsciiBar parts={[{ value: memReserved, char: '+' }, { value: memVms, char: '#' }]} total={capacity.memTotalMib} width={40} label="Host memory: kept for the host, held by VMs, free" />
+            <p className="text-faint mono mt-2 text-xs">+ host · # VMs · . free</p>
             <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">
               <div><dt className="text-faint text-xs">For VMs</dt><dd className="font-medium">{gb(memVms)}</dd></div>
               <div><dt className="text-faint text-xs">For the host</dt><dd className="font-medium">{gb(memReserved)}</dd></div>
@@ -48,11 +45,8 @@ export function ComputePage() {
         </Card>
 
         <Card title={`Account vCPUs · ${used} of ${VCPU_QUOTA}`} className="rise" style={{ '--i': 1 } as React.CSSProperties}>
-          <div className="meter !h-3">
-            <span style={{ width: pct(hostVcpus, VCPU_QUOTA) }} title="Linux host" />
-            <span style={{ width: pct(CONTROL_VCPUS, VCPU_QUOTA) }} className="is-dim" title="Control box" />
-            <span style={{ width: pct(windowsOn * WINDOWS_VCPUS, VCPU_QUOTA) }} title="Windows" />
-          </div>
+          <AsciiBar parts={[{ value: hostVcpus, char: '#' }, { value: CONTROL_VCPUS, char: '+' }, { value: windowsOn * WINDOWS_VCPUS, char: '=' }]} total={VCPU_QUOTA} width={40} label="Account vCPUs" />
+          <p className="text-faint mono mt-2 text-xs"># host · + control · = windows · . free</p>
           <ul className="mt-3 text-sm">
             <li className="list-row"><Server className="text-faint size-4" /><span className="flex-1">Linux host</span><span className="text-muted">{hostVcpus}</span></li>
             <li className="list-row"><Cpu className="text-faint size-4" /><span className="flex-1">Control box</span><span className="text-muted">{CONTROL_VCPUS}</span></li>

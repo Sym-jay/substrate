@@ -34,8 +34,8 @@ export function WorkspacesPage({ params }: { params: string[] }) {
     <div className="ws-layout">
       <aside className={`ws-list card ${vmId ? 'is-secondary' : ''}`} aria-label="Workspaces">
         <div className="flex items-center justify-between gap-2 px-1">
-          <h1 className="text-chrome text-lg font-semibold">Workspaces</h1>
-          <Button variant="chrome" size="sm" icon={<Plus />} disabled={!!vmsUnavailable} onClick={() => configure()}>New</Button>
+          <h1 className="heading text-lg font-semibold">Workspaces</h1>
+          <Button variant="primary" size="sm" icon={<Plus />} disabled={!!vmsUnavailable} onClick={() => configure()}>New</Button>
         </div>
         <Segmented label="Show" value={filter} onChange={setFilter} options={[{ value: 'all', label: 'All' }, { value: 'running', label: 'Running' }, { value: 'inactive', label: 'Inactive' }]} />
         {vmsUnavailable ? <Empty title="No workspaces here">{vmsUnavailable}</Empty>
@@ -150,8 +150,8 @@ function WorkspaceDetail({ vm, sessionId }: { vm: Vm; sessionId?: string }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {vm.state === 'running' && <Button size="sm" icon={<Pause />} disabled={!!operation} onClick={() => act('pause')} title="Save everything and pause">{operation === 'pause' ? 'Pausing…' : 'Pause'}</Button>}
-          {vm.state === 'paused' && <Button variant="chrome" size="sm" icon={<Play />} disabled={!!operation} onClick={() => act('resume')}>{operation === 'resume' ? 'Resuming…' : 'Resume'}</Button>}
-          {(vm.state === 'stopped' || vm.state === 'failed') && <Button variant="chrome" size="sm" icon={<Play />} disabled={!!operation} onClick={() => act('start')}>{operation === 'start' ? 'Starting…' : 'Start'}</Button>}
+          {vm.state === 'paused' && <Button variant="primary" size="sm" icon={<Play />} disabled={!!operation} onClick={() => act('resume')}>{operation === 'resume' ? 'Resuming…' : 'Resume'}</Button>}
+          {(vm.state === 'stopped' || vm.state === 'failed') && <Button variant="primary" size="sm" icon={<Play />} disabled={!!operation} onClick={() => act('start')}>{operation === 'start' ? 'Starting…' : 'Start'}</Button>}
           {vm.state === 'running' && <Button size="sm" variant="ghost" icon={<Square />} disabled={!!operation} onClick={() => act('stop')} title="Stop: ends running processes, keeps files">{operation === 'stop' ? 'Stopping…' : 'Stop'}</Button>}
           <a href={href('logs', vm.id)} className="btn btn-ghost btn-sm" title="Logs"><ScrollText /><span className="hidden lg:inline">Logs</span></a>
           <Button size="sm" variant="ghost" icon={<Wrench />} onClick={() => setTools(true)} title="Fork, checkpoints, previews, SSH, size">Tools</Button>
@@ -170,7 +170,7 @@ function WorkspaceDetail({ vm, sessionId }: { vm: Vm; sessionId?: string }) {
         </div>
         <div className="ml-auto shrink-0">
         <Menu align="end" button={({ toggle }) => (
-          <Button size="sm" variant="steel" icon={<Plus />} disabled={!running || operation === 'session'} onClick={toggle}><span className="hidden sm:inline">{operation === 'session' ? 'Opening…' : 'New session'}</span></Button>
+          <Button size="sm" variant="secondary" icon={<Plus />} disabled={!running || operation === 'session'} onClick={toggle}><span className="hidden sm:inline">{operation === 'session' ? 'Opening…' : 'New session'}</span></Button>
         )}>
           {(close) => (
             <>

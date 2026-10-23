@@ -161,7 +161,7 @@ function LaunchForm({ initial, busy, onLaunch }: { initial: LaunchConfig; busy: 
       </label>
 
       {error && <p role="alert" className="text-sm text-[var(--bad)]">{error}</p>}
-      <Button type="submit" variant="chrome" size="lg" icon={<Rocket />} disabled={busy}>{busy ? 'Launching…' : 'Launch'}</Button>
+      <Button type="submit" variant="primary" size="lg" icon={<Rocket />} disabled={busy}>{busy ? 'Launching…' : 'Launch'}</Button>
     </form>
   )
 }

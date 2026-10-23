@@ -31,11 +31,11 @@ export function Shell({ account, children }: { account?: ReactNode; children: Re
         <a href={href('home')} className="sidebar-brand">
           <img src="/favicon.svg" alt="" className="size-8 shrink-0" />
           <span className="sidebar-text">
-            <span className="text-chrome block text-[15px] font-semibold tracking-tight">Substrate</span>
+            <span className="heading block text-[15px] font-semibold tracking-tight">Substrate</span>
             <span className="text-faint block text-[11px]">Sandboxes for coding agents</span>
           </span>
         </a>
-        <Button variant="chrome" className="sidebar-launch" icon={<Rocket />} disabled={launching} onClick={() => quickLaunch()} title="Quick launch">
+        <Button variant="primary" className="sidebar-launch" icon={<Rocket />} disabled={launching} onClick={() => quickLaunch()} title="Quick launch">
           <span className="sidebar-text">{launching ? 'Launching…' : 'Quick launch'}</span>
         </Button>
         <FlowNav items={items} active={page} orientation="vertical" />

@@ -1,20 +1,78 @@
 import { X } from 'lucide-react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { bar, buttonFrame, reducedMotion, scrambled } from './ascii.ts'
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'chrome' | 'steel' | 'ghost' | 'danger'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
   size?: 'sm' | 'md' | 'lg'
   icon?: ReactNode
 }
 
-export function Button({ variant = 'steel', size = 'md', icon, className = '', children, type = 'button', ...rest }: ButtonProps) {
+export function Button({ variant = 'secondary', size = 'md', icon, className = '', children, type = 'button', ...rest }: ButtonProps) {
   const sizing = size === 'sm' ? 'btn-sm' : size === 'lg' ? 'btn-lg' : ''
+  const classes = `btn btn-${variant} ${sizing} ${children ? '' : 'btn-icon'} ${className}`
+  if (variant === 'primary') return <AsciiButton className={classes} icon={icon} type={type} {...rest}>{children}</AsciiButton>
   return (
-    <button type={type} className={`btn btn-${variant} ${sizing} ${children ? '' : 'btn-icon'} ${className}`} {...rest}>
+    <button type={type} className={classes} {...rest}>
       {icon}
       {children}
     </button>
   )
+}
+
+// A primary button: just a border, until it's hovered, when an ASCII wave
+// loops inside it and its label scrambles into place.
+function AsciiButton({ children, icon, className, onPointerEnter, onPointerLeave, onFocus, onBlur, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { icon?: ReactNode }) {
+  const field = useRef<HTMLSpanElement>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [label, setLabel] = useState<string | null>(null)
+  const text = typeof children === 'string' ? children : null
+
+  const stop = () => {
+    clearTimeout(timer.current)
+    if (field.current) field.current.textContent = ''
+    setLabel(null)
+  }
+  const start = (target: HTMLButtonElement) => {
+    if (reducedMotion() || target.disabled || !field.current) return
+    const cols = Math.ceil(target.clientWidth / 6) + 1
+    const rows = Math.ceil(target.clientHeight / 10) + 1
+    const begun = performance.now()
+    let t = 0
+    const tick = () => {
+      if (!field.current) return
+      field.current.textContent = buttonFrame(cols, rows, t++)
+      const progress = (performance.now() - begun) / 380
+      if (text) setLabel(progress < 1 ? scrambled(text, progress) : null)
+      timer.current = setTimeout(tick, 70)
+    }
+    tick()
+  }
+  useEffect(() => () => clearTimeout(timer.current), [])
+
+  return (
+    <button
+      className={className}
+      onPointerEnter={(e) => { start(e.currentTarget); onPointerEnter?.(e) }}
+      onPointerLeave={(e) => { stop(); onPointerLeave?.(e) }}
+      onFocus={(e) => { if (e.currentTarget.matches(':focus-visible')) start(e.currentTarget); onFocus?.(e) }}
+      onBlur={(e) => { stop(); onBlur?.(e) }}
+      {...rest}
+    >
+      <span ref={field} className="btn-ascii" aria-hidden />
+      {icon}
+      {children !== undefined && children !== null && children !== false && (
+        <span className="btn-label">{label ?? children}</span>
+      )}
+    </button>
+  )
+}
+
+// A bar in characters, e.g. host memory: [######====..........].
+export function AsciiBar({ parts, total, width = 28, label }: { parts: { value: number; char: string }[]; total: number; width?: number; label?: string }) {
+  const inner = bar(parts, total, width).slice(1, -1)
+  const filled = inner.replace(/\.+$/, '')
+  return <div className="ascii-bar" role="img" aria-label={label}>[<b>{filled}</b>{inner.slice(filled.length)}]</div>
 }
 
 export function Card({ title, action, className = '', children, style }: { title?: ReactNode; action?: ReactNode; className?: string; children: ReactNode; style?: React.CSSProperties }) {
@@ -35,7 +93,7 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
   return (
     <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="text-chrome text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
+        <h1 className="heading text-3xl sm:text-4xl">{title}</h1>
         {subtitle && <p className="text-muted mt-1.5 text-sm">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
@@ -43,14 +101,11 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
   )
 }
 
-export function Stat({ label, value, detail, icon, children }: { label: string; value: ReactNode; detail?: ReactNode; icon?: ReactNode; children?: ReactNode }) {
+export function Stat({ label, value, detail, children }: { label: string; value: ReactNode; detail?: ReactNode; icon?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="card card-pad flex flex-col gap-2">
-      <div className="text-muted flex items-center justify-between text-xs font-medium tracking-wide uppercase">
-        {label}
-        <span className="text-faint [&>svg]:size-4">{icon}</span>
-      </div>
-      <div className="text-chrome text-3xl font-semibold tabular-nums">{value}</div>
+    <div className="card card-pad flex flex-col gap-1">
+      <div className="label">{label}</div>
+      <div className="stat-value">{value}</div>
       {detail && <div className="text-faint text-xs">{detail}</div>}
       {children}
     </div>
@@ -65,7 +120,7 @@ const tones: Record<string, string> = {
 
 export function StateBadge({ state, label }: { state: string; label?: string }) {
   return (
-    <span className="chip capitalize">
+    <span className="chip">
       <span className={`dot ${tones[state] ?? ''}`} />
       {label ?? state}
     </span>
@@ -109,7 +164,7 @@ export function Sheet({ open, title, onClose, children }: { open: boolean; title
       <div className="sheet-scrim" onClick={onClose} />
       <div ref={panel} className="sheet-panel card" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
         <div className="mb-5 flex items-center justify-between gap-3">
-          <h2 className="text-chrome text-lg font-semibold">{title}</h2>
+          <h2 className="heading text-xl">{title}</h2>
           <Button variant="ghost" size="sm" aria-label="Close" icon={<X />} onClick={onClose} />
         </div>
         {open && children}

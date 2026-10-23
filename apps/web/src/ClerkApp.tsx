@@ -28,7 +28,7 @@ function SignedOut() {
         <header className="relative z-10 flex items-center gap-3">
           <img src="/favicon.svg" alt="" className="size-11" />
           <div>
-            <h1 className="text-chrome text-2xl font-semibold tracking-tight">Substrate</h1>
+            <h1 className="heading text-2xl font-semibold tracking-tight">Substrate</h1>
             <p className="text-muted text-sm">Persistent sandboxes for coding agents</p>
           </div>
         </header>
@@ -37,10 +37,10 @@ function SignedOut() {
         </p>
         <div className="relative z-10 flex flex-wrap gap-3">
           <SignInButton mode="modal">
-            <button type="button" className="btn btn-chrome btn-lg">Sign in</button>
+            <button type="button" className="btn btn-primary btn-lg">Sign in</button>
           </SignInButton>
           <SignUpButton mode="modal">
-            <button type="button" className="btn btn-steel btn-lg">Create an account</button>
+            <button type="button" className="btn btn-secondary btn-lg">Create an account</button>
           </SignUpButton>
         </div>
       </div>

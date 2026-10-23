@@ -34,8 +34,8 @@ export function WindowsPage({ params }: { params: string[] }) {
     <div className="ws-layout">
       <aside className={`ws-list card ${id ? 'is-secondary' : ''}`} aria-label="Windows workspaces">
         <div className="flex items-center justify-between gap-2 px-1">
-          <h1 className="text-chrome text-lg font-semibold">Windows</h1>
-          <Button variant="chrome" size="sm" icon={<Plus />} onClick={() => setCreating(true)}>New</Button>
+          <h1 className="heading text-lg font-semibold">Windows</h1>
+          <Button variant="primary" size="sm" icon={<Plus />} onClick={() => setCreating(true)}>New</Button>
         </div>
         <p className="text-faint px-1 text-xs leading-relaxed">Windows Server 2025 · 16 vCPU · 64 GB · $1.63/h while on, one on at a time. Stops itself when idle.</p>
         {windows.length === 0 ? <Empty icon={<AppWindow />} title="No Windows workspaces">Create one: its first start takes 5 to 10 minutes.</Empty> : (
@@ -84,7 +84,7 @@ function CreateWindows({ onCreated }: { onCreated: (w: WindowsWorkspace) => void
       <label className="field">Name<input className="input" name="name" required maxLength={31} autoCapitalize="none" spellCheck={false} placeholder="e.g. windows-dev" /></label>
       <p className="text-muted text-sm leading-relaxed">Windows Server 2025 with Git, Node, PowerShell 7, Claude Code, Codex and WSL. 16 vCPU and 64 GB, at $1.63 an hour while it’s on; stopped, only its disk costs (about $9 a month).</p>
       {error && <p role="alert" className="text-sm text-[var(--bad)]">{error}</p>}
-      <Button type="submit" variant="chrome" size="lg" icon={<Plus />} disabled={busy}>{busy ? 'Creating…' : 'Create Windows workspace'}</Button>
+      <Button type="submit" variant="primary" size="lg" icon={<Plus />} disabled={busy}>{busy ? 'Creating…' : 'Create Windows workspace'}</Button>
     </form>
   )
 }
@@ -125,7 +125,7 @@ function WindowsDetail({ workspace, view }: { workspace: WindowsWorkspace; view:
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {workspace.state === 'stopped'
-            ? <Button variant="chrome" size="sm" icon={<Play />} disabled={!!busy} onClick={() => act('start', async () => putWindows(await windowsApi.start(workspace.id)))}>{busy === 'start' ? 'Starting…' : 'Start'}</Button>
+            ? <Button variant="primary" size="sm" icon={<Play />} disabled={!!busy} onClick={() => act('start', async () => putWindows(await windowsApi.start(workspace.id)))}>{busy === 'start' ? 'Starting…' : 'Start'}</Button>
             : <Button size="sm" icon={<Square />} disabled={!!busy || !['running', 'starting', 'creating'].includes(workspace.state)} onClick={() => act('stop', async () => putWindows(await windowsApi.stop(workspace.id)))}>{busy === 'stop' || workspace.state === 'stopping' ? 'Stopping…' : 'Stop'}</Button>}
           <select className="input !min-h-8 !w-auto !py-1 text-xs" aria-label="Auto-stop" value={workspace.idleStopMinutes ?? 'off'} disabled={!!busy}
             onChange={(e) => { const idleStopMinutes = e.target.value === 'off' ? null : Number(e.target.value); void act('settings', async () => putWindows(await windowsApi.update(workspace.id, { idleStopMinutes }))) }}>
@@ -152,7 +152,7 @@ function WindowsDetail({ workspace, view }: { workspace: WindowsWorkspace; view:
           ))}
         </div>
         <div className="ml-auto shrink-0">
-          <Button size="sm" variant="steel" icon={<Plus />} disabled={!running || busy === 'terminal'} onClick={() => act('terminal', async () => {
+          <Button size="sm" variant="secondary" icon={<Plus />} disabled={!running || busy === 'terminal'} onClick={() => act('terminal', async () => {
             const t = await windowsApi.createTerminal(workspace.id)
             setTerminals((prev) => [...prev, t])
             navigate('windows', workspace.id, t.id)

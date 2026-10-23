@@ -61,8 +61,8 @@ export function TerminalView({ path, title, fill, asleep, onWake }: Props) {
       scrollback: 10_000,
       screenReaderMode: true,
       theme: {
-        background: '#050506', foreground: '#eceef1', cursor: '#d9dce1',
-        selectionBackground: '#4a4d55', black: '#1e2025', brightBlack: '#979aa3',
+        background: '#000000', foreground: '#eceef1', cursor: '#d9dce1',
+        selectionBackground: '#3a3a3a', black: '#1a1a1a', brightBlack: '#8d8d8d',
       },
     })
     const fit = new FitAddon()
