@@ -168,7 +168,7 @@ describe('hostd API', () => {
       token, version: 'test', image: async () => null, vms: fake,
       logs: (id, lines) => vmLogs(id, lines, async (args) => {
         asked.push(args)
-        return args.includes('--grep') ? 'started vm-abc\n' : '-- No entries --\n'
+        return args.includes('--grep') ? '-- Boot 382961d920a647489c447e07d3079f2c --\nstarted vm-abc\n' : '-- No entries --\n'
       }),
     })
     const get = (path: string) => withLogs.request(path, { headers: { Authorization: `Bearer ${token}` } })

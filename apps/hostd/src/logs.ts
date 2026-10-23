@@ -17,6 +17,8 @@ export async function vmLogs(id: string, lines: number, journal: Journal = journ
     journal(['-u', `substrate-vm-${id}`, '-n', String(lines)]),
     journal(['-u', 'substrate-hostd', '-n', String(lines), '--grep', id]),
   ])
-  const clean = (text: string) => text.replace(/^-- No entries --\n?/m, '').trimEnd()
+  // Without journalctl's own markers: "-- No entries --", and "-- Boot … --"
+  // between the host's boots.
+  const clean = (text: string) => text.split('\n').filter((line) => !/^-- (No entries|Boot [0-9a-f]+) --$/.test(line)).join('\n').trimEnd()
   return { console: clean(console), host: clean(host) }
 }
