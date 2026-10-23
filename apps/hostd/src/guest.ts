@@ -1,4 +1,4 @@
-import { type AgentEnv, ExecResult, GUESTD_PORT, GuestActivity, GuestHealth, Session, type CreateSession, type ExecRequest } from '@substrate/protocol'
+import { type AgentEnv, ExecResult, GUESTD_PORT, GuestActivity, GuestHealth, GuestTask, Session, type StartGuestTask, type TaskSpec, type CreateSession, type ExecRequest } from '@substrate/protocol'
 import { HttpError } from './errors.ts'
 
 export function guestClient(guestIp: string, token: string, port = GUESTD_PORT) {
@@ -41,6 +41,10 @@ export function guestClient(guestIp: string, token: string, port = GUESTD_PORT) 
     async createSession(req: CreateSession) {
       return Session.parse(await sessionCall(`${base}/sessions`, { method: 'POST', headers, body: JSON.stringify(req) }))
     },
+    async tasks() { return GuestTask.array().parse(await sessionCall(`${base}/tasks`, { headers })) },
+    async task(id: string) { return GuestTask.parse(await sessionCall(`${base}/tasks/${encodeURIComponent(id)}`, { headers })) },
+    async createTask(input: StartGuestTask) { return GuestTask.parse(await sessionCall(`${base}/tasks`, { method: 'POST', headers, body: JSON.stringify(input) })) },
+    async cancelTask(id: string, spec?: TaskSpec) { return GuestTask.parse(await sessionCall(`${base}/tasks/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers, body: JSON.stringify({ spec }) })) },
     async repository(repository: string, token?: string) {
       const res = await fetch(`${base}/repository`, { method: 'POST', headers, body: JSON.stringify({ repository, token }), signal: AbortSignal.timeout(180_000) })
       if (!res.ok) throw new Error('Repository setup failed; verify its name and token access')

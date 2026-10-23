@@ -1,4 +1,4 @@
-import { Activity, AppWindow, Camera, Layers, PanelLeftClose, PanelLeftOpen, Rocket, ScrollText, Search, Settings, SquareTerminal } from 'lucide-react'
+import { Activity, AppWindow, Camera, Inbox, Layers, PanelLeftClose, PanelLeftOpen, Rocket, ScrollText, Search, Settings, SquareTerminal } from 'lucide-react'
 import { useSyncExternalStore, type ReactNode } from 'react'
 import { openPalette, paletteShortcut } from './CommandPalette.tsx'
 import { useData } from './data.tsx'
@@ -31,7 +31,7 @@ export function Shell({ account, children }: { account?: ReactNode; children: Re
   const windowsItem: Item[] = windows ? [{ page: 'windows', label: 'Windows', icon: <AppWindow /> }] : []
   const jobs: Item = { page: 'jobs', label: 'Jobs', icon: <Activity />, badge: agentsWorking || undefined }
   const settings: Item = { page: 'settings', label: 'Settings', icon: <Settings /> }
-  const main: Item[] = [workspaces, ...windowsItem, { page: 'snapshots', label: 'Snapshots', icon: <Camera /> }, jobs, { page: 'logs', label: 'Logs', icon: <ScrollText /> }]
+  const main: Item[] = [{ page: 'inbox', label: 'Inbox', icon: <Inbox /> }, workspaces, ...windowsItem, { page: 'snapshots', label: 'Snapshots', icon: <Camera /> }, jobs, { page: 'logs', label: 'Logs', icon: <ScrollText /> }]
   const setup: Item[] = [{ page: 'environment', label: 'Environment', icon: <Layers /> }, settings]
   const { sidebar } = useSettings()
   const narrow = useSyncExternalStore(subscribeNarrow, isNarrow)

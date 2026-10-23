@@ -1,4 +1,4 @@
-import { Activity, AppWindow, Camera, CornerDownLeft, Layers, PanelLeft, Plus, Rocket, ScrollText, Search, Settings, SlidersHorizontal, SquareTerminal } from 'lucide-react'
+import { Activity, AppWindow, Camera, Inbox, CornerDownLeft, Layers, PanelLeft, Plus, Rocket, ScrollText, Search, Settings, SlidersHorizontal, SquareTerminal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { AgentIcon } from './AgentIcon.tsx'
@@ -33,6 +33,7 @@ function match(text: string, query: string) {
 const pages: { page: Page; label: string; icon: ReactNode }[] = [
   { page: 'workspaces', label: 'Workspaces', icon: <SquareTerminal /> },
   { page: 'windows', label: 'Windows', icon: <AppWindow /> },
+  { page: 'inbox', label: 'Inbox', icon: <Inbox /> },
   { page: 'snapshots', label: 'Snapshots', icon: <Camera /> },
   { page: 'jobs', label: 'Jobs', icon: <Activity /> },
   { page: 'logs', label: 'Logs', icon: <ScrollText /> },

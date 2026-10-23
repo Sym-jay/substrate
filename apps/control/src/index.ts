@@ -26,6 +26,7 @@ import { WindowsSsh } from './windows/ssh.ts'
 import { WindowsStore } from './windows/store.ts'
 import { WindowsTerminals, withControllingTerminal } from './windows/terminals.ts'
 import { WindowsWorkspaces } from './windows/workspaces.ts'
+import { Workflows, WorkflowStore } from './workflows.ts'
 
 const authenticate = config.clerk
   ? clerkAuth({ ...config.clerk, authorizedParties: config.authorizedParties, allowedEmails: config.allowedEmails })
@@ -56,6 +57,14 @@ const github = secrets
   : null
 
 const hostd: Hostd | null = config.hostd ? (config.hostInstanceId ? rotatingHostd(config.hostd, config.region) : config.hostd) : null
+
+// Tasks and fork-and-compare, kept in the control box's SQLite file like
+// SSH keys and Windows workspaces.
+const workflows = hostd && authenticate ? new Workflows({
+  store: new WorkflowStore(config.db), owners, jobs, hostd, maxVmsPerUser: config.maxVmsPerUser,
+  maxVms: async (userId) => (await quotas.of(userId)).maxVms,
+}) : undefined
+workflows?.start()
 const callHostd = (path: string, init: RequestInit = {}) =>
   fetch(`${hostd!.url}${path}`, { ...init, headers: { Authorization: `Bearer ${hostd!.token}`, 'content-type': 'application/json' } })
 const allVms = async () => {
@@ -143,6 +152,7 @@ const app = createApp({
           capabilities,
           sshAccess,
           jobs,
+          workflows,
           previewOrigin: config.previewOrigin,
           githubToken: (userId) => (github ? github.token(userId) : legacyGitHubTokens(config.region)(userId)),
           maxVmsPerUser: config.maxVmsPerUser,

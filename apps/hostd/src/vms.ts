@@ -12,6 +12,9 @@ import {
   type UpdateVm,
   type ResizeVm,
   type ForkVm,
+  type ForkPair,
+  type StartGuestTask,
+  type GuestTask,
   type CreateSession,
   type Session,
   type RunCheckpoint,
@@ -34,6 +37,7 @@ import { Checkpoints } from './checkpoints.ts'
 import { ExternalActivity } from './activity.ts'
 import { Balloons } from './balloon.ts'
 import { importRepository } from './repositories.ts'
+import { forkGeneration } from './fork-generation.ts'
 import * as zfs from './zfs.ts'
 
 // What the HTTP API needs; tests substitute a fake.
@@ -48,6 +52,8 @@ export interface VmService {
   update(id: string, input: UpdateVm): Promise<Vm>
   resize(id: string, input: ResizeVm): Promise<Vm>
   fork(id: string, input: ForkVm, targetId?: string): Promise<Vm>
+  forkPair?(id: string, input: ForkPair): Promise<{ vms: Vm[]; checkpointId: string }>
+  createTask?(id: string, input: StartGuestTask): Promise<GuestTask>
   checkpoints(id: string): Promise<RunCheckpoint[]>
   rollback(id: string, checkpointId: string): Promise<Vm>
   createSession(id: string, input: CreateSession): Promise<Session>
@@ -131,6 +137,7 @@ export class VmManager implements VmService {
         rootPath: `${config.paths.run}/rootfs`,
         forkCapable: false,
         balloonEnabled: true,
+        activeTaskAtSave: false,
         maxAwakeHours: DEFAULT_MAX_AWAKE_HOURS,
         shouldRun: true,
         isolation: 'none',
@@ -207,8 +214,16 @@ export class VmManager implements VmService {
         return this.get(id)
       }
       if (!(await firecracker.isRunning(id))) throw new HttpError(409, `${record.name} isn't running`)
+      // Saving must still work if guestd is hung. An unknown task state is
+      // conservatively un-forkable until the owner resumes and checks it.
+      try {
+        const guest = await this.guest(id)
+        record.activeTaskAtSave = !!(await guest.health()).features?.tasks &&
+          (await guest.tasks()).some((task) => task.state === 'running' || task.state === 'queued')
+      } catch { record.activeTaskAtSave = true }
       this.transitions.set(id, 'pausing')
       try {
+        await writeRecord(record)
         await this.snapshots.pause(record)
       } catch (error) {
         throw new HttpError(502, `couldn't pause ${record.name}: ${error instanceof Error ? error.message : error}`)
@@ -413,55 +428,92 @@ export class VmManager implements VmService {
   }
 
   async fork(id: string, input: ForkVm, targetId?: string): Promise<Vm> {
+    const pair = await this.forkChildren(id, [{ id: targetId ?? newVmId(), name: input.name }])
+    return pair.vms[0]!
+  }
+
+  async forkPair(id: string, input: ForkPair) {
+    return this.forkChildren(id, input.children)
+  }
+
+  // One pause and one immutable generation for every destination. No child
+  // executes until all copies have been made from that same saved state.
+  private async forkChildren(id: string, destinations: { id: string; name?: string }[]) {
     return this.lock.run(async () => {
       const source = await this.record(id)
       if (!source.forkCapable || !source.rootPath) throw new HttpError(409, 'This VM needs a newer guest image for running-state forks. Create a workspace from the latest image first.')
+      if (source.paused && source.activeTaskAtSave) throw new HttpError(409, 'This save contains a running task. Resume it and finish or cancel the task before forking.')
       const records = await listRecords()
-      if (input.name && records.some((record) => record.name === input.name)) throw new HttpError(409, `a VM named ${input.name} already exists`)
-      await this.ensureFits(source.memMib)
+      for (const destination of destinations) {
+        if (destination.name && records.some((record) => record.name === destination.name)) throw new HttpError(409, `a VM named ${destination.name} already exists`)
+        if (await zfs.datasetExists(dataset(destination.id))) throw new HttpError(409, 'fork destination already exists')
+      }
+      await this.ensureFits(source.memMib * destinations.length)
       const wasRunning = await firecracker.isRunning(id)
       if (!wasRunning && !source.paused) throw new HttpError(409, 'Start or pause this workspace before forking its running state')
-      const childId = targetId ?? newVmId()
-      if (await zfs.datasetExists(dataset(childId))) throw new HttpError(409, 'fork destination already exists')
+      if (wasRunning) {
+        const guest = await this.guest(id)
+        if ((await guest.health()).features?.tasks && (await guest.tasks()).some((task) => task.state === 'running' || task.state === 'queued')) {
+          throw new HttpError(409, 'Finish or cancel the running task before forking this workspace')
+        }
+      }
       const filesystemSnapshot = `${dataset(id)}@fork-${randomUUID()}`
       let filesystemSaved = false
-      let child: VmRecord | null = null
       this.transitions.set(id, 'forking')
-      try {
-        if (wasRunning) await this.snapshots.pause(source)
-        const point = source.checkpoint!
-        child = { ...source, id: childId, name: input.name ?? childId,
-          slot: lowestFreeSlot(records.map((record) => record.slot)), token: randomBytes(32).toString('hex'),
-          shouldRun: true, parentId: id, createdAt: new Date().toISOString(), lastError: null, runCheckpoints: [],
-          paused: true, checkpoint: { ...point }, resumeMs: null }
-        await zfs.snapshot(filesystemSnapshot)
-        filesystemSaved = true
-        await zfs.copySnapshot(filesystemSnapshot, dataset(childId), true)
-        await zfs.copySnapshot(this.snapshots.paths(source, point).disk, rootVolume(childId))
-        await zfs.waitForDevice(zfs.zvolDevice(rootVolume(childId)))
-        await writeRecord(child)
-        await this.snapshots.resume(child)
-      } catch (error) {
-        if (child) {
-          await firecracker.kill(childId)
+      const result = await forkGeneration({
+        destinations,
+        capture: async () => {
+          if (wasRunning) await this.snapshots.pause(source)
+          const point = source.checkpoint!
+          await zfs.snapshot(filesystemSnapshot)
+          filesystemSaved = true
+          return point
+        },
+        makeChild: (destination, point, children: VmRecord[]): VmRecord => ({ ...source, id: destination.id, name: destination.name ?? destination.id,
+            slot: lowestFreeSlot([...records, ...children].map((record) => record.slot)), token: randomBytes(32).toString('hex'),
+            shouldRun: true, parentId: id, createdAt: new Date().toISOString(), lastError: null, runCheckpoints: [],
+            paused: true, checkpoint: { ...point }, resumeMs: null }),
+        copy: async (child, point) => {
+          await zfs.copySnapshot(filesystemSnapshot, dataset(child.id), true)
+          await zfs.copySnapshot(this.snapshots.paths(source, point).disk, rootVolume(child.id))
+          await zfs.waitForDevice(zfs.zvolDevice(rootVolume(child.id)))
+          await writeRecord(child)
+        },
+        resume: async (child) => { await this.snapshots.resume(child) },
+        remove: async (child) => {
+          await firecracker.kill(child.id)
           await this.cleanUp(child)
-        }
-        throw error
-      } finally {
-        if (filesystemSaved) await zfs.destroy(filesystemSnapshot).catch((error) => console.error('fork staging cleanup:', error))
-        try {
-          if (wasRunning && source.paused) {
-            try { await this.snapshots.resume(source) }
-            catch (error) {
-              // The original remains durably paused and can be retried. Don't
-              // hide a successfully created child behind a failed response.
-              console.error(`fork source ${id} could not resume:`, error)
+        },
+        releaseSource: async () => {
+          if (filesystemSaved) await zfs.destroy(filesystemSnapshot).catch((error) => console.error('fork staging cleanup:', error))
+          try {
+            if (wasRunning && source.paused) {
+              try { await this.snapshots.resume(source) }
+              catch (error) {
+                // The original remains durably paused and can be retried.
+                console.error(`fork source ${id} could not resume:`, error)
+              }
             }
-          }
-        }
-        finally { this.transitions.delete(id) }
-      }
-      return this.get(childId)
+          } finally { this.transitions.delete(id) }
+        },
+      })
+      return { vms: await Promise.all(result.children.map((child) => this.get(child.id))), checkpointId: result.point.id }
+    })
+  }
+
+  async createTask(id: string, input: StartGuestTask) {
+    await this.start(id)
+    return this.lock.run(async () => {
+      const record = await this.record(id)
+      const guest = await this.guest(id)
+      if (!(await guest.health()).features?.tasks) throw new HttpError(409, 'This workspace needs the task-enabled guest image. Create a workspace from the latest image first.')
+      const previous = (await guest.tasks()).find((task) => task.id === input.id)
+      if (previous) return previous
+      this.transitions.set(id, 'checkpointing')
+      try {
+        await this.runCheckpoints.create(record, `Before task: ${input.spec.title}`, input.spec.runner === 'command' ? null : input.spec.runner, input.spec.mode)
+        return await guest.createTask(input)
+      } finally { this.transitions.delete(id) }
     })
   }
 
@@ -526,7 +578,7 @@ export class VmManager implements VmService {
     const running = await firecracker.isRunning(record.id)
     const state =
       this.transitions.get(record.id) ?? (record.paused ? 'paused' : running ? 'running' : record.lastError ? 'failed' : 'stopped')
-    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, shouldRun: _shouldRun, runCheckpoints: _runs, rootPath: _root, forkCapable: _fork, balloonEnabled: _balloon, ...rest } = record
+    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, shouldRun: _shouldRun, runCheckpoints: _runs, rootPath: _root, forkCapable: _fork, balloonEnabled: _balloon, activeTaskAtSave: _taskAtSave, ...rest } = record
     const memory = running && !record.paused && record.balloonEnabled ? this.balloons.get(record.id) ?? {
       floorMib: Math.min(config.memory.floorMib, record.memMib), limitMib: record.memMib,
       targetMib: null, actualMib: null,

@@ -119,7 +119,7 @@ export const GuestHealth = z.object({
   vmId: z.string(),
   version: z.string(),
   uptimeMs: z.number(),
-  features: z.object({ forkNetwork: z.boolean() }).optional(),
+  features: z.object({ forkNetwork: z.boolean(), tasks: z.boolean().optional() }).optional(),
 })
 export type GuestHealth = z.infer<typeof GuestHealth>
 
