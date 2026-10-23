@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { serveStatic } from 'hono/bun'
 import { vmRoutes, type VmRoutesOptions } from './vms.ts'
 import type { previewRoutes } from './previews.ts'
+import { workflowRoutes } from './workflow-routes.ts'
 
 type Options = {
   version: string
@@ -41,8 +42,9 @@ export function createApp({ version, region, webDir, readHost, clerkPublishableK
 
   if ('unavailable' in vms) {
     const { unavailable } = vms
-    app.on(['GET', 'POST', 'DELETE'], ['/api/vms', '/api/vms/*'], (c) => c.json({ error: unavailable }, 503))
+    app.on(['GET', 'POST', 'PATCH', 'DELETE'], ['/api/vms', '/api/vms/*', '/api/tasks', '/api/tasks/*', '/api/comparisons', '/api/comparisons/*'], (c) => c.json({ error: unavailable }, 503))
   } else {
+    if (vms.workflows) app.route('/api', workflowRoutes(vms.authenticate, vms.workflows))
     app.route('/api', vmRoutes(vms))
   }
 

@@ -8,6 +8,7 @@ import { exec } from './exec.ts'
 import { readGuestConfig, type GuestConfig } from './mmds.ts'
 import { SESSIONS_FILE, Sessions } from './sessions.ts'
 import { configureFork } from './identity.ts'
+import { Tasks } from './tasks.ts'
 
 // Set by `bun build --define` in images/host/install-hostd.sh.
 declare const BUILD_VERSION: string | undefined
@@ -31,6 +32,8 @@ for (let attempt = 1; !config; attempt++) {
 }
 
 const activity = new Activity()
+const tasks = new Tasks({ directory: '/var/lib/substrate-guestd/tasks', activity })
+await tasks.start()
 const sessions = new Sessions(undefined, undefined, activity, SESSIONS_FILE)
 await sessions.start(config.resumeSessions)
 // Without it agents can't send alerts, but the VM still works.
@@ -41,7 +44,7 @@ setInterval(async () => {
 }, 10_000)
 const serve = (identity: GuestConfig) => Bun.serve({
   hostname: identity.guestIp, port: GUESTD_PORT, idleTimeout: 0,
-  fetch: createApp({ vmId: identity.vmId, token: identity.token, version, run: exec, sessions, activity }).fetch, websocket,
+  fetch: createApp({ vmId: identity.vmId, token: identity.token, version, run: exec, sessions, activity, tasks }).fetch, websocket,
 })
 let server = serve(config)
 let checking = false

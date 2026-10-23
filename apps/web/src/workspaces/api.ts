@@ -7,7 +7,7 @@ export class WorkspaceApiError extends Error {
   }
 }
 
-async function request(path: string, init?: RequestInit): Promise<unknown> {
+export async function request(path: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(path, { ...init, headers: { ...(init?.headers as Record<string, string>), ...(await authHeaders()) } })
   if (!response.ok) {
     const body = await response.json().catch(() => null)

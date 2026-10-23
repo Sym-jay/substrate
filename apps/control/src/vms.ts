@@ -9,6 +9,7 @@ import type { Tickets } from './tickets.ts'
 import type { Capabilities } from './capabilities.ts'
 import type { Jobs } from './jobs.ts'
 import { previewPort, previewPrefix } from './previews.ts'
+import type { Workflows } from './workflows.ts'
 
 export type VmRoutesOptions = {
   hostd: { url: string; token: string }
@@ -18,6 +19,7 @@ export type VmRoutesOptions = {
   maxVmsPerUser: number
   capabilities?: Capabilities
   jobs?: Jobs
+  workflows?: Workflows
   previewOrigin?: string | null
   githubToken?: (userId: string) => Promise<string | undefined>
 }
@@ -26,7 +28,7 @@ type Env = { Variables: { user: User } }
 
 // VMs and their terminals, passed through to hostd with its token. Every
 // route needs a signed-in user, and each user only sees their own VMs.
-export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, capabilities, jobs, previewOrigin, githubToken }: VmRoutesOptions) {
+export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, capabilities, jobs, workflows, previewOrigin, githubToken }: VmRoutesOptions) {
   const app = new Hono<Env>()
   const auth = { Authorization: `Bearer ${hostd.token}` }
   const hostdPath = (c: Context) => c.req.path.replace(/^\/api/, '')
@@ -97,7 +99,7 @@ export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, 
   const exclusive = <T,>(userId: string, work: () => Promise<T>) => jobs ? jobs.exclusive(userId, work) : work()
   const vmCount = (vms: Vm[], userId: string) => {
     const mine = new Set(owners.vmsOf(userId))
-    return new Set([...vms.filter((vm) => mine.has(vm.id)).map((vm) => vm.id), ...jobs?.pending(userId) ?? []]).size
+    return new Set([...vms.filter((vm) => mine.has(vm.id)).map((vm) => vm.id), ...jobs?.pending(userId) ?? [], ...workflows?.pendingVms(userId) ?? []]).size
   }
   app.post('/vms', (c) => exclusive(c.var.user.id, async () => {
     const vms = await allVms()
@@ -141,6 +143,7 @@ export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, 
 
   app.post('/vms/:id/fork', (c) => exclusive(c.var.user.id, async () => {
     if (!jobs) return c.json({ error: 'Fork jobs are not configured' }, 503)
+    if (workflows?.hasActiveTask(c.var.user.id, c.req.param('id'))) return c.json({ error: 'Finish or cancel the running task before forking this workspace' }, 409)
     const input = ForkVm.safeParse(await c.req.json().catch(() => null))
     if (!input.success) return c.json({ error: 'Invalid fork name' }, 400)
     const vms = await allVms()

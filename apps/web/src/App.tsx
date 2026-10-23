@@ -1,7 +1,8 @@
 import type { HostStatus, InstanceState, Status } from '@substrate/protocol'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useStatus } from './useStatus.ts'
 import { WorkspacePanel } from './workspaces/WorkspacePanel.tsx'
+import { WorkflowPanel } from './workflows/WorkflowPanel.tsx'
 
 const stateStyle: Record<InstanceState, { dot: string; label: string }> = {
   running: { dot: 'bg-emerald-500', label: 'Running' },
@@ -14,11 +15,22 @@ const stateStyle: Record<InstanceState, { dot: string; label: string }> = {
 
 // `account` is the signed-in user's menu, when sign-in is on.
 export function App({ account }: { account?: ReactNode }) {
+  const readView = () => new URLSearchParams(window.location.hash.slice(1)).has('vm') ? 'workspaces' : 'inbox'
+  const [view, setView] = useState(readView)
+  useEffect(() => {
+    const change = () => setView(readView())
+    window.addEventListener('hashchange', change)
+    return () => window.removeEventListener('hashchange', change)
+  }, [])
+  const openWorkspace = (id: string) => {
+    window.location.hash = new URLSearchParams({ vm: id }).toString()
+    setView('workspaces')
+  }
   const state = useStatus()
   const status = state.kind === 'ok' ? state.status : state.kind === 'error' ? state.last : null
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-xl flex-col gap-6 px-4 pt-[max(2rem,env(safe-area-inset-top))] pb-10">
+    <main className={`mx-auto flex min-h-dvh ${view === 'workspaces' ? 'max-w-xl' : 'max-w-5xl'} flex-col gap-6 px-4 pt-[max(2rem,env(safe-area-inset-top))] pb-10`}>
       <header className="flex items-center gap-3">
         <img src="/favicon.svg" alt="" className="size-9" />
         <div className="flex-1">
@@ -30,7 +42,11 @@ export function App({ account }: { account?: ReactNode }) {
         {account}
       </header>
 
-      <WorkspacePanel />
+      <nav className="workspaces workflow-filters" aria-label="Main navigation">
+        <button type="button" aria-current={view === 'inbox' ? 'page' : undefined} aria-pressed={view === 'inbox'} onClick={() => { window.location.hash = 'view=inbox'; setView('inbox') }}>Inbox</button>
+        <button type="button" aria-current={view === 'workspaces' ? 'page' : undefined} aria-pressed={view === 'workspaces'} onClick={() => openWorkspace('')}>Workspaces</button>
+      </nav>
+      {view === 'inbox' ? <WorkflowPanel onOpenWorkspace={openWorkspace} /> : <WorkspacePanel />}
 
       {state.kind === 'error' && (
         <p

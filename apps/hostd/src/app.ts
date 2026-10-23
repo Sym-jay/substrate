@@ -1,4 +1,4 @@
-import { CreateSession, CreateVm, ResizeVm, ForkVm, SshKey, ExecRequest, GrowDisk, UpdateVm, type PoolStatus, type HostdHealth } from '@substrate/protocol'
+import { CreateSession, CreateVm, ResizeVm, ForkVm, ForkPair, StartGuestTask, CancelGuestTask, SshKey, ExecRequest, GrowDisk, UpdateVm, type PoolStatus, type HostdHealth } from '@substrate/protocol'
 import { relayTo } from '@substrate/protocol/relay'
 import { Hono, type Context } from 'hono'
 import { bearerAuth } from 'hono/bearer-auth'
@@ -44,6 +44,21 @@ export function createApp({ token, version, image, pool, vms }: Options) {
     return c.json(await vms.fork(c.req.param('id'), input, targetId), 201)
   })
   app.get('/vms/:id/checkpoints', async (c) => c.json(await vms.checkpoints(c.req.param('id'))))
+  app.post('/vms/:id/forks', async (c) => {
+    if (!vms.forkPair) return c.json({ error: 'Comparison forks are not available on this host' }, 503)
+    return c.json(await vms.forkPair(c.req.param('id'), await body(c, ForkPair)), 201)
+  })
+  app.get('/vms/:id/tasks', async (c) => c.json(await (await vms.guest(c.req.param('id'))).tasks()))
+  app.get('/vms/:id/tasks/:task', async (c) => c.json(await (await vms.guest(c.req.param('id'))).task(c.req.param('task'))))
+  app.post('/vms/:id/tasks', async (c) => {
+    if (!vms.createTask) return c.json({ error: 'Tasks are not available on this host' }, 503)
+    return c.json(await vms.createTask(c.req.param('id'), await body(c, StartGuestTask)), 201)
+  })
+  app.post('/vms/:id/tasks/:task/cancel', async (c) => {
+    const input = await body(c, CancelGuestTask)
+    await vms.start(c.req.param('id'))
+    return c.json(await (await vms.guest(c.req.param('id'))).cancelTask(c.req.param('task'), input.spec))
+  })
   app.post('/vms/:id/checkpoints/:checkpoint/restore', async (c) => c.json(await vms.rollback(c.req.param('id'), c.req.param('checkpoint'))))
   app.post('/vms/:id/ssh/keys', async (c) => {
     const input = await body(c, SshKey)

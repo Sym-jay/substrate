@@ -42,6 +42,8 @@ export const VmRecord = z.object({
   forkCapable: z.boolean().default(false),
   // Old running VMs/snapshots have no device; enable it on their next cold boot.
   balloonEnabled: z.boolean().default(false),
+  // A frozen task would execute twice if its saved process were forked.
+  activeTaskAtSave: z.boolean().default(false),
   maxAwakeHours: MaxAwakeHours.default(DEFAULT_MAX_AWAKE_HOURS),
   // Started and not since stopped or deleted. A VM like this that isn't running
   // (and isn't paused) went down by itself, so hostd boots it again.

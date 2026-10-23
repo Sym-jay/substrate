@@ -9,6 +9,7 @@ import { Capabilities } from './capabilities.ts'
 import { previewRoutes } from './previews.ts'
 import { githubTokens } from './github.ts'
 import { Jobs } from './jobs.ts'
+import { Workflows, WorkflowStore } from './workflows.ts'
 
 const authenticate = config.clerk
   ? clerkAuth({ ...config.clerk, authorizedParties: config.authorizedParties, allowedEmails: config.allowedEmails })
@@ -19,6 +20,10 @@ const owners = new Owners(config.db)
 const tickets = new Tickets()
 const capabilities = new Capabilities(config.db)
 const jobs = new Jobs(config.db)
+const workflows = config.hostd && authenticate ? new Workflows({
+  store: new WorkflowStore(config.db), owners, jobs, hostd: config.hostd, maxVmsPerUser: config.maxVmsPerUser,
+}) : undefined
+workflows?.start()
 
 const app = createApp({
   version: config.version,
@@ -38,6 +43,7 @@ const app = createApp({
           tickets,
           capabilities,
           jobs,
+          workflows,
           previewOrigin: config.previewOrigin,
           githubToken: githubTokens(config.region),
           maxVmsPerUser: config.maxVmsPerUser,
