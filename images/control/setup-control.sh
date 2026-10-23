@@ -66,7 +66,8 @@ systemctl enable substrate-control >/dev/null 2>&1
 
 # Unpack each release into its own folder, then switch a symlink to it, so the
 # running service never sees a half-written bundle.
-if aws s3 cp --quiet "s3://${SUBSTRATE_BUCKET}/control/control.tar.gz" /tmp/control.tar.gz; then
+bundle_key=${SUBSTRATE_CONTROL_BUNDLE_KEY:-control/control.tar.gz}
+if aws s3 cp --quiet "s3://${SUBSTRATE_BUCKET}/${bundle_key}" /tmp/control.tar.gz; then
   release="/opt/substrate/releases/$(date +%Y%m%d%H%M%S)"
   mkdir -p "$release"
   tar -xzf /tmp/control.tar.gz -C "$release"

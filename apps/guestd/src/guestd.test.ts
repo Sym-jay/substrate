@@ -203,8 +203,8 @@ describe('reopening sessions after a restart', () => {
   test('agents resume their last conversation', () => {
     const ctty = ['setsid', '--ctty', '--wait']
     expect(sessionArgv({ agent: 'claude' }, true)).toEqual([...ctty, 'runuser', '-l', 'dev', '-c', 'if [ -d /home/dev/workspace ]; then cd /home/dev/workspace; fi; claude --continue --permission-mode default; exec bash -l'])
-    expect(sessionArgv({ agent: 'codex' }, true).at(-1)).toBe('codex resume --last; exec bash -l')
-    expect(sessionArgv({}, true)).toEqual([...ctty, 'runuser', '-l', 'dev'])
+    expect(sessionArgv({ agent: 'codex' }, true).at(-1)).toBe('if [ -d /home/dev/workspace ]; then cd /home/dev/workspace; fi; codex resume --last --sandbox workspace-write --ask-for-approval on-request; exec bash -l')
+    expect(sessionArgv({}, true)).toEqual([...ctty, 'runuser', '-l', 'dev', '-c', 'if [ -d /home/dev/workspace ]; then cd /home/dev/workspace; fi; exec bash -l'])
   })
 
   test('running sessions come back under the same IDs, only when asked', async () => {
