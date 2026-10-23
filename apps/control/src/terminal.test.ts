@@ -41,6 +41,8 @@ const vms: VmService = {
   create: unused,
   start: unused,
   stop: unused,
+  pause: unused,
+  resume: unused,
   remove: unused,
   exec: unused,
   capacity: unused,

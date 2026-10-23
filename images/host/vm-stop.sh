@@ -6,6 +6,9 @@
 # (Firecracker's SendCtrlAltDel can't be used: the 6.18 guest kernel doesn't
 # detect its emulated i8042.)
 # Usage: vm-stop <the VM's metadata.json>
+# A snapshot pause has already killed Firecracker. Do not wait on a guest
+# whose memory was saved and whose process no longer exists.
+[ -n "${MAINPID:-}" ] && kill -0 "$MAINPID" 2>/dev/null || exit 0
 ip=$(jq -r .substrate.guestIp "$1") || exit 0
 token=$(jq -r .substrate.token "$1") || exit 0
 curl -fs --max-time 3 -H "Authorization: Bearer ${token}" -H 'content-type: application/json' \

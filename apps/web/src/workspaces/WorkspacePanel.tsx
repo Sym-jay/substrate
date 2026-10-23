@@ -164,6 +164,7 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
   const [active, setActive] = useState<string | null>(() => new URLSearchParams(window.location.hash.slice(1)).get('session'))
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [operation, setOperation] = useState<'start' | 'pause' | 'resume' | null>(null)
   const [error, setError] = useState('')
   const generation = useRef(0)
   const selected = sessions.find((session) => session.id === active)
@@ -197,13 +198,18 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
     history.replaceState(null, '', `#${hash}`)
   }, [active, vm.id])
 
-  const start = async () => {
+  const changeState = async (action: 'start' | 'pause' | 'resume') => {
     if (busy) return
+    const current = generation.current
     setBusy(true)
+    setOperation(action)
     setError('')
-    try { onChange(await workspaceApi.start(vm.id)) }
-    catch (error) { setError(errorMessage(error)) }
-    finally { setBusy(false) }
+    try {
+      const updated = await workspaceApi[action](vm.id)
+      onChange(updated)
+    }
+    catch (error) { if (current === generation.current) setError(errorMessage(error)) }
+    finally { setBusy(false); setOperation(null) }
   }
 
   const create = async () => {
@@ -224,11 +230,24 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
     <section className="workspace-sessions" aria-label={`${vm.name} sessions`}>
       <div className="workspace-heading">
         <h3>{vm.name}</h3>
-        {vm.state === 'stopped' || vm.state === 'failed'
-          ? <button className="workspace-button secondary" type="button" disabled={busy} onClick={start}>{busy ? 'Starting…' : 'Start'}</button>
-          : <button className="workspace-button secondary" type="button" disabled={busy || loading || vm.state !== 'running'} onClick={create}>{busy ? 'Starting…' : 'New session'}</button>}
+        <div className="flex flex-wrap justify-end gap-2">
+          {vm.state === 'stopped' || vm.state === 'failed'
+            ? <button className="workspace-button secondary" type="button" disabled={busy} onClick={() => changeState('start')}>{operation === 'start' ? 'Starting…' : 'Start'}</button>
+            : vm.state === 'paused'
+              ? <button className="workspace-button" type="button" disabled={busy} onClick={() => changeState('resume')}>{operation === 'resume' ? 'Resuming…' : 'Resume'}</button>
+              : <>
+                <button className="workspace-button secondary" type="button" disabled={busy || vm.state !== 'running'} onClick={() => changeState('pause')}>{operation === 'pause' || vm.state === 'pausing' ? 'Saving…' : 'Pause'}</button>
+                <button className="workspace-button secondary" type="button" disabled={busy || loading || vm.state !== 'running'} onClick={create}>{busy && !operation ? 'Starting…' : 'New session'}</button>
+              </>}
+        </div>
       </div>
-      {vm.state !== 'running' ? <p className="workspace-hint">{vm.state === 'starting' ? 'Your workspace is starting…' : vm.lastError ? `This workspace failed: ${vm.lastError}` : 'Start this workspace to open a terminal.'}</p>
+      {vm.state !== 'running' ? <p className="workspace-hint">{
+        vm.state === 'paused' ? 'Paused. Your processes and terminal sessions are saved. Resume to continue.'
+          : vm.state === 'pausing' ? 'Saving your workspace. This can take a moment.'
+          : vm.state === 'resuming' ? 'Restoring your workspace…'
+          : vm.state === 'starting' ? 'Your workspace is starting…'
+          : vm.lastError ? `This workspace failed: ${vm.lastError}` : 'Start this workspace to open a terminal.'
+      }</p>
         : loading ? <p className="workspace-hint" role="status">Loading sessions…</p>
         : sessions.length === 0 && !error ? <p className="workspace-hint">Start a session to open a terminal.</p> : null}
       {error && <p role="alert" className="workspace-error">{error}</p>}
@@ -236,7 +255,8 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
         {sessions.map((session, i) => <button type="button" key={session.id} aria-pressed={session.id === active} onClick={() => setActive(session.id)}>{label(session, i)}{session.state === 'exited' ? ' · ended' : ''}</button>)}
       </div>}
       {selected && vm.state === 'running' && <TerminalView key={selected.id} path={workspaceApi.terminalPath(vm.id, selected.id)} title={label(selected, sessions.indexOf(selected))} />}
-      {selected && <p className="workspace-hint">Closing this tab leaves the session running. Open this workspace again to return to it.</p>}
+      {vm.state === 'paused' && vm.lastError && <p role="alert" className="workspace-error">{vm.lastError}. Your saved session is available to retry.</p>}
+      {selected && vm.state === 'running' && <p className="workspace-hint">Closing this tab leaves the session running. Open this workspace again to return to it.</p>}
     </section>
   )
 }

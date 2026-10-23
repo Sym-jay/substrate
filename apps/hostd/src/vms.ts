@@ -18,6 +18,7 @@ import { currentImage } from './images.ts'
 import { Mutex } from './mutex.ts'
 import { createTap, deleteTap, lowestFreeSlot, slotAddresses } from './network.ts'
 import { listRecords, readRecord, vmDir, writeRecord, type VmRecord } from './state.ts'
+import { Snapshots } from './snapshots.ts'
 import * as zfs from './zfs.ts'
 
 // What the HTTP API needs; tests substitute a fake.
@@ -27,6 +28,8 @@ export interface VmService {
   create(input: CreateVm): Promise<Vm>
   start(id: string): Promise<Vm>
   stop(id: string): Promise<Vm>
+  pause(id: string): Promise<Vm>
+  resume(id: string): Promise<Vm>
   remove(id: string): Promise<void>
   exec(id: string, req: ExecRequest): Promise<ExecResult>
   guest(id: string): Promise<GuestClient>
@@ -46,7 +49,8 @@ const rootVolume = (id: string) => `${dataset(id)}/root`
 export class VmManager implements VmService {
   // Lifecycle changes (and the capacity and slot checks before them) happen one at a time.
   private lock = new Mutex()
-  private transitions = new Map<string, 'starting' | 'stopping'>()
+  private transitions = new Map<string, 'starting' | 'stopping' | 'pausing' | 'resuming'>()
+  private snapshots = new Snapshots()
 
   async list() {
     const records = await listRecords()
@@ -63,7 +67,7 @@ export class VmManager implements VmService {
     const size = VmSizes[input.size ?? DEFAULT_VM_SIZE]
     const diskGib = await this.checkDiskSize(input.diskGib ?? DEFAULT_DISK_GIB, image.rootfs)
 
-    const record = await this.lock.run(async () => {
+    return this.lock.run(async () => {
       const records = await listRecords()
       if (input.name && records.some((r) => r.name === input.name)) {
         throw new HttpError(409, `a VM named ${input.name} already exists`)
@@ -84,6 +88,10 @@ export class VmManager implements VmService {
         startedAt: null,
         bootMs: null,
         lastError: null,
+        checkpoint: null,
+        paused: false,
+        pauseMs: null,
+        resumeMs: null,
       }
       try {
         await zfs.createFilesystem(dataset(id))
@@ -96,30 +104,78 @@ export class VmManager implements VmService {
         await this.cleanUp(record).catch(() => {})
         throw err
       }
-      return record
+      return this.awaitBoot(record)
     })
-
-    return this.awaitBoot(record)
   }
 
   async start(id: string) {
-    const record = await this.lock.run(async () => {
+    const started = performance.now()
+    return this.lock.run(async () => {
       const record = await this.record(id)
-      if (this.transitions.has(id) || (await firecracker.isRunning(id))) return null
+      if (record.paused) return this.restore(record, started)
+      if (await firecracker.isRunning(id)) return this.get(id)
       await this.ensureFits(record.memMib)
       await this.launch(record)
-      return record
+      return this.awaitBoot(record)
     })
-    return record ? this.awaitBoot(record) : this.get(id)
+  }
+
+  async pause(id: string) {
+    return this.lock.run(async () => {
+      const record = await this.record(id)
+      if (record.paused) {
+        await this.snapshots.reconcile(record)
+        return this.get(id)
+      }
+      if (!(await firecracker.isRunning(id))) throw new HttpError(409, `${record.name} isn't running`)
+      this.transitions.set(id, 'pausing')
+      try {
+        await this.snapshots.pause(record)
+      } catch (error) {
+        throw new HttpError(502, `couldn't pause ${record.name}: ${error instanceof Error ? error.message : error}`)
+      } finally { this.transitions.delete(id) }
+      return this.get(id)
+    })
+  }
+
+  async resume(id: string) {
+    const started = performance.now()
+    return this.lock.run(async () => {
+      const record = await this.record(id)
+      if (!record.paused) {
+        if (await firecracker.isRunning(id)) return this.get(id)
+        throw new HttpError(409, `${record.name} has no paused session; start it instead`)
+      }
+      return this.restore(record, started)
+    })
+  }
+
+  private async restore(record: VmRecord, started: number) {
+    // Finish an interrupted pause first, so its still-frozen VMM isn't charged
+    // twice by the capacity check for this same workspace.
+    if (await firecracker.isRunning(record.id)) await this.snapshots.reconcile(record)
+    await this.ensureFits(record.memMib)
+    this.transitions.set(record.id, 'resuming')
+    try { await this.snapshots.resume(record, started) }
+    catch (error) { throw new HttpError(502, `couldn't resume ${record.name}: ${error instanceof Error ? error.message : error}`) }
+    finally { this.transitions.delete(record.id) }
+    return this.get(record.id)
   }
 
   async stop(id: string) {
     await this.lock.run(async () => {
-      await this.record(id)
+      const record = await this.record(id)
+      if (record.paused) throw new HttpError(409, `${record.name} is paused; resume it before stopping`)
       if (!(await firecracker.isRunning(id))) return
       this.transitions.set(id, 'stopping')
       try {
         await this.shutDown(id)
+        if (record.checkpoint) {
+          const previous = record.checkpoint
+          record.checkpoint = null
+          await writeRecord(record)
+          await this.snapshots.discard(record, previous)
+        }
       } finally {
         this.transitions.delete(id)
       }
@@ -142,7 +198,7 @@ export class VmManager implements VmService {
   // The guest agent of a running VM.
   async guest(id: string) {
     const record = await this.record(id)
-    if (!(await firecracker.isRunning(id)) || this.transitions.has(id)) {
+    if (record.paused || !(await firecracker.isRunning(id)) || this.transitions.has(id)) {
       throw new HttpError(409, `${record.name} isn't running`)
     }
     return guestClient(slotAddresses(record.slot).guestIp, record.token)
@@ -156,7 +212,7 @@ export class VmManager implements VmService {
   // drop TAP devices left behind (e.g. by a host reboot).
   async reconcile() {
     for (const record of await listRecords()) {
-      if (!(await firecracker.isRunning(record.id))) await deleteTap(record.slot)
+      await this.snapshots.reconcile(record)
     }
   }
 
@@ -169,9 +225,9 @@ export class VmManager implements VmService {
   private async toVm(record: VmRecord): Promise<Vm> {
     const running = await firecracker.isRunning(record.id)
     const state =
-      this.transitions.get(record.id) ?? (running ? 'running' : record.lastError ? 'failed' : 'stopped')
-    const { token: _token, slot, kernel: _kernel, ...rest } = record
-    return { ...rest, state, guestIp: slotAddresses(slot).guestIp }
+      this.transitions.get(record.id) ?? (record.paused ? 'paused' : running ? 'running' : record.lastError ? 'failed' : 'stopped')
+    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, ...rest } = record
+    return { ...rest, state, pausedAt: record.paused ? record.checkpoint?.createdAt ?? null : null, guestIp: slotAddresses(slot).guestIp }
   }
 
   private async memInUse() {
