@@ -26,8 +26,11 @@ Start-Service sshd
 $keys = 'C:\\ProgramData\\ssh\\administrators_authorized_keys'
 Set-Content -Path $keys -Value '${publicKey}' -Encoding ascii
 icacls.exe $keys /inheritance:r /grant 'Administrators:F' /grant 'SYSTEM:F' | Out-Null
+# Keys only: no passwords, and no keyboard-interactive either. sshd takes the
+# first value it reads, so these go at the top, replacing any others.
 $config = 'C:\\ProgramData\\ssh\\sshd_config'
-(Get-Content $config) -replace '^#?\\s*PasswordAuthentication\\s.*$', 'PasswordAuthentication no' | Set-Content $config -Encoding ascii
+$rest = Get-Content $config | Where-Object { $_ -notmatch '^\\s*#?\\s*(PasswordAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication)\\s' }
+Set-Content -Path $config -Value (@('PasswordAuthentication no', 'KbdInteractiveAuthentication no') + $rest) -Encoding ascii
 Restart-Service sshd
 
 # TightVNC for the desktop, with this workspace's password, and without its

@@ -60,7 +60,7 @@ try {
   }
   console.log(`ready after ${Math.round((Date.now() - started) / 60_000)} min`)
 
-  const tools = await onControl(`${ssh} 'git --version; node --version; claude --version; codex --version; $PSVersionTable.PSVersion.ToString(); (Get-Service tvnserver).Status; (Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform).State; Select-String -Path C:\\ProgramData\\ssh\\sshd_config -Pattern "^PasswordAuthentication" | ForEach-Object Line'`)
+  const tools = await onControl(`${ssh} 'git --version; node --version; claude --version; codex --version; $PSVersionTable.PSVersion.ToString(); (Get-Service tvnserver).Status; (Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform).State; Select-String -Path C:\\ProgramData\\ssh\\sshd_config -Pattern "^(PasswordAuthentication|KbdInteractiveAuthentication)" | ForEach-Object Line'`)
   console.log(tools.stdout.trim().split('\n').map((l) => `     ${l}`).join('\n'))
   check(tools.ok && /git version/.test(tools.stdout), 'Git', tools.stderr)
   check(/^v\d+/m.test(tools.stdout), 'Node')
@@ -69,7 +69,7 @@ try {
   check(/^7\./m.test(tools.stdout), 'PowerShell 7 is the SSH shell')
   check(/^Running$/m.test(tools.stdout), 'TightVNC is running')
   check(/^Enabled$/m.test(tools.stdout), 'WSL (Virtual Machine Platform) is on')
-  check(/^PasswordAuthentication no$/m.test(tools.stdout), 'sshd_config turns password sign-in off')
+  check(/^PasswordAuthentication no$/m.test(tools.stdout) && /^KbdInteractiveAuthentication no$/m.test(tools.stdout), 'sshd_config allows keys only')
 
   const password = await onControl(`ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -o BatchMode=yes -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no Administrator@${ip} true 2>&1 || true`)
   check(/Permission denied \(publickey\)/.test(password.stdout), 'SSH refuses passwords', password.stdout.trim())
