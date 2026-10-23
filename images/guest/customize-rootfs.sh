@@ -122,8 +122,12 @@ EOF
 chroot "$root" chown -R dev:dev /home/dev/.claude /home/dev/.codex /home/dev/.config
 
 log "configuring the system"
+mkdir -p "$root/etc/ssh/sshd_config.d" "$root/etc/systemd/system/ssh.service.d"
+printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\nPubkeyAuthentication yes\n' >"$root/etc/ssh/sshd_config.d/00-substrate.conf"
+printf '[Service]\nExecStartPre=\nExecStartPre=/usr/bin/ssh-keygen -A\nExecStartPre=/usr/sbin/sshd -t\n' >"$root/etc/systemd/system/ssh.service.d/substrate.conf"
+rm -f "$root"/etc/ssh/ssh_host_*key*
 in_root '
-  systemctl enable substrate-guestd docker containerd >/dev/null 2>&1
+  systemctl enable substrate-guestd docker containerd ssh >/dev/null 2>&1
   # Nothing reads a console, and these only slow boot or run maintenance a VM does not need.
   systemctl mask getty@tty1.service serial-getty@ttyS0.service systemd-networkd-wait-online.service \
     apt-daily.timer apt-daily-upgrade.timer motd-news.timer e2scrub_all.timer e2scrub_reap.service \

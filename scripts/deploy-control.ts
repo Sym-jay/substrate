@@ -3,11 +3,13 @@
 import { $ } from 'bun'
 import { cp, mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { printRun, run, stackOutputs, upload } from './lib/aws.ts'
 
 const root = join(import.meta.dir, '..')
 const out = await stackOutputs()
 const version = (await $`git describe --always --dirty`.cwd(root).text()).trim()
+const artifactPrefix = `control/releases/${randomUUID()}`
 const bundle = join(root, 'dist/control')
 
 console.log(`building ${version}`)
@@ -24,10 +26,10 @@ const tarball = join(root, 'dist/control.tar.gz')
 await $`tar --no-xattrs -czf ${tarball} -C ${bundle} .`.env({ ...process.env, COPYFILE_DISABLE: '1' })
 
 console.log('uploading')
-await upload(out.ArtifactsBucket, 'control/control.tar.gz', await Bun.file(tarball).bytes())
+await upload(out.ArtifactsBucket, `${artifactPrefix}/control.tar.gz`, await Bun.file(tarball).bytes())
 await upload(
   out.ArtifactsBucket,
-  'control/setup-control.sh',
+  `${artifactPrefix}/setup-control.sh`,
   await Bun.file(join(root, 'images/control/setup-control.sh')).text(),
 )
 
@@ -36,9 +38,11 @@ const result = await run(
   out.ControlInstanceId,
   [
     'set -e',
+    'exec 9>/run/lock/substrate-control-deploy.lock',
+    'flock -n 9 || { echo "Another control deployment is active" >&2; exit 1; }',
     'mkdir -p /opt/substrate',
-    `aws s3 cp --quiet s3://${out.ArtifactsBucket}/control/setup-control.sh /opt/substrate/setup-control.sh`,
-    'bash /opt/substrate/setup-control.sh',
+    `aws s3 cp --quiet s3://${out.ArtifactsBucket}/${artifactPrefix}/setup-control.sh /opt/substrate/setup-control.sh`,
+    `SUBSTRATE_CONTROL_BUNDLE_KEY=${artifactPrefix}/control.tar.gz bash /opt/substrate/setup-control.sh`,
   ].join('\n'),
 )
 printRun(result)

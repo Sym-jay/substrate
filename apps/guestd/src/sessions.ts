@@ -1,4 +1,4 @@
-import { Agents, AgentResume, TerminalInput, type CreateSession, type Session, type TerminalOutput } from '@substrate/protocol'
+import { AgentResume, TerminalInput, type AgentMode, type CreateSession, type Session, type TerminalOutput } from '@substrate/protocol'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -14,18 +14,22 @@ const MAX_SESSIONS = 32
 export const withControllingTerminal = (argv: string[]) => ['setsid', '--ctty', '--wait', ...argv]
 
 // `runuser -l` gives the same login shell (PATH, HOME) as exec.ts. When an
-// agent exits, a shell takes over, so the session stays usable. `resume`
-// starts the agent on its most recent conversation.
-export function sessionArgv({ agent }: CreateSession, resume = false): string[] {
-  const command = agent && (resume ? AgentResume[agent] : Agents[agent])
-  return withControllingTerminal(
-    command ? ['runuser', '-l', 'dev', '-c', `${command}; exec bash -l`] : ['runuser', '-l', 'dev'],
-  )
+// agent exits, a shell takes over, so the session stays usable.
+export function sessionArgv({ agent, mode = 'ask' }: CreateSession, resume = false): string[] {
+  const cwd = 'if [ -d /home/dev/workspace ]; then cd /home/dev/workspace; fi; '
+  if (!agent) return withControllingTerminal(['runuser', '-l', 'dev', '-c', `${cwd}exec bash -l`])
+  const commands = {
+    claude: mode === 'auto' ? 'claude --dangerously-skip-permissions' : 'claude --permission-mode default',
+    codex: mode === 'auto' ? 'codex --dangerously-bypass-approvals-and-sandbox' : 'codex --sandbox workspace-write --ask-for-approval on-request',
+    opencode: mode === 'auto' ? 'opencode --auto' : `OPENCODE_CONFIG_CONTENT='{"permission":"ask"}' opencode`,
+    agy: mode === 'auto' ? 'agy --dangerously-skip-permissions' : 'agy',
+  }
+  return withControllingTerminal(['runuser', '-l', 'dev', '-c', `${cwd}${resume ? commands[agent].replace(agent, AgentResume[agent]) : commands[agent]}; exec bash -l`])
 }
 
 // Where running sessions are listed, for `Sessions.start(true)`.
 export const SESSIONS_FILE = '/var/lib/substrate-guestd/sessions.json'
-type Saved = { id: string; agent: Session['agent']; createdAt: string }
+type Saved = { id: string; agent: Session['agent']; createdAt: string; mode?: AgentMode; checkpointId?: string | null }
 
 // One terminal: a process on a PTY plus its scrollback. It runs whether or not
 // anyone is attached; every attach replays the scrollback first.
@@ -47,6 +51,8 @@ export class TerminalSession {
     argv: string[],
     cwd: string,
     private readonly activity: ActivitySink = noActivity,
+    readonly mode: AgentMode = 'ask',
+    readonly checkpointId: string | null = null,
     // A session reopened after a restart keeps its ID, so open tabs reattach.
     reopened?: Saved & { notice: string },
   ) {
@@ -83,7 +89,7 @@ export class TerminalSession {
   }
 
   get info(): Session {
-    return { id: this.id, agent: this.agent, createdAt: this.createdAt, state: this.state, exitCode: this.exitCode }
+    return { id: this.id, agent: this.agent, createdAt: this.createdAt, state: this.state, exitCode: this.exitCode, mode: this.mode, checkpointId: this.checkpointId }
   }
 
   attach(listener: Listener) {
@@ -160,7 +166,7 @@ export class Sessions {
       const saved = await readFile(this.file, 'utf8').then((text) => JSON.parse(text) as Saved[], () => [])
       for (const s of saved.slice(0, MAX_SESSIONS)) {
         const notice = `[Substrate restarted this VM.${s.agent ? ` Continuing ${s.agent}'s last conversation.` : ''}]\r\n`
-        this.add(new TerminalSession(s.agent, this.argv({ agent: s.agent ?? undefined }, true), this.cwd, this.activity, { ...s, notice }))
+        this.add(new TerminalSession(s.agent, this.argv({ agent: s.agent ?? undefined, mode: s.mode ?? 'ask' }, true), this.cwd, this.activity, s.mode ?? 'ask', s.checkpointId ?? null, { ...s, notice }))
       }
     }
     await this.save()
@@ -182,7 +188,7 @@ export class Sessions {
       if (!ended) return null
       this.sessions.delete(ended.id)
     }
-    return this.add(new TerminalSession(req.agent ?? null, this.argv(req), this.cwd, this.activity))
+    return this.add(new TerminalSession(req.agent ?? null, this.argv(req), this.cwd, this.activity, req.mode ?? 'ask', req.agent ? req.checkpointId ?? null : null))
   }
 
   private add(session: TerminalSession) {
@@ -199,7 +205,7 @@ export class Sessions {
     if (!file) return this.saving
     this.saving = this.saving.then(async () => {
       const running = [...this.sessions.values()].filter((s) => s.state === 'running')
-      const saved: Saved[] = running.map(({ id, agent, createdAt }) => ({ id, agent, createdAt }))
+      const saved: Saved[] = running.map(({ id, agent, createdAt, mode, checkpointId }) => ({ id, agent, createdAt, mode, checkpointId }))
       await mkdir(dirname(file), { recursive: true })
       await writeFile(`${file}.tmp`, JSON.stringify(saved))
       await rename(`${file}.tmp`, file)

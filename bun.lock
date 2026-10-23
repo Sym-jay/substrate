@@ -20,6 +20,7 @@
       "name": "@substrate/control",
       "dependencies": {
         "@aws-sdk/client-ec2": "^3.1156.0",
+        "@aws-sdk/client-ssm": "^3.1156.0",
         "@clerk/backend": "^3.26.1",
         "@substrate/protocol": "workspace:*",
         "hono": "^4.13.13",

@@ -41,6 +41,14 @@ export function guestClient(guestIp: string, token: string, port = GUESTD_PORT) 
     async createSession(req: CreateSession) {
       return Session.parse(await sessionCall(`${base}/sessions`, { method: 'POST', headers, body: JSON.stringify(req) }))
     },
+    async repository(repository: string, token?: string) {
+      const res = await fetch(`${base}/repository`, { method: 'POST', headers, body: JSON.stringify({ repository, token }), signal: AbortSignal.timeout(180_000) })
+      if (!res.ok) throw new Error('Repository setup failed; verify its name and token access')
+    },
+    async authorizeSsh(publicKey: string) {
+      const res = await fetch(`${base}/ssh/keys`, { method: 'POST', headers, body: JSON.stringify({ publicKey }), signal: AbortSignal.timeout(15_000) })
+      if (!res.ok) throw new Error('Could not install the SSH public key')
+    },
 
     // For relaying a browser's terminal straight to guestd.
     terminal(sessionId: string) {

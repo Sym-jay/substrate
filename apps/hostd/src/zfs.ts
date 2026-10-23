@@ -31,6 +31,17 @@ export async function cloneVolume(snapshot: string, name: string, sizeGib: numbe
   await sh`zfs set volsize=${sizeGib}G ${name}`
 }
 
+// Full compressed sends give a fork independent ownership of its blocks:
+// deleting either VM never needs to delete snapshots belonging to the other.
+export async function copySnapshot(snapshot: string, destination: string, filesystem = false) {
+  if (filesystem) {
+    await sh`zfs send -c ${snapshot} | zfs receive -u -x mountpoint ${destination}`
+    await sh`zfs mount ${destination}`
+  } else {
+    await sh`zfs send -c ${snapshot} | zfs receive -u ${destination}`
+  }
+}
+
 export async function setVolumeSize(name: string, sizeGib: number) {
   await sh`zfs set volsize=${sizeGib}G ${name}`
 }

@@ -7,6 +7,7 @@ import { sendEvent, serveEvents } from './events.ts'
 import { exec } from './exec.ts'
 import { readGuestConfig, type GuestConfig } from './mmds.ts'
 import { SESSIONS_FILE, Sessions } from './sessions.ts'
+import { configureFork } from './identity.ts'
 
 // Set by `bun build --define` in images/host/install-hostd.sh.
 declare const BUILD_VERSION: string | undefined
@@ -32,13 +33,31 @@ for (let attempt = 1; !config; attempt++) {
 const activity = new Activity()
 const sessions = new Sessions(undefined, undefined, activity, SESSIONS_FILE)
 await sessions.start(config.resumeSessions)
-const app = createApp({ vmId: config.vmId, token: config.token, version, run: exec, sessions, activity })
 // Without it agents can't send alerts, but the VM still works.
 await serveEvents(activity).catch((err) => console.error(`agent events are off: ${err}`))
 const cpu = cpuSampler()
 setInterval(async () => {
   if ((await cpu().catch(() => 0)) > BUSY_CPUS) activity.touch()
 }, 10_000)
-// idleTimeout 0: an exec can legitimately run for minutes.
-Bun.serve({ hostname: config.guestIp, port: GUESTD_PORT, idleTimeout: 0, fetch: app.fetch, websocket })
+const serve = (identity: GuestConfig) => Bun.serve({
+  hostname: identity.guestIp, port: GUESTD_PORT, idleTimeout: 0,
+  fetch: createApp({ vmId: identity.vmId, token: identity.token, version, run: exec, sessions, activity }).fetch, websocket,
+})
+let server = serve(config)
+let checking = false
+setInterval(async () => {
+  if (checking) return
+  checking = true
+  try {
+    const next = await readGuestConfig()
+    if (next.vmId !== config!.vmId || next.token !== config!.token) {
+      await configureFork(config!, next)
+      activity.touch()
+      server.stop(true)
+      server = serve(next)
+      config = next
+    }
+  } catch (error) { console.error('metadata refresh:', error instanceof Error ? error.message : 'failed') }
+  finally { checking = false }
+}, 1_000)
 console.log(`substrate-guestd ${version} for ${config.vmId} on ${config.guestIp}:${GUESTD_PORT}`)

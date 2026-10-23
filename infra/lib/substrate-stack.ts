@@ -5,6 +5,7 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as iam from 'aws-cdk-lib/aws-iam'
 import * as s3 from 'aws-cdk-lib/aws-s3'
+import * as ssm from 'aws-cdk-lib/aws-ssm'
 import type { Construct } from 'constructs'
 import { config } from './config.ts'
 
@@ -242,6 +243,24 @@ export class SubstrateStack extends Stack {
     })
 
     new CfnOutput(this, 'Url', { value: `https://${web.distributionDomainName}` })
+    const previews = new cloudfront.Distribution(this, 'Previews', {
+      comment: 'Substrate workspace previews',
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_200,
+      defaultBehavior: {
+        origin: new origins.HttpOrigin(controlHostname, {
+          protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+          httpPort: config.control.port,
+          readTimeout: Duration.seconds(60),
+          customHeaders: { 'x-substrate-preview': '1' },
+        }),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+        cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+        originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
+      },
+    })
+    new ssm.StringParameter(this, 'PreviewOrigin', { parameterName: '/substrate/preview-origin', stringValue: `https://${previews.distributionDomainName}` })
+    new CfnOutput(this, 'PreviewUrl', { value: `https://${previews.distributionDomainName}` })
     new CfnOutput(this, 'ArtifactsBucket', { value: artifacts.bucketName })
     new CfnOutput(this, 'ControlInstanceId', { value: control.instanceId })
     new CfnOutput(this, 'HostInstanceId', { value: host.instanceId })

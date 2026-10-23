@@ -52,8 +52,12 @@ describe('guestd API', () => {
 describe('sessions', () => {
   test('run as dev in a login shell, agents falling back to a shell', () => {
     const ctty = ['setsid', '--ctty', '--wait']
-    expect(sessionArgv({})).toEqual([...ctty, 'runuser', '-l', 'dev'])
-    expect(sessionArgv({ agent: 'claude' })).toEqual([...ctty, 'runuser', '-l', 'dev', '-c', 'claude; exec bash -l'])
+    expect(sessionArgv({}).slice(0, 5)).toEqual([...ctty, 'runuser', '-l'])
+    expect(sessionArgv({ agent: 'claude' }).at(-1)).toContain('claude --permission-mode default; exec bash -l')
+    expect(sessionArgv({ agent: 'claude', mode: 'auto' }).at(-1)).toContain('--dangerously-skip-permissions')
+    expect(sessionArgv({ agent: 'codex', mode: 'auto' }).at(-1)).toContain('--dangerously-bypass-approvals-and-sandbox')
+    expect(sessionArgv({ agent: 'codex' }).at(-1)).toContain('--ask-for-approval on-request')
+    expect(sessionArgv({ agent: 'opencode' }).at(-1)).toContain('"permission":"ask"')
   })
 
   test('reject unknown agents and missing sessions', async () => {
@@ -198,9 +202,9 @@ async function stopAll(sessions: Sessions) {
 describe('reopening sessions after a restart', () => {
   test('agents resume their last conversation', () => {
     const ctty = ['setsid', '--ctty', '--wait']
-    expect(sessionArgv({ agent: 'claude' }, true)).toEqual([...ctty, 'runuser', '-l', 'dev', '-c', 'claude --continue; exec bash -l'])
-    expect(sessionArgv({ agent: 'codex' }, true).at(-1)).toBe('codex resume --last; exec bash -l')
-    expect(sessionArgv({}, true)).toEqual([...ctty, 'runuser', '-l', 'dev'])
+    expect(sessionArgv({ agent: 'claude' }, true)).toEqual([...ctty, 'runuser', '-l', 'dev', '-c', 'if [ -d /home/dev/workspace ]; then cd /home/dev/workspace; fi; claude --continue --permission-mode default; exec bash -l'])
+    expect(sessionArgv({ agent: 'codex' }, true).at(-1)).toBe('if [ -d /home/dev/workspace ]; then cd /home/dev/workspace; fi; codex resume --last --sandbox workspace-write --ask-for-approval on-request; exec bash -l')
+    expect(sessionArgv({}, true)).toEqual([...ctty, 'runuser', '-l', 'dev', '-c', 'if [ -d /home/dev/workspace ]; then cd /home/dev/workspace; fi; exec bash -l'])
   })
 
   test('running sessions come back under the same IDs, only when asked', async () => {
@@ -215,7 +219,7 @@ describe('reopening sessions after a restart', () => {
       const before = new Sessions(argv, dir, undefined, file)
       await before.start(false)
       const shell = before.create({})!
-      const agent = before.create({ agent: 'claude' })!
+      const agent = before.create({ agent: 'claude', mode: 'auto', checkpointId: 'ebea20af-a0cb-4f58-96de-d450915a14f5' })!
       const ended = before.create({})!
       ended.stop()
       await ended.exited
@@ -233,6 +237,8 @@ describe('reopening sessions after a restart', () => {
       let scrollback = ''
       after.get(agent.id)!.attach((m) => { if (m.type === 'ready') scrollback = m.scrollback })
       expect(scrollback).toContain("Continuing claude's last conversation")
+      expect(after.get(agent.id)!.info.mode).toBe('auto')
+      expect(after.get(agent.id)!.info.checkpointId).toBe('ebea20af-a0cb-4f58-96de-d450915a14f5')
       await stopAll(after)
 
       // A normal boot starts empty, and forgets the old list.

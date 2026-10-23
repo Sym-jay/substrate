@@ -66,7 +66,8 @@ systemctl enable substrate-control >/dev/null 2>&1
 
 # Unpack each release into its own folder, then switch a symlink to it, so the
 # running service never sees a half-written bundle.
-if aws s3 cp --quiet "s3://${SUBSTRATE_BUCKET}/control/control.tar.gz" /tmp/control.tar.gz; then
+bundle_key=${SUBSTRATE_CONTROL_BUNDLE_KEY:-control/control.tar.gz}
+if aws s3 cp --quiet "s3://${SUBSTRATE_BUCKET}/${bundle_key}" /tmp/control.tar.gz; then
   release="/opt/substrate/releases/$(date +%Y%m%d%H%M%S)"
   mkdir -p "$release"
   tar -xzf /tmp/control.tar.gz -C "$release"
@@ -78,6 +79,10 @@ if aws s3 cp --quiet "s3://${SUBSTRATE_BUCKET}/control/control.tar.gz" /tmp/cont
 else
   log "no control bundle in s3://${SUBSTRATE_BUCKET}/control/ yet"
   exit 0
+fi
+
+if preview_origin=$(aws ssm get-parameter --region "$AWS_REGION" --name /substrate/preview-origin --query Parameter.Value --output text 2>/dev/null); then
+  (umask 077 && printf 'SUBSTRATE_PREVIEW_ORIGIN=%s\n' "$preview_origin" >>"$secrets")
 fi
 
 systemctl restart substrate-control

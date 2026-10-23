@@ -12,6 +12,7 @@ curl
 wget
 gnupg
 git
+openssh-server
 openssh-client
 sudo
 tmux

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AgentMode } from './github.ts'
 
 // Terminal sessions inside a VM. guestd owns them, so they keep running (with
 // their scrollback) while no browser is attached.
@@ -25,6 +26,9 @@ export type Agent = z.infer<typeof Agent>
 export const CreateSession = z.object({
   // Start an agent instead of a plain shell. A shell takes over when it exits.
   agent: Agent.optional(),
+  mode: AgentMode.optional(),
+  // Set by hostd after it has created the pre-run disk checkpoint.
+  checkpointId: z.string().uuid().optional(),
 })
 export type CreateSession = z.infer<typeof CreateSession>
 
@@ -34,6 +38,8 @@ export const Session = z.object({
   createdAt: z.string(),
   state: z.enum(['running', 'exited']),
   exitCode: z.number().int().nullable(),
+  mode: AgentMode.optional(),
+  checkpointId: z.string().uuid().nullable().optional(),
 })
 export type Session = z.infer<typeof Session>
 

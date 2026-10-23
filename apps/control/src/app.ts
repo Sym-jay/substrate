@@ -2,6 +2,7 @@ import type { Health, HostStatus, Status } from '@substrate/protocol'
 import { Hono } from 'hono'
 import { serveStatic } from 'hono/bun'
 import { vmRoutes, type VmRoutesOptions } from './vms.ts'
+import type { previewRoutes } from './previews.ts'
 
 type Options = {
   version: string
@@ -12,11 +13,19 @@ type Options = {
   clerkPublishableKey: string | null
   // VM routes, or why there aren't any (no sandbox host, or no sign-in).
   vms: VmRoutesOptions | { unavailable: string }
+  previews?: ReturnType<typeof previewRoutes>
 }
 
-export function createApp({ version, region, webDir, readHost, clerkPublishableKey, vms }: Options) {
+export function createApp({ version, region, webDir, readHost, clerkPublishableKey, vms, previews }: Options) {
   const startedAt = new Date().toISOString()
   const app = new Hono()
+
+  // CloudFront's dedicated preview distribution tags its origin requests.
+  // It has a separate browser origin and never serves control API routes.
+  app.use('*', async (c, next) => {
+    if (c.req.header('x-substrate-preview') === '1') return previews ? previews.fetch(c.req.raw, c.env) : c.text('Previews are not configured', 404)
+    await next()
+  })
 
   app.get('/api/health', (c) => c.json({ ok: true, version } satisfies Health))
 
