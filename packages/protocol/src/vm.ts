@@ -10,7 +10,7 @@ export const VmSizeName = z.enum(['large', 'medium', 'small'])
 export type VmSizeName = z.infer<typeof VmSizeName>
 export const DEFAULT_VM_SIZE: VmSizeName = 'large'
 
-export const VmState = z.enum(['starting', 'running', 'stopping', 'stopped', 'failed'])
+export const VmState = z.enum(['starting', 'running', 'stopping', 'stopped', 'failed', 'pausing', 'paused', 'resuming'])
 export type VmState = z.infer<typeof VmState>
 
 export const Vm = z.object({
@@ -28,6 +28,10 @@ export const Vm = z.object({
   // From launching Firecracker to the guest agent answering, on the last boot.
   bootMs: z.number().nullable(),
   lastError: z.string().nullable(),
+  // Optional so an M3 client can still read an older hostd.
+  pausedAt: z.string().nullable().optional(),
+  pauseMs: z.number().nullable().optional(),
+  resumeMs: z.number().nullable().optional(),
 })
 export type Vm = z.infer<typeof Vm>
 

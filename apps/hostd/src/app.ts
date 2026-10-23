@@ -27,6 +27,8 @@ export function createApp({ token, version, image, vms }: Options) {
   app.get('/vms/:id', async (c) => c.json(await vms.get(c.req.param('id'))))
   app.post('/vms/:id/start', async (c) => c.json(await vms.start(c.req.param('id'))))
   app.post('/vms/:id/stop', async (c) => c.json(await vms.stop(c.req.param('id'))))
+  app.post('/vms/:id/pause', async (c) => c.json(await vms.pause(c.req.param('id'))))
+  app.post('/vms/:id/resume', async (c) => c.json(await vms.resume(c.req.param('id'))))
   app.delete('/vms/:id', async (c) => {
     await vms.remove(c.req.param('id'))
     return c.body(null, 204)

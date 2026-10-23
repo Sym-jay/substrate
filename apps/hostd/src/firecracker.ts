@@ -2,6 +2,7 @@ import { $ } from 'bun'
 import { rm } from 'node:fs/promises'
 import { config } from './config.ts'
 import { sh } from './sh.ts'
+import { firecrackerClient } from './firecracker-api.ts'
 
 export type LaunchSpec = {
   id: string
@@ -64,9 +65,31 @@ export const apiSocket = (id: string) => `${config.paths.run}/${id}.sock`
 // Stopping the unit, from hostd or because the host is shutting down, runs
 // vm-stop first, which shuts the guest down cleanly so no writes are lost.
 export async function launch(spec: LaunchSpec, files: { config: string; metadata: string }) {
-  const socket = apiSocket(spec.id)
+  return launchProcess(spec.id, files.metadata, ['--config-file', files.config, '--metadata', files.metadata])
+}
+
+// Snapshot loading requires a fresh, unconfigured Firecracker process.
+export async function launchForRestore(id: string, metadata: string) {
+  return launchProcess(id, metadata, [])
+}
+
+async function launchProcess(id: string, metadata: string, args: string[]) {
+  const socket = apiSocket(id)
   await rm(socket, { force: true })
-  await sh`systemd-run --unit=${unitName(spec.id)} --description=${`Substrate VM ${spec.id}`} --collect --quiet ${`--property=ExecStop=${config.vmStop} ${files.metadata}`} --property=TimeoutStopSec=30 --property=After=zfs.target -- ${config.firecracker} --api-sock ${socket} --config-file ${files.config} --metadata ${files.metadata} --level Warning`
+  await sh`systemd-run --unit=${unitName(id)} --description=${`Substrate VM ${id}`} --collect --quiet ${`--property=ExecStop=${config.vmStop} ${metadata}`} --property=TimeoutStopSec=30 --property=After=zfs.target -- ${config.firecracker} --api-sock ${socket} ${args} --level Warning`
+}
+
+export const api = (id: string) => firecrackerClient(apiSocket(id))
+
+export async function waitForApi(id: string, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    try { return await api(id)('GET /', undefined, 500) }
+    catch (error) {
+      if (Date.now() >= deadline) throw error
+      await Bun.sleep(10)
+    }
+  }
 }
 
 export async function isRunning(id: string) {
@@ -81,8 +104,9 @@ export async function stop(id: string) {
 
 // Skips the clean shutdown, for VMs that are being deleted or never booted.
 export async function kill(id: string) {
-  await $`systemctl kill --signal=SIGKILL ${unitName(id)}`.quiet().nothrow()
+  await $`systemctl kill --kill-whom=all --signal=SIGKILL ${unitName(id)}`.quiet().nothrow()
   for (let i = 0; i < 50 && (await isRunning(id)); i++) await Bun.sleep(100)
+  if (await isRunning(id)) throw new Error(`Firecracker ${id} did not stop`)
 }
 
 export async function journalTail(id: string, lines = 25) {

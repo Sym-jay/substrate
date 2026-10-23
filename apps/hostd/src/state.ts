@@ -1,9 +1,16 @@
-import { readdir, rename } from 'node:fs/promises'
+import { open, readdir, rename } from 'node:fs/promises'
 import { z } from 'zod'
 import { config } from './config.ts'
 
 // Everything hostd knows about a VM, in vm.json inside the VM's own ZFS
 // dataset. The dataset existing is what makes the VM exist.
+export const Checkpoint = z.object({
+  id: z.string().uuid(),
+  createdAt: z.string(),
+  firecrackerVersion: z.string(),
+})
+export type Checkpoint = z.infer<typeof Checkpoint>
+
 export const VmRecord = z.object({
   id: z.string(),
   name: z.string(),
@@ -18,6 +25,10 @@ export const VmRecord = z.object({
   startedAt: z.string().nullable(),
   bootMs: z.number().nullable(),
   lastError: z.string().nullable(),
+  checkpoint: Checkpoint.nullable().default(null),
+  paused: z.boolean().default(false),
+  pauseMs: z.number().nullable().default(null),
+  resumeMs: z.number().nullable().default(null),
 })
 export type VmRecord = z.infer<typeof VmRecord>
 
@@ -28,7 +39,11 @@ export async function writeRecord(record: VmRecord) {
   const path = recordPath(record.id)
   // Write then rename, so a crash never leaves half a file. 0600: it holds the guest token.
   await Bun.write(`${path}.tmp`, JSON.stringify(record, null, 2), { mode: 0o600 })
+  const file = await open(`${path}.tmp`, 'r')
+  try { await file.sync() } finally { await file.close() }
   await rename(`${path}.tmp`, path)
+  const directory = await open(vmDir(record.id), 'r')
+  try { await directory.sync() } finally { await directory.close() }
 }
 
 export async function readRecord(id: string): Promise<VmRecord | null> {

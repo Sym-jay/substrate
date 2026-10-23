@@ -10,6 +10,20 @@ export async function createFilesystem(name: string) {
   await sh`zfs create ${name}`
 }
 
+export async function snapshot(name: string) {
+  await sh`zfs snapshot ${name}`
+}
+
+// Called only with Firecracker down. A retry must restore the disk paired
+// with the saved memory, including after an unsuccessful resume.
+export async function rollback(name: string) {
+  await sh`zfs rollback -r ${name}`
+}
+
+export async function syncPool(pool: string) {
+  await sh`zpool sync ${pool}`
+}
+
 // A copy-on-write clone of the image's root disk, grown to the VM's disk size.
 export async function cloneVolume(snapshot: string, name: string, sizeGib: number) {
   await sh`zfs clone ${snapshot} ${name}`

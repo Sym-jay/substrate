@@ -1,4 +1,4 @@
-import type { Vm } from '@substrate/protocol'
+import { Vm } from '@substrate/protocol'
 import { describe, expect, test } from 'bun:test'
 import { createApp } from './app.ts'
 import { computeCapacity, parseMemTotalMib } from './capacity.ts'
@@ -122,6 +122,8 @@ describe('hostd API', () => {
     },
     start: async () => vm,
     stop: async () => ({ ...vm, state: 'stopped' }),
+    pause: async () => ({ ...vm, state: 'paused' }),
+    resume: async () => ({ ...vm, state: 'running' }),
     remove: async () => {},
     exec: async (_id, req) => ({ exitCode: 0, stdout: req.user, stderr: '', durationMs: 5, timedOut: false }),
     guest: async () => {
@@ -176,6 +178,11 @@ describe('hostd API', () => {
     const res = await call('/vms/vm-abc/sessions')
     expect(res.status).toBe(409)
     expect(await res.json()).toEqual({ error: "demo isn't running" })
+  })
+
+  test('pause and resume return the updated lifecycle state', async () => {
+    expect(Vm.parse(await (await call('/vms/vm-abc/pause', { method: 'POST' })).json()).state).toBe('paused')
+    expect(Vm.parse(await (await call('/vms/vm-abc/resume', { method: 'POST' })).json()).state).toBe('running')
   })
 
   test('delete returns no content', async () => {

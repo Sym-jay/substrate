@@ -33,6 +33,12 @@ export const workspaceApi = {
   async start(vmId: string) {
     return Vm.parse(await request(`${vmPath(vmId)}/start`, post({})))
   },
+  async pause(vmId: string) {
+    return Vm.parse(await request(`${vmPath(vmId)}/pause`, post({})))
+  },
+  async resume(vmId: string) {
+    return Vm.parse(await request(`${vmPath(vmId)}/resume`, post({})))
+  },
   async sessions(vmId: string, signal?: AbortSignal) {
     return Session.array().parse(await request(`${vmPath(vmId)}/sessions`, { signal }))
   },
