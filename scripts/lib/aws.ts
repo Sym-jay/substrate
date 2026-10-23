@@ -77,17 +77,15 @@ export async function waitForSsm(instanceId: string, timeoutMs = 300_000) {
 export type RunResult = { ok: boolean; status: string; stdout: string; stderr: string }
 
 // Runs a shell script on an instance through SSM and waits for it to finish.
-// SSM keeps only the last 24 KB of each stream.
-export async function run(instanceId: string, script: string, timeoutSeconds = 900): Promise<RunResult> {
-  const sent = await ssm.send(
-    new SendCommandCommand({
-      InstanceIds: [instanceId],
-      DocumentName: 'AWS-RunShellScript',
-      Parameters: { commands: [script], executionTimeout: [String(timeoutSeconds)] },
-    }),
-  )
-  const commandId = sent.Command?.CommandId
-  if (!commandId) throw new Error('SSM did not return a command ID')
+// SSM keeps only the last 24 KB of each stream. On Windows, the script is
+// PowerShell (AWS-RunPowerShellScript).
+export async function run(
+  instanceId: string,
+  script: string,
+  timeoutSeconds = 900,
+  document: 'AWS-RunShellScript' | 'AWS-RunPowerShellScript' = 'AWS-RunShellScript',
+): Promise<RunResult> {
+  const commandId = await send(instanceId, script, timeoutSeconds, document)
 
   for (;;) {
     await Bun.sleep(2_000)
@@ -106,6 +104,25 @@ export async function run(instanceId: string, script: string, timeoutSeconds = 9
       stderr: inv.StandardErrorContent ?? '',
     }
   }
+}
+
+// Starts a script without waiting for it (say, one that shuts the instance down).
+export async function send(
+  instanceId: string,
+  script: string,
+  timeoutSeconds = 900,
+  document: 'AWS-RunShellScript' | 'AWS-RunPowerShellScript' = 'AWS-RunShellScript',
+) {
+  const sent = await ssm.send(
+    new SendCommandCommand({
+      InstanceIds: [instanceId],
+      DocumentName: document,
+      Parameters: { commands: [script], executionTimeout: [String(timeoutSeconds)] },
+    }),
+  )
+  const commandId = sent.Command?.CommandId
+  if (!commandId) throw new Error('SSM did not return a command ID')
+  return commandId
 }
 
 export function printRun(result: RunResult) {

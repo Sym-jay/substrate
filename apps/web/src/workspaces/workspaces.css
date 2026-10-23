@@ -77,3 +77,9 @@
 .terminal-retry { margin: 0 1rem 1rem; }
 @media (prefers-color-scheme: dark) { .workspace-error { color: #fca5a5; } }
 @media (max-width: 380px) { .workspace-heading { align-items: flex-start; flex-wrap: wrap; } }
+
+.desktop-view { display: flex; flex-direction: column; gap: .5rem; margin-top: .75rem; }
+.desktop-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.desktop-state { font-size: .875rem; color: var(--workspace-muted); }
+.desktop-state.is-error { color: #dc2626; }
+.desktop-screen { width: 100%; aspect-ratio: 16 / 10; overflow: hidden; border-radius: .5rem; background: #18181b; }

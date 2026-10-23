@@ -1,4 +1,4 @@
-import { Session, Vm, RunCheckpoint, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
+import { Session, Vm, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
 import { authHeaders } from '../auth.ts'
 
 export class WorkspaceApiError extends Error {
@@ -82,5 +82,38 @@ export const workspaceApi = {
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     url.searchParams.set('ticket', ticket)
     return url.href
+  },
+}
+
+// Windows workspaces (M9).
+const windowsPath = (id: string) => `/api/windows/${encodeURIComponent(id)}`
+export const windowsApi = {
+  async list(signal?: AbortSignal) {
+    return WindowsWorkspace.array().parse(await request('/api/windows', { signal }))
+  },
+  async create(input: CreateWindowsWorkspace) {
+    return WindowsWorkspace.parse(await request('/api/windows', post(input)))
+  },
+  async start(id: string) { return WindowsWorkspace.parse(await request(`${windowsPath(id)}/start`, post({}))) },
+  async stop(id: string) { return WindowsWorkspace.parse(await request(`${windowsPath(id)}/stop`, post({}))) },
+  async update(id: string, input: UpdateWindowsWorkspace) {
+    return WindowsWorkspace.parse(await request(windowsPath(id), { ...post(input), method: 'PATCH' }))
+  },
+  async remove(id: string) { await request(windowsPath(id), { method: 'DELETE' }) },
+  async credentials(id: string) { return WindowsCredentials.parse(await request(`${windowsPath(id)}/credentials`)) },
+  async terminals(id: string, signal?: AbortSignal) {
+    return Session.array().parse(await request(`${windowsPath(id)}/terminals`, { signal }))
+  },
+  async createTerminal(id: string) { return Session.parse(await request(`${windowsPath(id)}/terminals`, post({}))) },
+  terminalPath(id: string, terminalId: string) {
+    return `${windowsPath(id)}/terminals/${encodeURIComponent(terminalId)}`
+  },
+  // The desktop's WebSocket URL (with a one-time ticket) and VNC password.
+  async desktop(id: string) {
+    const { ticket, password } = (await request(`${windowsPath(id)}/desktop/ticket`, post({}))) as { ticket: string; password: string }
+    const url = new URL(`${windowsPath(id)}/desktop`, window.location.href)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    url.searchParams.set('ticket', ticket)
+    return { url: url.href, password }
   },
 }
