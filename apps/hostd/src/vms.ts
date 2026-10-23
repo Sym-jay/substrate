@@ -12,7 +12,7 @@ import { randomBytes } from 'node:crypto'
 import { hostCapacity } from './capacity.ts'
 import { config } from './config.ts'
 import * as firecracker from './firecracker.ts'
-import { guestClient, waitForGuest } from './guest.ts'
+import { guestClient, waitForGuest, type GuestClient } from './guest.ts'
 import { currentImage } from './images.ts'
 import { Mutex } from './mutex.ts'
 import { createTap, deleteTap, lowestFreeSlot, slotAddresses } from './network.ts'
@@ -37,6 +37,7 @@ export interface VmService {
   stop(id: string): Promise<Vm>
   remove(id: string): Promise<void>
   exec(id: string, req: ExecRequest): Promise<ExecResult>
+  guest(id: string): Promise<GuestClient>
   capacity(): Promise<Capacity>
 }
 
@@ -141,11 +142,16 @@ export class VmManager implements VmService {
   }
 
   async exec(id: string, req: ExecRequest) {
+    return (await this.guest(id)).exec(req)
+  }
+
+  // The guest agent of a running VM.
+  async guest(id: string) {
     const record = await this.record(id)
     if (!(await firecracker.isRunning(id)) || this.transitions.has(id)) {
       throw new HttpError(409, `${record.name} isn't running`)
     }
-    return guestClient(slotAddresses(record.slot).guestIp, record.token).exec(req)
+    return guestClient(slotAddresses(record.slot).guestIp, record.token)
   }
 
   async capacity() {

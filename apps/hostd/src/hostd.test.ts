@@ -124,6 +124,9 @@ describe('hostd API', () => {
     stop: async () => ({ ...vm, state: 'stopped' }),
     remove: async () => {},
     exec: async (_id, req) => ({ exitCode: 0, stdout: req.user, stderr: '', durationMs: 5, timedOut: false }),
+    guest: async () => {
+      throw new HttpError(409, 'demo isn\'t running')
+    },
     capacity: async () => ({ vcpus: 16, memTotalMib: 126_000, memReservedMib: 4_096, memUsedMib: 0, memFreeMib: 121_904 }),
   }
   const app = createApp({ token, version: 'test', image: async () => '20261023-000000', vms: fake })
@@ -167,6 +170,12 @@ describe('hostd API', () => {
   test('exec defaults to the dev user', async () => {
     const res = await call('/vms/vm-abc/exec', { method: 'POST', body: JSON.stringify({ command: 'whoami' }) })
     expect(((await res.json()) as { stdout: string }).stdout).toBe('dev')
+  })
+
+  test('sessions need a running VM', async () => {
+    const res = await call('/vms/vm-abc/sessions')
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: "demo isn't running" })
   })
 
   test('delete returns no content', async () => {
