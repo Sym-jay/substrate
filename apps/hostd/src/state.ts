@@ -1,4 +1,5 @@
 import { open, readdir, rename } from 'node:fs/promises'
+import { AutoPauseMinutes, DEFAULT_AUTO_PAUSE_MINUTES } from '@substrate/protocol'
 import { z } from 'zod'
 import { config } from './config.ts'
 
@@ -29,6 +30,9 @@ export const VmRecord = z.object({
   paused: z.boolean().default(false),
   pauseMs: z.number().nullable().default(null),
   resumeMs: z.number().nullable().default(null),
+  // When it last booted or resumed, so auto-pause gives it a full idle period.
+  awakeSince: z.string().nullable().default(null),
+  autoPauseMinutes: AutoPauseMinutes.default(DEFAULT_AUTO_PAUSE_MINUTES),
 })
 export type VmRecord = z.infer<typeof VmRecord>
 

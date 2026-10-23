@@ -106,7 +106,10 @@ export class Snapshots {
         timeoutMs: config.bootTimeoutMs,
         alive: () => d.firecracker.isRunning(record.id),
       })
-      const next = { ...record, paused: false, lastError: null, resumeMs: Math.round(performance.now() - started) }
+      const next = {
+        ...record, paused: false, lastError: null, resumeMs: Math.round(performance.now() - started),
+        awakeSince: new Date().toISOString(),
+      }
       await d.writeRecord(next)
       Object.assign(record, next)
     } catch (error) {

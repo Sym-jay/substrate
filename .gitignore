@@ -11,3 +11,5 @@ cdk.context.json
 /substrate-dev-aws-credentials
 *.tar.gz
 .DS_Store
+# Left behind by `bun build --compile`.
+*.bun-build

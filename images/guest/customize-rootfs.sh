@@ -84,6 +84,43 @@ RestartSec=1
 WantedBy=multi-user.target
 EOF
 
+# Agents report when they finish or need you through `substrate-event`, for
+# alerts and auto-pause (docs/m4.md). Each hook only adds to the agent's own
+# settings, so a user can change the rest freely.
+log "connecting agents to the guest agent"
+cat >"$root/usr/local/bin/substrate-event" <<'EOF'
+#!/bin/sh
+# substrate-event AGENT start|stop|attention [JSON]: tell Substrate what an agent did.
+exec /usr/local/bin/substrate-guestd event "$@"
+EOF
+chmod 0755 "$root/usr/local/bin/substrate-event"
+as_dev 'mkdir -p ~/.claude ~/.codex ~/.config/opencode/plugins'
+cat >"$root/home/dev/.claude/settings.json" <<'EOF'
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/usr/local/bin/substrate-event claude start", "timeout": 5 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "/usr/local/bin/substrate-event claude stop", "timeout": 5 }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "/usr/local/bin/substrate-event claude attention", "timeout": 5 }] }]
+  }
+}
+EOF
+# Codex runs `notify` after each turn, with its JSON as the last argument.
+# A top-level key, so it has to come before any [table].
+cat >"$root/home/dev/.codex/config.toml" <<'EOF'
+notify = ["/usr/local/bin/substrate-event", "codex", "stop"]
+EOF
+cat >"$root/home/dev/.config/opencode/plugins/substrate.js" <<'EOF'
+// Tells Substrate when OpenCode finishes or wants a permission (docs/m4.md).
+export const Substrate = async ({ $ }) => ({
+  event: async ({ event }) => {
+    const kind = event.type === 'session.idle' ? 'stop'
+      : event.type === 'permission.asked' || event.type === 'permission.updated' ? 'attention' : null
+    if (kind) await $`/usr/local/bin/substrate-event opencode ${kind} ${"{}"}`.quiet().nothrow()
+  },
+})
+EOF
+chroot "$root" chown -R dev:dev /home/dev/.claude /home/dev/.codex /home/dev/.config
+
 log "configuring the system"
 in_root '
   systemctl enable substrate-guestd docker containerd >/dev/null 2>&1

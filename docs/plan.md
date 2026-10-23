@@ -146,8 +146,10 @@ host being stopped and started.
 
 **M4 Auto-pause:** guestd notices when an agent stops, using Claude Code
 Stop/Notification hooks, Codex `notify`, an OpenCode plugin, and an idle check
-(no terminal output and low CPU). After N idle minutes the VM pauses itself and
-alerts me through ntfy, and typing into its terminal wakes it.
+(no terminal output and low CPU). After N idle minutes (10 by default, set per
+VM) the VM pauses itself and alerts me through ntfy, and typing into its terminal
+wakes it. hostd polls each guest and keeps the ntfy topic, so nothing in a VM
+can read or forge alerts. See `docs/m4.md`.
 Done when: an agent finishing a task sends the alert and pauses the VM, and typing
 resumes it.
 
