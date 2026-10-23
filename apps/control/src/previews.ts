@@ -5,12 +5,13 @@ import { relayTo } from '@substrate/protocol/relay'
 import type { Owners } from './owners.ts'
 import type { Tickets } from './tickets.ts'
 import type { Capabilities } from './capabilities.ts'
+import type { Hostd } from './vms.ts'
 
 export const previewPort = (port: number) => Number.isInteger(port) && port >= 1024 && port <= 65535 && port !== 7000
 export const previewPrefix = (vmId: string, port: number) => `/p/${encodeURIComponent(vmId)}/${port}`
 
 export function previewRoutes({ hostd, owners, tickets, capabilities }: {
-  hostd: { url: string; token: string }; owners: Owners; tickets: Tickets; capabilities: Capabilities
+  hostd: Hostd; owners: Owners; tickets: Tickets; capabilities: Capabilities
 }) {
   const app = new Hono()
   app.use('*', async (c, next) => {
@@ -22,16 +23,16 @@ export function previewRoutes({ hostd, owners, tickets, capabilities }: {
     const bootstrap = url.searchParams.get('__substrate_ticket')
     if (bootstrap) {
       const userId = tickets.redeem(bootstrap, vmId, `preview:${port}`)
-      if (!userId || owners.owner(vmId) !== userId) return c.text('This preview link expired. Open it again from Substrate.', 401)
-      const credential = capabilities.issue({ userId, vmId, kind: 'preview', port })
+      if (!userId || (await owners.owner(vmId)) !== userId) return c.text('This preview link expired. Open it again from Substrate.', 401)
+      const credential = await capabilities.issue({ userId, vmId, kind: 'preview', port })
       setCookie(c, cookie, credential.token, { path: prefix + '/', httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 3600 })
       url.searchParams.delete('__substrate_ticket')
       c.header('cache-control', 'no-store')
       c.header('referrer-policy', 'no-referrer')
       return c.redirect(url.pathname + url.search, 303)
     }
-    const grant = capabilities.read(getCookie(c, cookie) ?? '', 'preview', vmId, port)
-    if (!grant || owners.owner(vmId) !== grant.userId) return c.text('Open this preview from your workspace in Substrate.', 401)
+    const grant = await capabilities.read(getCookie(c, cookie) ?? '', 'preview', vmId, port)
+    if (!grant || (await owners.owner(vmId)) !== grant.userId) return c.text('Open this preview from your workspace in Substrate.', 401)
     await next()
   })
 

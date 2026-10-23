@@ -1,6 +1,6 @@
 import { $ } from 'bun'
-import { rm } from 'node:fs/promises'
-import { readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { chmod, copyFile, mkdir, readFile, rm } from 'node:fs/promises'
 import { config } from './config.ts'
 import { sh } from './sh.ts'
 import { firecrackerClient } from './firecracker-api.ts'
@@ -65,7 +65,59 @@ export function firecrackerConfig(spec: LaunchSpec) {
 }
 
 export const unitName = (id: string) => `substrate-vm-${id}`
-export const apiSocket = (id: string) => `${config.paths.run}/${id}.sock`
+const unjailedSocket = (id: string) => `${config.paths.run}/${id}.sock`
+
+// ── The jailer ──
+// A jailed VM's Firecracker runs as a uid of its own, chrooted into a
+// directory on the VM's own dataset, inside the VM's network namespace. The
+// jailer's --id is the same for every VM ('vm'): each VM has its own chroot
+// base, so paths inside the chroot are the same for all of them, and a fork's
+// copy of its parent's chroot (snapshot files and all) works as it is. The
+// jailer only makes cgroups when asked to, which it isn't.
+const JAIL_ID = 'vm'
+export const jailBase = (id: string) => `${config.paths.vms}/${id}/jail`
+export const jailRoot = (id: string) => `${jailBase(id)}/firecracker/${JAIL_ID}/root`
+// The VM's uid and gid, unique among VMs while they exist.
+export const jailUid = (slot: number) => 900_000 + slot
+// What the jailer itself puts in the chroot. It won't start over its own
+// leftovers (on arm64 it copies CPU cache details into sys/ and fails on
+// EEXIST), so they go before every launch.
+const JAILER_ARTIFACTS = ['dev', 'sys', 'run', 'firecracker', 'firecracker.pid', 'api.sock']
+// Paths as the jailed Firecracker sees them.
+export const IN_JAIL = { kernel: '/vmlinux', rootfs: '/rootfs', config: '/config.json', metadata: '/metadata.json', socket: '/api.sock' } as const
+
+// The VM's API socket: in its chroot if it's jailed. Resolved on every call,
+// so callers needn't know which kind of VM they have.
+export const apiSocket = (id: string) => {
+  const jailed = `${jailRoot(id)}${IN_JAIL.socket}`
+  return existsSync(jailed) ? jailed : unjailedSocket(id)
+}
+
+// Readies a jailed VM's chroot: its kernel, a device node for its disk, its
+// config and metadata, all owned by its uid.
+// A restore needs no kernel: it's in the save.
+export async function prepareJail(input: { id: string; uid: number; kernel?: string; rootDevice: string; files: Record<string, string> }) {
+  const root = jailRoot(input.id)
+  await mkdir(`${root}/snapshots`, { recursive: true, mode: 0o700 })
+  for (const name of JAILER_ARTIFACTS) await rm(`${root}/${name}`, { recursive: true, force: true })
+  await rm(unjailedSocket(input.id), { force: true })
+  if (input.kernel) {
+    await copyFile(input.kernel, `${root}${IN_JAIL.kernel}`)
+    await chmod(`${root}${IN_JAIL.kernel}`, 0o400)
+  }
+  // The zvol's own node (/dev/zdN) belongs to root; the VM gets a private
+  // node for the same device. A fork's zvol has a different minor, so it's
+  // made anew every time.
+  const [major, minor] = (await sh`stat -L -c ${'%t %T'} ${input.rootDevice}`).trim().split(' ').map((hex) => Number.parseInt(hex, 16))
+  await rm(`${root}${IN_JAIL.rootfs}`, { force: true })
+  await sh`mknod -m 600 ${`${root}${IN_JAIL.rootfs}`} b ${major} ${minor}`
+  for (const [name, content] of Object.entries(input.files)) await Bun.write(`${root}/${name}`, content, { mode: 0o600 })
+  await sh`chown -R ${`${input.uid}:${input.uid}`} ${root}`
+}
+
+export async function launchJailed(input: { id: string; uid: number; netns: string; metadata: string; args: string[] }) {
+  await sh`systemd-run --unit=${unitName(input.id)} --description=${`Substrate VM ${input.id} (jailed)`} --collect --quiet ${`--property=ExecStop=${config.vmStop} ${input.metadata}`} --property=TimeoutStopSec=30 --property=After=zfs.target -- ${config.jailer} --id ${JAIL_ID} --exec-file ${config.firecracker} --uid ${input.uid} --gid ${input.uid} --chroot-base-dir ${jailBase(input.id)} --netns ${`/var/run/netns/${input.netns}`} -- --api-sock ${IN_JAIL.socket} ${input.args} --level Warning`
+}
 
 // Each VM runs in its own transient systemd unit, so restarting hostd never
 // touches running VMs. Serial console output goes to the unit's journal.
@@ -81,8 +133,9 @@ export async function launchForRestore(id: string, metadata: string, root?: { so
 }
 
 async function launchProcess(id: string, metadata: string, args: string[], root?: { source: string; target: string }) {
-  const socket = apiSocket(id)
+  const socket = unjailedSocket(id)
   await rm(socket, { force: true })
+  await rm(`${jailRoot(id)}${IN_JAIL.socket}`, { force: true })
   if (root) await Bun.write(root.target, '', { mode: 0o600 })
   const mounts = root ? ['--property=PrivateMounts=yes', `--property=BindPaths=${root.source}:${root.target}`] : []
   await sh`systemd-run --unit=${unitName(id)} --description=${`Substrate VM ${id}`} --collect --quiet ${`--property=ExecStop=${config.vmStop} ${metadata}`} --property=TimeoutStopSec=30 --property=After=zfs.target ${mounts} -- ${config.firecracker} --api-sock ${socket} ${args} --level Warning`

@@ -47,6 +47,30 @@ fi
 ln -sfn "$release" /opt/substrate/hostd/current
 # At a fixed path, because running VM units refer to it.
 install -D -m 0755 "$release/images/host/vm-stop.sh" /usr/local/lib/substrate/vm-stop
+# hostd's tokens follow Parameter Store, where they're rotated (Phase 2).
+install -D -m 0755 "$release/images/host/refresh-token.sh" /usr/local/lib/substrate/refresh-token
+cat >/etc/systemd/system/substrate-token-refresh.service <<'EOF'
+[Unit]
+Description=Substrate: hostd's tokens from Parameter Store
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+ExecStart=/usr/local/lib/substrate/refresh-token
+EOF
+cat >/etc/systemd/system/substrate-token-refresh.timer <<'EOF'
+[Unit]
+Description=Substrate: hostd's tokens from Parameter Store, every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+
+[Install]
+WantedBy=timers.target
+EOF
+systemctl daemon-reload
+systemctl enable --now substrate-token-refresh.timer >/dev/null 2>&1
 # Keep the three newest releases.
 ls -1dt /opt/substrate/hostd/releases/* | tail -n +4 | xargs -r rm -rf
 

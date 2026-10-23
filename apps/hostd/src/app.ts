@@ -1,4 +1,4 @@
-import { CreateSession, CreateVm, ResizeVm, ForkVm, SshKey, SyncSshKeys, ExecRequest, GrowDisk, UpdateVm, type PoolStatus, type HostdHealth, type VmGui } from '@substrate/protocol'
+import { AgentEnv, CreateSession, CreateVm, ResizeVm, ForkVm, SshKey, SyncSshKeys, ExecRequest, GrowDisk, UpdateVm, type PoolStatus, type HostdHealth, type VmGui } from '@substrate/protocol'
 import { relayTo } from '@substrate/protocol/relay'
 import { Hono, type Context } from 'hono'
 import { bearerAuth } from 'hono/bearer-auth'
@@ -11,7 +11,8 @@ import { vmLogs } from './logs.ts'
 import { VNC_PORT, desktopSetupCommand, desktopStateCommand, parseDesktopState, probe as probePort, sshSyncCommand } from './desktop.ts'
 
 type Options = {
-  token: string
+  // The current token, or a check that also takes the previous one (tokens.ts).
+  token: string | ((token: string) => Promise<boolean>)
   version: string
   image: () => Promise<string | null>
   pool?: () => Promise<PoolStatus>
@@ -24,7 +25,7 @@ type Options = {
 export function createApp({ token, version, image, pool, vms, logs = vmLogs, probe = probePort }: Options) {
   const app = new Hono()
 
-  app.use('*', bearerAuth({ token }))
+  app.use('*', typeof token === 'string' ? bearerAuth({ token }) : bearerAuth({ verifyToken: (given) => token(given) }))
 
   app.get('/health', async (c) => {
     const storage = pool ? await pool().catch(() => null) : null
@@ -117,6 +118,11 @@ export function createApp({ token, version, image, pool, vms, logs = vmLogs, pro
     const { id } = await vms.get(c.req.param('id'))
     const lines = Math.min(Math.max(Math.trunc(Number(c.req.query('lines'))) || 200, 1), 2_000)
     return c.json(await logs(id, lines))
+  })
+
+  app.put('/vms/:id/agent-env', async (c) => {
+    await (await vms.guest(c.req.param('id'))).agentEnv(await body(c, AgentEnv))
+    return c.body(null, 204)
   })
 
   // Terminal sessions live in guestd; hostd only knows how to reach it.

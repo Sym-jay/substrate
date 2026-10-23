@@ -8,6 +8,7 @@ import { exec } from './exec.ts'
 import { readGuestConfig, type GuestConfig } from './mmds.ts'
 import { SESSIONS_FILE, Sessions } from './sessions.ts'
 import { configureFork } from './identity.ts'
+import { applyProxy } from './environment.ts'
 
 // Set by `bun build --define` in images/host/install-hostd.sh.
 declare const BUILD_VERSION: string | undefined
@@ -30,6 +31,9 @@ for (let attempt = 1; !config; attempt++) {
   }
 }
 
+// Before any session starts, so they all get it.
+await applyProxy(config.proxy).catch((err) => console.error(`proxy settings: ${err}`))
+
 const activity = new Activity()
 const sessions = new Sessions(undefined, undefined, activity, SESSIONS_FILE)
 await sessions.start(config.resumeSessions)
@@ -50,6 +54,8 @@ setInterval(async () => {
   checking = true
   try {
     const next = await readGuestConfig()
+    // A restore or fork can come with a different egress policy.
+    if (next.proxy !== config!.proxy) await applyProxy(next.proxy)
     if (next.vmId !== config!.vmId || next.token !== config!.token) {
       await configureFork(config!, next)
       activity.touch()

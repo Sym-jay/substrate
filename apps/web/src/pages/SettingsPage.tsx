@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useData } from '../app/data.tsx'
 import { resetSettings, updateSettings, useSettings } from '../app/settings.ts'
 import { Button, Card, FieldRow, PageHeader, Segmented } from '../app/ui.tsx'
+import { AccountPanel } from '../account/AccountPanel.tsx'
 import { SshAccessPanel } from '../workspaces/SshAccessPanel.tsx'
 
 export function SettingsPage({ account, userName }: { account?: ReactNode; userName?: string | null }) {
@@ -28,6 +29,9 @@ export function SettingsPage({ account, userName }: { account?: ReactNode; userN
           <div className="workspaces"><SshAccessPanel /></div>
         </Card>
       )}
+
+      {/* Agent keys, GitHub and this month's use. */}
+      {account && <div className="card card-pad rise" style={{ '--i': 3 } as React.CSSProperties}><AccountPanel /></div>}
 
       <Card title="About" className="rise" style={{ '--i': 2 } as React.CSSProperties}>
         <FieldRow label="Version">

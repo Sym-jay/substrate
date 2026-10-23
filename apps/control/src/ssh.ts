@@ -24,14 +24,15 @@ const AUTH_TIMEOUT_MS = 10_000
 // the SSH proxy (ssh-proxy.mjs) uses, and the connection itself.
 export function sshRoutes({ hostd, authenticate, owners, access }: Options) {
   const app = new Hono<Env>()
-  const auth = { Authorization: `Bearer ${hostd.token}` }
+  // Read on every call: hostd's token rotates.
+  const auth = () => ({ Authorization: `Bearer ${hostd.token}` })
   const callHostd = (path: string, init: RequestInit = {}) =>
-    fetch(`${hostd.url}${path}`, { ...init, headers: { ...auth, 'content-type': 'application/json' } }).catch(() => null)
+    fetch(`${hostd.url}${path}`, { ...init, headers: { ...auth(), 'content-type': 'application/json' } }).catch(() => null)
 
   const ownVms = async (userId: string) => {
     const res = await callHostd('/vms')
     if (!res?.ok) return null
-    const mine = new Set(owners.vmsOf(userId))
+    const mine = new Set(await owners.vmsOf(userId))
     return ((await res.json()) as Vm[]).filter((vm) => mine.has(vm.id))
   }
 
@@ -79,7 +80,7 @@ export function sshRoutes({ hostd, authenticate, owners, access }: Options) {
       if (!synced?.ok) return fail(1011, `couldn't prepare ${vm.name} for SSH`)
       // The client may have gone while the VM was being prepared.
       if (closed()) return
-      relay = relayTo(`${hostd.url.replace(/^http/, 'ws')}/vms/${vm.id}/ssh`, auth)
+      relay = relayTo(`${hostd.url.replace(/^http/, 'ws')}/vms/${vm.id}/ssh`, auth())
       relay.onOpen(new Event('open'), client)
       state = 'open'
       for (const data of early.splice(0)) relay.onMessage({ data } as MessageEvent, client)
