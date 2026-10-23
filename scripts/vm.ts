@@ -16,7 +16,7 @@ const [command, ...args] = process.argv.slice(2)
 const { HostInstanceId: host } = await stackOutputs()
 
 const usage = () => {
-  console.error('usage: bun run vm list | create [--name N] [--size S] [--disk GIB] [--repo OWNER/REPO] | start|stop|pause|resume|delete VM | resize VM [--size S] [--disk GIB] | fork VM [--name N] | checkpoints VM | rollback VM CHECKPOINT | auto-pause VM MINUTES|off | max-run VM HOURS|off | disk VM GIB | exec VM [--root] -- CMD | capacity')
+  console.error('usage: bun run vm list | memory VM | create [--name N] [--size S] [--disk GIB] [--repo OWNER/REPO] | start|stop|pause|resume|delete VM | resize VM [--size S] [--disk GIB] | fork VM [--name N] | checkpoints VM | rollback VM CHECKPOINT | auto-pause VM MINUTES|off | max-run VM HOURS|off | disk VM GIB | exec VM [--root] -- CMD | capacity')
   process.exit(1)
 }
 
@@ -48,7 +48,8 @@ async function resolve(ref: string | undefined) {
 function describe(vm: Vm) {
   const boot = vm.bootMs === null ? '' : `, booted in ${(vm.bootMs / 1000).toFixed(1)} s`
   const resume = vm.resumeMs == null ? '' : `, resumed in ${vm.resumeMs} ms`
-  return `${vm.id} ${vm.name}: ${vm.state}, ${vm.vcpus} vCPU / ${vm.memMib / 1024} GiB RAM / ${vm.diskGib} GiB disk, ${vm.guestIp}${boot}${resume}`
+  const ram = vm.memory?.actualMib == null ? `${vm.memMib / 1024} GiB RAM` : `${(vm.memory.actualMib / 1024).toFixed(1)} / ${vm.memMib / 1024} GiB RAM (assigned / limit)`
+  return `${vm.id} ${vm.name}: ${vm.state}, ${vm.vcpus} vCPU / ${ram} / ${vm.diskGib} GiB disk, ${vm.guestIp}${boot}${resume}`
 }
 
 switch (command) {
@@ -56,6 +57,12 @@ switch (command) {
     const vms = await call<Vm[]>('GET', '/vms')
     if (!vms.length) console.log('no VMs')
     for (const vm of vms) console.log(describe(vm))
+    break
+  }
+  case 'memory': {
+    const vm = await call<Vm>('GET', `/vms/${await resolve(args[0])}`)
+    if (!vm.memory) console.log('No elastic memory sample: the VM is stopped, paused, or needs a cold boot to add its balloon device.')
+    else console.log(JSON.stringify(vm.memory, null, 2))
     break
   }
   case 'create': {
@@ -132,7 +139,7 @@ switch (command) {
   }
   case 'capacity': {
     const c = await call<Capacity>('GET', '/capacity')
-    console.log(`${c.vcpus} vCPU, ${c.memFreeMib} of ${c.memTotalMib} MiB free (${c.memUsedMib} used by VMs, ${c.memReservedMib} kept for the host)`)
+    console.log(`${c.vcpus} vCPU, ${c.memFreeMib} of ${c.memTotalMib} MiB free (${c.memUsedMib} reserved for VM limits, ${c.memReservedMib} kept for the host)`)
     break
   }
   default:

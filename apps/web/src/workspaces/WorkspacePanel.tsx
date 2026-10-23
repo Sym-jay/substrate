@@ -5,7 +5,10 @@ import { TerminalView, type Asleep } from './TerminalView.tsx'
 import { WorkspaceTools } from './WorkspaceTools.tsx'
 import './workspaces.css'
 
-const spec = ({ vcpus, memMib }: { vcpus: number; memMib: number }) => `${vcpus} vCPU · ${memMib / 1024} GB`
+const spec = ({ vcpus, memMib, memory }: Pick<Vm, 'vcpus' | 'memMib' | 'memory'>) => {
+  const ram = memory?.actualMib == null ? `${memMib / 1024}` : `${Number((memory.actualMib / 1024).toFixed(1))} / ${memMib / 1024}`
+  return `${vcpus} vCPU · ${ram} GB`
+}
 const sizes: { id: VmSizeName; label: string }[] = [
   { id: 'small', label: 'Small' }, { id: 'medium', label: 'Medium' }, { id: 'large', label: 'Standard' },
 ]
@@ -103,7 +106,7 @@ export function WorkspacePanel() {
             <li key={vm.id}>
               <button type="button" className={`workspace-row ${selected === vm.id ? 'is-selected' : ''}`} aria-pressed={selected === vm.id} onClick={() => open(vm)}>
                 <span className="workspace-row-title"><span className={`status-dot ${vm.state === 'running' ? 'is-running' : ''}`} /><strong>{vm.name}</strong></span>
-                <span className="workspace-row-meta">{spec(vm)}<span className="workspace-vm-state">{vm.state}</span></span>
+                <span className="workspace-row-meta" title={vm.memory ? 'Allocated RAM / memory limit' : undefined}>{spec(vm)}<span className="workspace-vm-state">{vm.state}</span></span>
               </button>
             </li>
           ))}

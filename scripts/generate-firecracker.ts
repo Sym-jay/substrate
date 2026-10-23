@@ -37,6 +37,7 @@ function type(schema: Schema): string {
 const calls: [string, string, string?][] = [
   ['GET', '/'], ['PATCH', '/vm'], ['PUT', '/snapshot/create'], ['PUT', '/snapshot/load'], ['PUT', '/mmds'],
   ['PATCH', '/drives/{drive_id}', '/drives/rootfs'],
+  ['GET', '/balloon'], ['PATCH', '/balloon'], ['GET', '/balloon/statistics'],
 ]
 const operations = calls.map(([method, path, concrete = path]) => {
   const operation = spec.paths[path]?.[method.toLowerCase()]

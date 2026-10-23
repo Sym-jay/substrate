@@ -8,6 +8,9 @@ export type SnapshotCreateParams = { "mem_file_path": string; "snapshot_path": s
 export type SnapshotLoadParams = { "enable_diff_snapshots"?: boolean; "track_dirty_pages"?: boolean; "mem_file_path"?: string; "mem_backend"?: MemoryBackend; "snapshot_path": string; "resume_vm"?: boolean; "network_overrides"?: Array<NetworkOverride>; "vsock_override"?: VsockOverride; "clock_realtime"?: boolean; "huge_pages"?: "Snapshot" | "None" | "Transparent" | "2M" }
 export type MmdsContentsObject = Record<string, unknown>
 export type PartialDrive = { "drive_id": string; "path_on_host"?: string; "rate_limiter"?: RateLimiter }
+export type Balloon = { "amount_mib": number; "deflate_on_oom": boolean; "stats_polling_interval_s"?: number; "free_page_hinting"?: boolean; "free_page_reporting"?: boolean }
+export type BalloonUpdate = { "amount_mib": number }
+export type BalloonStats = { "target_pages": number; "actual_pages": number; "target_mib": number; "actual_mib": number; "swap_in"?: number; "swap_out"?: number; "major_faults"?: number; "minor_faults"?: number; "free_memory"?: number; "total_memory"?: number; "available_memory"?: number; "disk_caches"?: number; "hugetlb_allocations"?: number; "hugetlb_failures"?: number; "oom_kill"?: number; "alloc_stall"?: number; "async_scan"?: number; "direct_scan"?: number; "async_reclaim"?: number; "direct_reclaim"?: number }
 export type MemoryBackend = { "backend_type": "File" | "Uffd"; "backend_path": string }
 export type NetworkOverride = { "iface_id": string; "host_dev_name": string }
 export type VsockOverride = { "uds_path": string }
@@ -21,4 +24,7 @@ export type FirecrackerApi = {
   'PUT /snapshot/load': { body: SnapshotLoadParams; response: void }
   'PUT /mmds': { body: MmdsContentsObject; response: void }
   'PATCH /drives/rootfs': { body: PartialDrive; response: void }
+  'GET /balloon': { body: undefined; response: Balloon }
+  'PATCH /balloon': { body: BalloonUpdate; response: void }
+  'GET /balloon/statistics': { body: undefined; response: BalloonStats }
 }

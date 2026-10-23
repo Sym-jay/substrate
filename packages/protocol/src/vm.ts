@@ -14,6 +14,18 @@ export const DEFAULT_VM_SIZE: VmSizeName = 'large'
 export const VmState = z.enum(['starting', 'running', 'stopping', 'stopped', 'failed', 'pausing', 'paused', 'resuming', 'forking', 'checkpointing', 'resizing'])
 export type VmState = z.infer<typeof VmState>
 
+export const VmMemory = z.object({
+  floorMib: z.number().int().positive(),
+  limitMib: z.number().int().positive(),
+  targetMib: z.number().int().nonnegative().nullable(),
+  actualMib: z.number().int().nonnegative().nullable(),
+  availableMib: z.number().nonnegative().nullable(),
+  residentMib: z.number().nonnegative().nullable(),
+  proportionalMib: z.number().nonnegative().nullable(),
+  sampledAt: z.string().nullable(),
+})
+export type VmMemory = z.infer<typeof VmMemory>
+
 export const Vm = z.object({
   id: z.string(),
   name: z.string(),
@@ -43,6 +55,8 @@ export const Vm = z.object({
   // Pause the VM once it has been awake this long, even if busy, so a stuck
   // agent can't run forever; null never does. Optional for a pre-M7 hostd.
   maxAwakeHours: z.number().int().nullable().optional(),
+  // memMib remains the ceiling; this reports the live, elastic allocation.
+  memory: VmMemory.nullable().optional(),
 })
 export type Vm = z.infer<typeof Vm>
 

@@ -31,6 +31,7 @@ import { listRecords, readRecord, vmDir, writeRecord, type VmRecord } from './st
 import { Snapshots } from './snapshots.ts'
 import { Checkpoints } from './checkpoints.ts'
 import { ExternalActivity } from './activity.ts'
+import { Balloons } from './balloon.ts'
 import { importRepository } from './repositories.ts'
 import * as zfs from './zfs.ts'
 
@@ -74,6 +75,7 @@ export class VmManager implements VmService {
   private snapshots = new Snapshots()
   private runCheckpoints = new Checkpoints()
   private activity = new ExternalActivity()
+  private balloons = new Balloons()
 
   touch(id: string) { this.activity.touch(id) }
 
@@ -127,6 +129,7 @@ export class VmManager implements VmService {
         parentId: null,
         rootPath: `${config.paths.run}/rootfs`,
         forkCapable: false,
+        balloonEnabled: true,
         maxAwakeHours: DEFAULT_MAX_AWAKE_HOURS,
         shouldRun: true,
       }
@@ -340,6 +343,7 @@ export class VmManager implements VmService {
       await firecracker.kill(id)
       await this.cleanUp(record)
       this.activity.forget(id)
+      this.balloons.forget(id)
     })
   }
 
@@ -475,6 +479,21 @@ export class VmManager implements VmService {
     return hostCapacity(await this.memInUse(), config.memReserveMib)
   }
 
+  // The same lifecycle lock protects snapshot creation, resize and balloon
+  // adjustments. Admission still reserves each VM's ceiling, so emergency
+  // guest-driven deflation cannot overcommit the host.
+  async balanceMemory() {
+    return this.lock.run(async () => {
+      for (const record of await listRecords()) {
+        if (record.paused || this.transitions.has(record.id) || !(await firecracker.isRunning(record.id))) {
+          this.balloons.forget(record.id); continue
+        }
+        try { await this.balloons.balance(record) }
+        catch (error) { console.error(`memory ${record.id}:`, error instanceof Error ? error.message : error) }
+      }
+    })
+  }
+
   // After hostd restarts: VMs that are still running keep going; for the rest,
   // drop TAP devices left behind (e.g. by a host reboot).
   async reconcile() {
@@ -499,8 +518,13 @@ export class VmManager implements VmService {
     const running = await firecracker.isRunning(record.id)
     const state =
       this.transitions.get(record.id) ?? (record.paused ? 'paused' : running ? 'running' : record.lastError ? 'failed' : 'stopped')
-    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, shouldRun: _shouldRun, runCheckpoints: _runs, rootPath: _root, forkCapable: _fork, ...rest } = record
-    return { ...rest, state, pausedAt: record.paused ? record.checkpoint?.createdAt ?? null : null, guestIp: slotAddresses(slot).guestIp }
+    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, shouldRun: _shouldRun, runCheckpoints: _runs, rootPath: _root, forkCapable: _fork, balloonEnabled: _balloon, ...rest } = record
+    const memory = running && !record.paused && record.balloonEnabled ? this.balloons.get(record.id) ?? {
+      floorMib: Math.min(config.memory.floorMib, record.memMib), limitMib: record.memMib,
+      targetMib: null, actualMib: null,
+      availableMib: null, residentMib: null, proportionalMib: null, sampledAt: null,
+    } : null
+    return { ...rest, memory, state, pausedAt: record.paused ? record.checkpoint?.createdAt ?? null : null, guestIp: slotAddresses(slot).guestIp }
   }
 
   private async memInUse() {
@@ -541,6 +565,9 @@ export class VmManager implements VmService {
 
   // `resumeSessions` asks guestd to reopen the sessions the VM had (see sessions.ts).
   private async launch(record: VmRecord, { resumeSessions = false } = {}) {
+    this.balloons.forget(record.id)
+    record.balloonEnabled = true
+    await writeRecord(record)
     const net = slotAddresses(record.slot)
     const dir = vmDir(record.id)
     const spec = {
