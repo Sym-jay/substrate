@@ -55,31 +55,22 @@
   --idle: #7a7e87;
 }
 
-/* Polished chrome, lit from the top-right corner: a glint in that corner,
-   falling away diagonally to the bottom-left. The same in both themes, as
-   metal would be. */
+/* Platinum: satin silver, low contrast, with one broad soft sheen running
+   diagonally across it, like a metal card in the light. The same in both
+   themes, as metal would be. */
 :root {
-  /* A small, sharp glint where the light is. */
-  --chrome-glint: radial-gradient(38% 75% at 94% 6%, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.55) 30%, rgba(255, 255, 255, 0) 70%);
-  /* The surface is gently domed: lighter towards the top, shaded at the bottom. */
-  --chrome-dome: linear-gradient(180deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0) 46%, rgba(20, 28, 40, 0.1) 100%);
-  /* What chrome reflects: bright sky, a crisp dark horizon, a bright band
-     just past it, then the darker ground. Faintly cool in the dark bands. */
-  --chrome-base: linear-gradient(225deg,
-    #fbfcfd 0%, #e6e9ed 13%, #c6cbd2 29%, #a3a9b3 40%, #7d8591 46.5%,
-    #c4c9d0 49.5%, #e4e7eb 58%, #c3c8cf 72%, #9da4ae 88%, #b4bac2 100%);
-  --chrome: var(--chrome-glint), var(--chrome-dome), var(--chrome-base);
-  --chrome-pressed: linear-gradient(180deg, rgba(20, 28, 40, 0.12), rgba(255, 255, 255, 0.1)),
-    linear-gradient(225deg, #d4d8dd 0%, #aeb4bc 38%, #848b96 47%, #b8bdc4 52%, #c9cdd3 70%, #a2a8b1 100%);
-  /* The bevel the same light gives: a thin bright rim, top and right edges
-     catching the light, the bottom in soft shade. */
-  --chrome-bevel:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
-    inset -1px 1px 0 rgba(255, 255, 255, 0.95),
-    inset 1px -1px 0 rgba(0, 0, 0, 0.22),
-    inset 0 -7px 10px -8px rgba(20, 28, 40, 0.28);
-  --chrome-edge: rgba(255, 255, 255, 0.7) rgba(255, 255, 255, 0.7) rgba(0, 0, 0, 0.5) rgba(0, 0, 0, 0.42);
-  --chrome-ink: #1b1e23;
+  --chrome: linear-gradient(112deg,
+    #b3b7bd 0%, #c2c6cb 17%, #d0d3d7 31%, #e0e2e5 41%,
+    #f6f7f8 48.5%, #ffffff 51%, #edeef0 55.5%,
+    #d7dadd 65%, #c6c9ce 81%, #b5b9bf 100%);
+  --chrome-size: 150% 100%;
+  --chrome-at: 56% 0;
+  --chrome-tilted: 38% 0;
+  --chrome-pressed: linear-gradient(112deg, #b9bcc1 0%, #c8cbd0 30%, #dcdee1 50%, #cfd2d6 70%, #bcc0c5 100%);
+  /* A whisper of a bevel: a thin bright top edge, a faint lower one. */
+  --chrome-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 -1px 0 rgba(0, 0, 0, 0.08), inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  --chrome-edge: rgba(255, 255, 255, 0.55) rgba(255, 255, 255, 0.4) rgba(0, 0, 0, 0.18) rgba(255, 255, 255, 0.4);
+  --chrome-ink: #3f4248;
   --ease-flow: cubic-bezier(0.65, 0, 0.2, 1);
   --ease-lead: cubic-bezier(0.25, 0.8, 0.25, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -125,32 +116,22 @@ body {
 .btn-chrome {
   color: var(--chrome-ink);
   background: var(--chrome);
+  background-size: var(--chrome-size);
+  background-position: var(--chrome-at);
   border: 1px solid;
   border-color: var(--chrome-edge);
-  /* Lightly engraved. */
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6), 0 -0.5px 0 rgba(0, 0, 0, 0.18);
-  box-shadow: var(--chrome-bevel), -2px 3px 6px rgba(0, 0, 0, 0.35), -6px 10px 22px rgba(0, 0, 0, 0.22);
+  /* Softly debossed lettering, as on the card. */
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
+  box-shadow: var(--chrome-bevel), 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 18px rgba(0, 0, 0, 0.25);
+  transition: background-position 0.7s var(--ease-out), transform 0.15s var(--ease-out), box-shadow 0.25s, filter 0.25s;
 }
-/* On hover the corner's glint blooms, as if the light came closer. */
-.btn-chrome::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: radial-gradient(120% 190% at 100% 0%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.35) 30%, rgba(255, 255, 255, 0) 60%);
-  opacity: 0;
-  transform: scale(0.8);
-  transform-origin: 100% 0;
-  transition: opacity 0.35s var(--ease-out), transform 0.5s var(--ease-out);
-  pointer-events: none;
-}
-.btn-chrome:hover:enabled::after { opacity: 1; transform: none; }
+/* Hovering tilts it a little in the light: the sheen glides. */
+.btn-chrome:hover:enabled { background-position: var(--chrome-tilted); filter: brightness(1.03); }
 .btn-chrome:active:enabled {
   background: var(--chrome-pressed);
-  transform: translate(-0.5px, 1px);
-  box-shadow: inset 1px -1px 0 rgba(255, 255, 255, 0.5), inset -2px 2px 4px rgba(0, 0, 0, 0.25), -1px 1px 2px rgba(0, 0, 0, 0.3);
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.18), 0 1px 1px rgba(0, 0, 0, 0.25);
 }
-.btn-chrome:active:enabled::after { opacity: 0; }
 
 .btn-steel {
   color: var(--steel-ink);
@@ -208,7 +189,7 @@ body {
 @keyframes pulse { 50% { opacity: 0.35; } }
 
 .meter { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; display: flex; }
-.meter > span { height: 100%; background: var(--chrome); }
+.meter > span { height: 100%; background: var(--chrome); background-size: var(--chrome-size); background-position: var(--chrome-at); }
 .meter > span + span { border-left: 1px solid var(--bg); }
 .meter > span.is-dim { background: color-mix(in srgb, var(--silver) 40%, var(--surface-3)); }
 
@@ -234,7 +215,10 @@ body {
 .segmented button[aria-pressed='true'] {
   color: var(--chrome-ink);
   background: var(--chrome);
-  box-shadow: var(--chrome-bevel), -1px 2px 4px rgba(0, 0, 0, 0.3);
+  background-size: var(--chrome-size);
+  background-position: var(--chrome-at);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: var(--chrome-bevel), 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .list-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 0.25rem; border-top: 1px solid var(--line); }
@@ -320,21 +304,18 @@ body {
 .flow-pill {
   position: absolute; z-index: 0; border-radius: 0.8rem;
   background: var(--chrome);
+  background-size: var(--chrome-size);
+  background-position: var(--chrome-at);
   border: 1px solid;
   border-color: var(--chrome-edge);
-  box-shadow: var(--chrome-bevel), -2px 3px 6px rgba(0, 0, 0, 0.35), -6px 10px 24px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--chrome-bevel), 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 22px rgba(0, 0, 0, 0.28);
   overflow: hidden;
 }
 .flow-nav.is-vertical .flow-pill { left: 0; right: 0; }
 .flow-nav.is-horizontal .flow-pill { top: 0; bottom: 0; }
-/* As it arrives, the glint in its corner flares and settles. */
-.flow-pill::after {
-  content: ''; position: absolute; inset: 0;
-  background: radial-gradient(120% 200% at 100% 0%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 55%);
-  opacity: 0; transform-origin: 100% 0;
-}
-.flow-pill.is-moving::after { animation: flare 0.8s 0.15s var(--ease-out) both; }
-@keyframes flare { 0% { opacity: 0; transform: scale(0.6); } 35% { opacity: 1; transform: scale(1.05); } 100% { opacity: 0; transform: scale(1); } }
+/* As it arrives, its sheen glides across and settles. */
+.flow-pill.is-moving { animation: tilt 0.9s 0.1s var(--ease-out) both; }
+@keyframes tilt { from { background-position: 30% 0; } to { background-position: var(--chrome-at); } }
 
 .tabbar { display: none; }
 
@@ -382,11 +363,13 @@ body {
 /* An agent's letter on a chrome coin. */
 .monogram {
   display: inline-grid; place-items: center; flex-shrink: 0; width: 2.5rem; height: 2.5rem; border-radius: 50%;
-  font-weight: 700; font-size: 1.05rem; color: var(--chrome-ink);
-  background: radial-gradient(circle at 72% 24%, #ffffff 0%, #e2e5e8 22%, #b5bac1 55%, #979ca5 75%, #c6cad0 100%);
+  font-weight: 700; font-size: 1.05rem; color: var(--chrome-ink); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
+  background: var(--chrome);
+  background-size: 190% 100%;
+  background-position: 54% 0;
   border: 1px solid;
   border-color: var(--chrome-edge);
-  box-shadow: inset -1px 1px 0 rgba(255, 255, 255, 0.9), inset 2px -2px 3px rgba(0, 0, 0, 0.18), -2px 3px 6px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--chrome-bevel), 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 10px rgba(0, 0, 0, 0.25);
 }
 .monogram.is-sm { width: 1.35rem; height: 1.35rem; font-size: 0.7rem; }
 

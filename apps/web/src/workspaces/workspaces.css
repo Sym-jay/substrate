@@ -13,8 +13,8 @@
 .workspace-heading p, .workspace-hint { font-size: .875rem; color: var(--workspace-muted); }
 .workspace-heading p { margin-top: .25rem; }
 /* The older forms' buttons, in the chrome and steel of app/theme.css. */
-.workspace-button { min-height: 40px; padding: .5rem .9rem; border: 1px solid; border-color: var(--chrome-edge); border-radius: .7rem; background: var(--chrome); color: var(--chrome-ink); font-size: .875rem; font-weight: 600; cursor: pointer; white-space: nowrap; box-shadow: var(--chrome-bevel), -2px 3px 6px rgba(0,0,0,.35); }
-.workspace-button:hover:enabled { filter: brightness(1.06); }
+.workspace-button { min-height: 40px; padding: .5rem .9rem; border: 1px solid; border-color: var(--chrome-edge); border-radius: .7rem; background: var(--chrome); background-size: var(--chrome-size); background-position: var(--chrome-at); color: var(--chrome-ink); text-shadow: 0 1px 0 rgba(255,255,255,.75); font-size: .875rem; font-weight: 600; cursor: pointer; white-space: nowrap; box-shadow: var(--chrome-bevel), 0 1px 2px rgba(0,0,0,.3); transition: background-position .7s var(--ease-out); }
+.workspace-button:hover:enabled { background-position: var(--chrome-tilted); }
 .workspace-button.secondary { border: 1px solid var(--steel-edge); background: var(--steel); color: var(--steel-ink); box-shadow: inset -1px 1px 0 rgba(255,255,255,.08); }
 .workspace-button.secondary:hover:enabled { background: var(--steel-hover); filter: none; }
 .workspace-button:disabled, .terminal-keys button:disabled { opacity: .5; cursor: default; }
