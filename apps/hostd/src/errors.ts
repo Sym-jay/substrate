@@ -7,3 +7,7 @@ export class HttpError extends Error {
     super(message)
   }
 }
+
+// For logs: one line. Logging the error itself makes the bundled binary print
+// screenfuls of minified source.
+export const message = (err: unknown) => (err instanceof Error ? err.message : String(err))

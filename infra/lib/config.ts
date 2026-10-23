@@ -24,6 +24,9 @@ export const config = {
     rootGiB: 30,
     dataGiB: 50,
     hostdPort: 7070,
+    // Daily EBS snapshots of the data disk (every VM), kept for a week. UTC:
+    // 21:30 is 03:00 in India.
+    dataSnapshots: { time: '21:30', keep: 7 },
   },
 
   // AWS-managed list of CloudFront's origin-facing addresses in ap-south-1.

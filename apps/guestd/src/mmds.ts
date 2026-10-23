@@ -7,6 +7,9 @@ export const GuestConfig = z.object({
   token: z.string().min(32),
   guestIp: z.string(),
   hostIp: z.string(),
+  // Set when hostd brought this VM back after a crash, or from the disk of a
+  // save it couldn't restore: reopen the sessions that were running.
+  resumeSessions: z.boolean().default(false),
 })
 export type GuestConfig = z.infer<typeof GuestConfig>
 

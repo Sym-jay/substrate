@@ -50,6 +50,7 @@ const vms: VmService = {
   pause: unused,
   resume: unused,
   update: unused,
+  growDisk: unused,
   remove: unused,
   exec: unused,
   capacity: unused,

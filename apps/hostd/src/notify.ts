@@ -1,7 +1,8 @@
 import type { Vm } from '@substrate/protocol'
 
 export type Alert = {
-  vm: Pick<Vm, 'id' | 'name'>
+  // Null for the host as a whole.
+  vm: Pick<Vm, 'id' | 'name'> | null
   title: string
   message: string
   // low: no sound. high: sound and a pop-up.
@@ -17,7 +18,8 @@ const priorities = { low: 2, default: 3, high: 4 }
 // get a push notification. A failure is logged, never thrown.
 export function ntfy({ server, topic }: { server: string; topic: string }, publicUrl: string | null): Notify {
   return async ({ vm, title, message, priority, tags }) => {
-    const click = publicUrl ? `${publicUrl.replace(/\/$/, '')}/#${new URLSearchParams({ vm: vm.id })}` : undefined
+    const site = publicUrl?.replace(/\/$/, '')
+    const click = site && (vm ? `${site}/#${new URLSearchParams({ vm: vm.id })}` : site)
     const res = await fetch(server, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -30,4 +32,4 @@ export function ntfy({ server, topic }: { server: string; topic: string }, publi
   }
 }
 
-export const logOnly: Notify = async ({ vm, title, message }) => console.log(`alert for ${vm.id}: ${title}: ${message}`)
+export const logOnly: Notify = async ({ vm, title, message }) => console.log(`alert for ${vm?.id ?? 'the host'}: ${title}: ${message}`)
