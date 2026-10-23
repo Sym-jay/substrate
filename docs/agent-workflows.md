@@ -146,10 +146,13 @@ verification output, review/filtering, comparison creation/selection, both color
 themes, and layout overflow using isolated local commands and a simulated host.
 The independent visual review returned `ship` with no material findings.
 
-AWS acceptance and real authenticated agent tasks have **not** been run for this
-branch. Local host simulation is not a Firecracker/ZFS acceptance result. After
-deployment, also run one authenticated prompt for each agent you intend to use
-and verify a restricted action, full-auto task, and a missing-login failure.
+AWS shell-workflow acceptance passed for the combined dashboard deployment,
+including real Firecracker/ZFS forks, task pause/resume, cancellation of background
+children, and guest restart recovery. See the [deployment record](deployments/2026-10-24-agent-workflows.md)
+for deployed revisions, cleanup, and health checks. Real authenticated agent tasks
+and signed-in public-browser flows have **not** been run. Run an authenticated
+prompt for each agent you intend to use and verify a restricted action, full-auto
+task, and a missing-login failure.
 
 Adapter references checked during implementation:
 [Claude programmatic execution](https://code.claude.com/docs/en/headless),
@@ -169,5 +172,5 @@ Home, Workspaces, Windows, Jobs, Compute, Logs, and Settings pages remain.
 
 Combined-release local checks: 145 tests passed, one Linux-only PTY test skipped
 on macOS, type checking passed, and the production web build passed with its
-existing large-bundle warning. AWS deployment and acceptance results are recorded
-separately after they run.
+existing large-bundle warning. AWS deployment and acceptance passed; the exact results are in the
+[deployment record](deployments/2026-10-24-agent-workflows.md).
