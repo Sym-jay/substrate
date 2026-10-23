@@ -89,7 +89,15 @@ export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, 
   }
   app.use('/vms', signedIn)
   app.use('/vms/*', signedIn)
+  app.use('/jobs', signedIn)
   app.use('/jobs/*', signedIn)
+  app.use('/capacity', signedIn)
+  app.get('/jobs', (c) => c.json(jobs?.list(c.var.user.id) ?? []))
+  // The host's CPUs and memory, for the web app's Compute page.
+  app.get('/capacity', async (c) => {
+    const res = await callHostd('/capacity')
+    return res?.ok ? c.json(await res.json()) : unreachable(c)
+  })
   app.get('/jobs/:id', (c) => {
     const job = jobs?.read(c.req.param('id'), c.var.user.id)
     return job ? c.json(job) : c.json({ error: 'job not found' }, 404)
@@ -178,7 +186,7 @@ export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, 
         const body = await res.json().catch(() => null) as { error?: string } | null
         throw new Error(body?.error ?? 'Fork failed')
       }
-    })
+    }, 'fork')
     c.header('cache-control', 'no-store')
     return c.json(job, 202)
   }))

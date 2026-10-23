@@ -1,4 +1,4 @@
-import { AccountSshKey, Session, SshToken, Vm, VmGui, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
+import { AccountSshKey, Session, SshToken, Vm, VmGui, VmLogs, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
 import { authHeaders } from '../auth.ts'
 
 export class WorkspaceApiError extends Error {
@@ -129,6 +129,15 @@ export const windowsApi = {
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     url.searchParams.set('ticket', ticket)
     return { url: url.href, password }
+  },
+}
+
+// For the dashboard's pages.
+export type Job = { id: string; vmId: string; state: 'running' | 'done' | 'failed'; error: string | null; kind: 'create' | 'fork' | null; createdAt: string | null }
+export const dashboardApi = {
+  async jobs(signal?: AbortSignal) { return (await request('/api/jobs', { signal })) as Job[] },
+  async logs(vmId: string, lines: number, signal?: AbortSignal) {
+    return VmLogs.parse(await request(`${vmPath(vmId)}/logs?lines=${lines}`, { signal }))
   },
 }
 

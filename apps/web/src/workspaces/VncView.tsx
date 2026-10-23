@@ -1,32 +1,37 @@
 import RFB from '@novnc/novnc'
 import { useEffect, useRef, useState } from 'react'
 
-type State = 'connecting' | 'connected' | 'disconnected' | 'error'
-const labels: Record<State, string> = {
+export type DesktopState = 'connecting' | 'connected' | 'disconnected' | 'error'
+const labels: Record<DesktopState, string> = {
   connecting: 'Connecting…', connected: 'Connected', disconnected: 'Disconnected', error: 'Couldn’t connect',
 }
 
-// A desktop over VNC, through noVNC: a Windows workspace's, or a microVM's.
-// `connect` gives a fresh WebSocket URL (tickets work once) and, if the VNC
-// server has one, its password. It scales to fit, and works with touch.
-export function VncView({ connect, label = 'Desktop' }: { connect: () => Promise<{ url: string; password?: string }>; label?: string }) {
-  const container = useRef<HTMLDivElement>(null)
+// A desktop over VNC, through noVNC, drawn into `screen` while `enabled`: a
+// Windows workspace's, or a microVM's. `connect` gives a fresh WebSocket URL
+// (tickets work once) and, if the VNC server has one, its password; `target`
+// names what it connects to, and a new one reconnects. It scales to fit, and
+// works with touch (tap to click, drag to move the pointer). The page around
+// it shows the status and the controls.
+export function useVnc(target: string, connect: () => Promise<{ url: string; password?: string }>, enabled = true) {
+  const screen = useRef<HTMLDivElement>(null)
   const rfb = useRef<RFB | null>(null)
   const latest = useRef(connect)
   latest.current = connect
-  const [state, setState] = useState<State>('connecting')
+  const [state, setState] = useState<DesktopState>('connecting')
   const [detail, setDetail] = useState('')
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
+    if (!enabled) return
     let cancelled = false
     setState('connecting')
     setDetail('')
     void latest.current().then(({ url, password }) => {
-      if (cancelled || !container.current) return
-      const client = new RFB(container.current, url, { credentials: password ? { password } : {}, wsProtocols: [] })
+      if (cancelled || !screen.current) return
+      const client = new RFB(screen.current, url, { credentials: password ? { password } : {}, wsProtocols: [] })
       client.scaleViewport = true
       client.focusOnClick = true
+      client.background = '#000'
       client.addEventListener('connect', () => setState('connected'))
       client.addEventListener('disconnect', (event) => {
         const clean = (event as CustomEvent<{ clean: boolean }>).detail?.clean
@@ -44,18 +49,13 @@ export function VncView({ connect, label = 'Desktop' }: { connect: () => Promise
       rfb.current?.disconnect()
       rfb.current = null
     }
-  }, [attempt])
+  }, [target, attempt, enabled])
 
-  return (
-    <div className="desktop-view">
-      <div className="desktop-toolbar">
-        <span className={`desktop-state is-${state}`} role="status">{label}: {labels[state]}{detail ? ` (${detail})` : ''}</span>
-        <div className="flex gap-2">
-          <button type="button" className="workspace-button secondary" disabled={state !== 'connected'} onClick={() => rfb.current?.sendCtrlAltDel()}>Ctrl+Alt+Del</button>
-          {(state === 'disconnected' || state === 'error') && <button type="button" className="workspace-button secondary" onClick={() => setAttempt((n) => n + 1)}>Reconnect</button>}
-        </div>
-      </div>
-      <div ref={container} className="desktop-screen" aria-label={label} />
-    </div>
-  )
+  return {
+    screen,
+    state,
+    status: `${labels[state]}${detail ? `: ${detail}` : ''}`,
+    ctrlAltDel: () => rfb.current?.sendCtrlAltDel(),
+    reconnect: () => setAttempt((n) => n + 1),
+  }
 }

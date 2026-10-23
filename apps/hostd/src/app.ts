@@ -7,6 +7,7 @@ import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
 import { HttpError, type VmService } from './vms.ts'
 import { appHeaders, proxyHttp, tcpRelay } from './proxy.ts'
+import { vmLogs } from './logs.ts'
 import { VNC_PORT, desktopSetupCommand, desktopStateCommand, parseDesktopState, probe as probePort, sshSyncCommand } from './desktop.ts'
 
 type Options = {
@@ -15,11 +16,12 @@ type Options = {
   image: () => Promise<string | null>
   pool?: () => Promise<PoolStatus>
   vms: VmService
+  logs?: typeof vmLogs
   // Whether something answers on a guest's port (tests substitute one).
   probe?: (host: string, port: number) => Promise<boolean>
 }
 
-export function createApp({ token, version, image, pool, vms, probe = probePort }: Options) {
+export function createApp({ token, version, image, pool, vms, logs = vmLogs, probe = probePort }: Options) {
   const app = new Hono()
 
   app.use('*', bearerAuth({ token }))
@@ -111,6 +113,11 @@ export function createApp({ token, version, image, pool, vms, probe = probePort 
     return c.body(null, 204)
   })
   app.post('/vms/:id/exec', async (c) => c.json(await vms.exec(c.req.param('id'), await body(c, ExecRequest))))
+  app.get('/vms/:id/logs', async (c) => {
+    const { id } = await vms.get(c.req.param('id'))
+    const lines = Math.min(Math.max(Math.trunc(Number(c.req.query('lines'))) || 200, 1), 2_000)
+    return c.json(await logs(id, lines))
+  })
 
   // Terminal sessions live in guestd; hostd only knows how to reach it.
   app.get('/vms/:id/sessions', async (c) => c.json(await (await vms.guest(c.req.param('id'))).sessions()))

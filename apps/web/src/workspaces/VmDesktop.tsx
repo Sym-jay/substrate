@@ -1,7 +1,9 @@
 import type { Vm, VmGui } from '@substrate/protocol'
+import { Monitor, RotateCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { Button, Empty } from '../app/ui.tsx'
 import { workspaceApi } from './api.ts'
-import { VncView } from './VncView.tsx'
+import { useVnc } from './VncView.tsx'
 
 // A microVM's desktop: whether it has one (something answering VNC on it),
 // asked every few seconds while it runs, and setting one up.
@@ -15,7 +17,7 @@ export function useVmGui(vm: Vm) {
     const controller = new AbortController()
     const load = async () => {
       try { setGui(await workspaceApi.gui(vm.id, controller.signal)) }
-      catch { /* an older hostd: no desktop, and the button stays off */ }
+      catch { /* an older hostd: no desktop */ }
     }
     void load()
     const timer = setInterval(load, 5_000)
@@ -31,38 +33,38 @@ export function useVmGui(vm: Vm) {
   return { ...gui, error, setup }
 }
 
-const why: Record<VmGui['state'], string> = {
-  ready: 'Open its desktop',
-  off: 'This workspace has no desktop. Set one up below.',
-  'setting-up': 'Setting up a desktop…',
-  failed: 'Setting up a desktop failed. Try again below.',
-  unavailable: 'Start the workspace to use its desktop.',
-}
-
-// The Desktop tab: on only when there's a desktop to open.
-export function DesktopTab({ gui, selected, onOpen }: { gui: VmGui; selected: boolean; onOpen: () => void }) {
-  return (
-    <button type="button" aria-pressed={selected && gui.available} disabled={!gui.available} title={why[gui.state]} onClick={onOpen}>
-      Desktop{gui.state === 'setting-up' ? ' · setting up…' : ''}
-    </button>
+// The Desktop tab's pane: the desktop when there is one, and otherwise what
+// to do about it.
+export function VmDesktop({ vm, gui }: { vm: Vm; gui: ReturnType<typeof useVmGui> }) {
+  if (gui.available) return <VmDesktopView vm={vm} />
+  const empty = (title: string, body: string, action?: string) => (
+    <div className="flex h-full items-center justify-center">
+      <Empty icon={<Monitor />} title={title}>
+        {body}
+        {action && <div className="mt-4 flex justify-center"><Button variant="primary" onClick={() => void gui.setup()}>{action}</Button></div>}
+        {gui.error && <p role="alert" className="mt-3 text-[var(--bad)]">{gui.error}</p>}
+      </Empty>
+    </div>
   )
+  switch (gui.state) {
+    case 'setting-up': return empty('Setting up a desktop', 'A minute or two. After that it starts with the workspace.')
+    case 'failed': return empty('Setting up a desktop failed', 'Try again; it picks up where it stopped.', 'Try again')
+    case 'off': return empty('No desktop yet', 'A light desktop with a terminal, in the browser. It takes a minute or two to set up, then starts with the workspace.', 'Set one up')
+    default: return empty('No desktop while it’s off', 'Start the workspace to use its desktop.')
+  }
 }
 
-// Under the tabs, when there's no desktop yet: what to do about it.
-export function DesktopSetup({ gui }: { gui: ReturnType<typeof useVmGui> }) {
-  if (gui.state !== 'off' && gui.state !== 'failed' && !gui.error) return null
+function VmDesktopView({ vm }: { vm: Vm }) {
+  const vnc = useVnc(vm.id, () => workspaceApi.guiConnection(vm.id))
   return (
-    <p className="workspace-hint">
-      {gui.state === 'failed' ? 'Setting up a desktop failed. ' : 'No desktop in this workspace. '}
-      <button type="button" className="underline underline-offset-2" onClick={() => void gui.setup()}>
-        {gui.state === 'failed' ? 'Try again' : 'Set one up'}
-      </button>
-      {' '}(a light desktop with a terminal; a minute or two, then it starts with the workspace).
-      {gui.error && <span role="alert" className="workspace-error block">{gui.error}</span>}
-    </p>
+    <div className="vm-desktop">
+      <div className="vm-desktop-bar">
+        <span role="status" className={vnc.state === 'error' ? 'text-[var(--bad)]' : 'text-muted'}>{vnc.status}</span>
+        <span className="ml-auto" />
+        {(vnc.state === 'disconnected' || vnc.state === 'error') && <Button size="sm" variant="ghost" icon={<RotateCw />} onClick={vnc.reconnect}>Reconnect</Button>}
+        <Button size="sm" variant="ghost" disabled={vnc.state !== 'connected'} onClick={vnc.ctrlAltDel} title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</Button>
+      </div>
+      <div className="vm-desktop-body"><div ref={vnc.screen} className="win-screen" aria-label={`${vm.name} desktop`} /></div>
+    </div>
   )
-}
-
-export function VmDesktopView({ vm }: { vm: Vm }) {
-  return <VncView label={`${vm.name} desktop`} connect={() => workspaceApi.guiConnection(vm.id)} />
 }
