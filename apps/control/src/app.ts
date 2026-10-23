@@ -5,6 +5,7 @@ import { vmRoutes, type VmRoutesOptions } from './vms.ts'
 import type { previewRoutes } from './previews.ts'
 import { workflowRoutes } from './workflow-routes.ts'
 import type { windowsRoutes } from './windows/routes.ts'
+import type { cliRoutes } from './cli-routes.ts'
 
 type Options = {
   version: string
@@ -18,9 +19,10 @@ type Options = {
   previews?: ReturnType<typeof previewRoutes>
   // Windows workspaces (M9), when they're set up.
   windows?: ReturnType<typeof windowsRoutes>
+  cli?: ReturnType<typeof cliRoutes>
 }
 
-export function createApp({ version, region, webDir, readHost, clerkPublishableKey, vms, previews, windows }: Options) {
+export function createApp({ version, region, webDir, readHost, clerkPublishableKey, vms, previews, windows, cli }: Options) {
   const startedAt = new Date().toISOString()
   const app = new Hono()
 
@@ -42,6 +44,7 @@ export function createApp({ version, region, webDir, readHost, clerkPublishableK
   })
 
   app.get('/api/config', (c) => c.json({ clerkPublishableKey }))
+  if (cli) app.route('/api', cli)
 
   if ('unavailable' in vms) {
     const { unavailable } = vms

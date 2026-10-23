@@ -38,3 +38,10 @@ The full plan and milestones are in [docs/plan.md](docs/plan.md).
 ## Developing
 
 See [docs/development.md](docs/development.md) to run it locally and work with the AWS deployment.
+
+## CLI (in development)
+
+`bun run cli --help` lists the workspace, task, and comparison commands.
+`bun run cli:build` creates a standalone executable. Browser-approved CLI login
+requires deploying the CLI-enabled control service first. See [docs/cli.md](docs/cli.md)
+for installation, authentication, examples, and validation limits.

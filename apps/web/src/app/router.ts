@@ -3,10 +3,10 @@ import { flushSync } from 'react-dom'
 
 // Pages live in the URL's hash (#/workspaces/vm-1/session-2), so links and
 // reloads work wherever the app is served from.
-export type Page = 'home' | 'inbox' | 'workspaces' | 'windows' | 'jobs' | 'compute' | 'logs' | 'settings'
+export type Page = 'home' | 'inbox' | 'workspaces' | 'windows' | 'jobs' | 'compute' | 'logs' | 'settings' | 'cli'
 export type Route = { page: Page; params: string[] }
 
-const pages: Page[] = ['home', 'inbox', 'workspaces', 'windows', 'jobs', 'compute', 'logs', 'settings']
+const pages: Page[] = ['home', 'inbox', 'workspaces', 'windows', 'jobs', 'compute', 'logs', 'settings', 'cli']
 
 export function parse(hash: string): Route {
   // Keep links from the original task inbox and terminal UI usable.

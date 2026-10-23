@@ -1,4 +1,5 @@
 import { Show, SignInButton, SignUpButton, UserButton, useAuth, useUser } from '@clerk/react'
+import { useRoute } from './app/router.ts'
 import { App } from './App.tsx'
 import { setTokenSource } from './auth.ts'
 
@@ -22,6 +23,7 @@ export function ClerkApp() {
 }
 
 function SignedOut() {
+  const route = useRoute()
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-8 px-5 py-10">
       <div className="hero card rise flex flex-col gap-6">
@@ -35,6 +37,7 @@ function SignedOut() {
         <p className="text-muted relative z-10 leading-relaxed">
           Launch a workspace with Claude Code, Codex or a plain shell, and open its terminal from any device. Your agents keep running when you close the tab.
         </p>
+        {route.page === 'cli' && <p className="text-muted relative z-10 text-sm">Sign in to review CLI request <code>{route.params[0]}</code>. Signing in alone does not authorize access.</p>}
         <div className="relative z-10 flex flex-wrap gap-3">
           <SignInButton mode="modal">
             <button type="button" className="btn btn-chrome btn-lg">Sign in</button>

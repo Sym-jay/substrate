@@ -8,6 +8,8 @@
     "infra"
   ],
   "scripts": {
+    "cli": "bun apps/cli/src/index.ts",
+    "cli:build": "bun apps/cli/build.ts",
     "dev": "bun scripts/dev.ts",
     "typecheck": "bun run --filter '*' typecheck && tsc -p scripts",
     "test": "bun test",

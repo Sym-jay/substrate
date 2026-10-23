@@ -1,3 +1,4 @@
+import { CliSessions } from '../cli/CliAccess.tsx'
 import { SquareTerminal } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { agentCatalog } from '../app/agents.ts'
@@ -30,7 +31,7 @@ export function SettingsPage({ account, userName }: { account?: ReactNode; userN
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-5">
-      <PageHeader title="Settings" subtitle="Saved in this browser" />
+      <PageHeader title="Settings" subtitle="Browser preferences and account access" />
 
       <Card title="Quick launch" className="rise">
         <Row label="Open with" hint="What a new workspace starts with.">
@@ -80,6 +81,8 @@ export function SettingsPage({ account, userName }: { account?: ReactNode; userN
       <Card title="Account" className="rise" style={{ '--i': 2 } as React.CSSProperties}>
         <Row label={userName ?? 'Signed in'} hint={account ? 'Manage your account, or sign out.' : 'Sign-in is off on this server (local development).'}>{account}</Row>
       </Card>
+
+      <CliSessions />
 
       <Card title="About" className="rise" style={{ '--i': 3 } as React.CSSProperties}>
         <Row label="Control box">

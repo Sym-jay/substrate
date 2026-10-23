@@ -1,6 +1,8 @@
 import { websocket } from 'hono/bun'
 import { createApp } from './app.ts'
-import { clerkAuth, localDevAuth, type Authenticate } from './auth.ts'
+import { clerkAuth, clerkCliAccess, localDevAuth, type Authenticate } from './auth.ts'
+import { CliCredentials, withCliAuthentication } from './cli-auth.ts'
+import { cliRoutes } from './cli-routes.ts'
 import { config } from './config.ts'
 import { createHostReader } from './host.ts'
 import { Owners } from './owners.ts'
@@ -17,11 +19,14 @@ import { WindowsStore } from './windows/store.ts'
 import { WindowsTerminals, withControllingTerminal } from './windows/terminals.ts'
 import { WindowsWorkspaces } from './windows/workspaces.ts'
 
-const authenticate = config.clerk
+const browserAuthenticate = config.clerk
   ? clerkAuth({ ...config.clerk, authorizedParties: config.authorizedParties, allowedEmails: config.allowedEmails })
   : config.vmsWithoutLogin
     ? localDevAuth
     : null
+const cliCredentials = browserAuthenticate ? new CliCredentials(config.db) : undefined
+const authenticate = browserAuthenticate && cliCredentials ? withCliAuthentication(browserAuthenticate, cliCredentials,
+  config.clerk ? clerkCliAccess({ secretKey: config.clerk.secretKey, allowedEmails: config.allowedEmails }) : async (id) => id === 'local-dev') : null
 const owners = new Owners(config.db)
 const tickets = new Tickets()
 const capabilities = new Capabilities(config.db)
@@ -59,6 +64,7 @@ const app = createApp({
   readHost: createHostReader(config.hostInstanceId, config.region),
   clerkPublishableKey: config.clerk?.publishableKey ?? null,
   windows,
+  cli: cliCredentials && browserAuthenticate && authenticate ? cliRoutes({ credentials: cliCredentials, browserAuthenticate, authenticate, requireBrowserBearer: !!config.clerk }) : undefined,
   previews: config.hostd && config.previewOrigin ? previewRoutes({ hostd: config.hostd, owners, tickets, capabilities }) : undefined,
   vms: !config.hostd
     ? { unavailable: 'no sandbox host configured' }
