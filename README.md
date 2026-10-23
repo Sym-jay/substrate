@@ -30,4 +30,7 @@ Browser / mobile / CLI
 ## Stack
 
 - **Frontend:** Vite + React + Tailwind CSS
-- **Everything else:** to be decided
+- **Backend and agents:** TypeScript on Bun (Hono API, host daemon, in-VM agent)
+- **Infrastructure:** AWS CDK in `ap-south-1`, one control box plus an `r8i.4xlarge` microVM host
+
+The full plan and milestones are in [docs/plan.md](docs/plan.md).
