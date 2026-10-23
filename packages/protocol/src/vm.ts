@@ -33,9 +33,14 @@ export type Vm = z.infer<typeof Vm>
 
 export const VmName = z.string().regex(/^[a-z0-9][a-z0-9-]{0,30}$/, 'lowercase letters, digits and dashes')
 
+// VM disks are thin: a disk only takes up the space the VM actually writes.
+export const DEFAULT_DISK_GIB = 32
+
 export const CreateVm = z.object({
   name: VmName.optional(),
   size: VmSizeName.optional(),
+  // hostd also holds this between the image's own size and the host's storage pool.
+  diskGib: z.number().int().min(8).max(1024).optional(),
 })
 export type CreateVm = z.infer<typeof CreateVm>
 

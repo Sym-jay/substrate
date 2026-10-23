@@ -78,6 +78,9 @@ Only me and a friend helping build it use it. Nothing here is production.
 - Sizes: the default is 6 vCPU / 16 GB, with smaller presets of 4 vCPU / 8 GB and
   2 vCPU / 4 GB. With hyperthreading on, Firecracker only accepts 1 or an even
   number of vCPUs.
+- Disk: 32 GiB by default, chosen at creation (`--disk`), from the image's size
+  (8 GiB) up to the host's storage pool. Disks are thin, so they only use what
+  the VM writes, but every VM shares the one pool.
 - Capacity: CPU can be overcommitted but memory can't. hostd keeps about 4 GB for
   the host and refuses a VM that doesn't fit, which leaves room for about 7 default
   VMs (more once M8 lands).

@@ -73,7 +73,7 @@ Keep the key private: never commit it, paste it into chats, or share it.
 | `bun run setup:host` | Runs only `images/host/setup-host.sh` on the host |
 | `bun run host status` / `start` / `stop` | Checks, starts or stops the sandbox host |
 | `bun run ssm host` / `control` | Opens a shell on either box through SSM |
-| `bun run vm list` / `create` / `start` / `stop` / `delete` / `exec` / `capacity` | Manages microVMs, e.g. `bun run vm create --name demo --size small`, `bun run vm exec demo -- docker ps` |
+| `bun run vm list` / `create` / `start` / `stop` / `delete` / `exec` / `capacity` | Manages microVMs, e.g. `bun run vm create --name demo --size small --disk 64`, `bun run vm exec demo -- docker ps` |
 | `bun run check:m0` / `check:m1` | Checks a milestone's "Done when" list against the real deployment. `check:m1` creates and deletes a VM |
 
 **Cost:** the sandbox host (`r8i.4xlarge`) costs about $1.15 an hour while it runs.

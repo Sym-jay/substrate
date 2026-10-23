@@ -149,6 +149,15 @@ describe('hostd API', () => {
     expect(created.at(-1)).toEqual({ name: 'demo', size: 'small' })
   })
 
+  test('disk sizes are whole GiB within bounds', async () => {
+    const create = (diskGib: unknown) => call('/vms', { method: 'POST', body: JSON.stringify({ diskGib }) })
+    expect((await create(4)).status).toBe(400)
+    expect((await create(2_000)).status).toBe(400)
+    expect((await create(12.5)).status).toBe(400)
+    expect((await create(64)).status).toBe(201)
+    expect(created.at(-1)).toEqual({ diskGib: 64 })
+  })
+
   test('unknown VMs are 404s', async () => {
     const res = await call('/vms/vm-nope')
     expect(res.status).toBe(404)

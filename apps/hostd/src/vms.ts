@@ -1,5 +1,6 @@
 import {
   VmSizes,
+  DEFAULT_DISK_GIB,
   DEFAULT_VM_SIZE,
   type Capacity,
   type CreateVm,
@@ -65,6 +66,7 @@ export class VmManager implements VmService {
     const image = await currentImage()
     if (!image) throw new HttpError(409, 'no VM image yet: run `bun run images:build`')
     const size = VmSizes[input.size ?? DEFAULT_VM_SIZE]
+    const diskGib = await this.checkDiskSize(input.diskGib ?? DEFAULT_DISK_GIB, image.rootfs)
 
     const record = await this.lock.run(async () => {
       const records = await listRecords()
@@ -78,7 +80,7 @@ export class VmManager implements VmService {
         id,
         name: input.name ?? id,
         ...size,
-        diskGib: config.diskGib,
+        diskGib,
         slot: lowestFreeSlot(records.map((r) => r.slot)),
         token: randomBytes(32).toString('hex'),
         image: image.version,
@@ -180,6 +182,18 @@ export class VmManager implements VmService {
       }
     }
     return total
+  }
+
+  // A disk can't be smaller than the image it's cloned from, and since disks
+  // are thin, one bigger than the whole storage pool would only fail later.
+  private async checkDiskSize(diskGib: number, rootfsSnapshot: string) {
+    const imageGib = Math.ceil(await zfs.volumeSizeGib(rootfsSnapshot.split('@')[0]!))
+    if (diskGib < imageGib) throw new HttpError(400, `the disk must be at least ${imageGib} GiB, the image's size`)
+    const poolGib = await zfs.poolSizeGib(config.pool)
+    if (diskGib > poolGib) {
+      throw new HttpError(400, `the disk can't be bigger than the host's storage pool (${poolGib} GiB)`)
+    }
+    return diskGib
   }
 
   private async ensureFits(memMib: number) {

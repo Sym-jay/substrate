@@ -1,6 +1,6 @@
 // Manage microVMs on the sandbox host from your machine.
 //   bun run vm list
-//   bun run vm create [--name NAME] [--size large|medium|small]
+//   bun run vm create [--name NAME] [--size large|medium|small] [--disk GIB]
 //   bun run vm start|stop|delete VM
 //   bun run vm exec VM [--root] -- COMMAND...
 //   bun run vm capacity
@@ -13,7 +13,7 @@ const [command, ...args] = process.argv.slice(2)
 const { HostInstanceId: host } = await stackOutputs()
 
 const usage = () => {
-  console.error('usage: bun run vm list | create [--name N] [--size S] | start|stop|delete VM | exec VM [--root] -- CMD | capacity')
+  console.error('usage: bun run vm list | create [--name N] [--size S] [--disk GIB] | start|stop|delete VM | exec VM [--root] -- CMD | capacity')
   process.exit(1)
 }
 
@@ -44,7 +44,7 @@ async function resolve(ref: string | undefined) {
 
 function describe(vm: Vm) {
   const boot = vm.bootMs === null ? '' : `, booted in ${(vm.bootMs / 1000).toFixed(1)} s`
-  return `${vm.id} ${vm.name}: ${vm.state}, ${vm.vcpus} vCPU / ${vm.memMib / 1024} GiB, ${vm.guestIp}${boot}`
+  return `${vm.id} ${vm.name}: ${vm.state}, ${vm.vcpus} vCPU / ${vm.memMib / 1024} GiB RAM / ${vm.diskGib} GiB disk, ${vm.guestIp}${boot}`
 }
 
 switch (command) {
@@ -56,7 +56,12 @@ switch (command) {
   }
   case 'create': {
     console.log('creating…')
-    const vm = await call<Vm>('POST', '/vms', { name: option('name'), size: option('size') })
+    const disk = option('disk')
+    const vm = await call<Vm>('POST', '/vms', {
+      name: option('name'),
+      size: option('size'),
+      diskGib: disk === undefined ? undefined : Number(disk),
+    })
     console.log(describe(vm))
     break
   }

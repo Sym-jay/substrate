@@ -10,7 +10,6 @@ export const config = {
   firecracker: '/usr/local/bin/firecracker',
   // Kept back from VMs for the host itself, ZFS and Firecracker overhead.
   memReserveMib: 4_096,
-  diskGib: 32,
   // How long a VM may take from launch to its guest agent answering.
   bootTimeoutMs: 60_000,
   paths: {

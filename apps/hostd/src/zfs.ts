@@ -38,6 +38,16 @@ export async function destroy(name: string) {
   }
 }
 
+const GIB = 2 ** 30
+
+export async function volumeSizeGib(name: string) {
+  return Number((await sh`zfs get -Hp -o value volsize ${name}`).trim()) / GIB
+}
+
+export async function poolSizeGib(pool: string) {
+  return Math.floor(Number((await sh`zpool list -Hp -o size ${pool}`).trim()) / GIB)
+}
+
 export function zvolDevice(name: string) {
   return `/dev/zvol/${name}`
 }
