@@ -4,12 +4,12 @@
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #0a0b0d;
-  --bg-glow: rgba(205, 210, 220, 0.07);
-  --surface: #121316;
-  --surface-2: #17181c;
-  --surface-3: #1e2025;
-  --glass: rgba(18, 19, 22, 0.72);
+  --bg: #000000;
+  --bg-glow: rgba(205, 210, 220, 0.025);
+  --surface: #08080a;
+  --surface-2: #0d0d0f;
+  --surface-3: #161619;
+  --glass: rgba(6, 6, 8, 0.78);
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.14);
   --ink: #eceef1;
@@ -19,8 +19,8 @@
   --silver-bright: #eef0f3;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 40px rgba(0, 0, 0, 0.45);
   /* Brushed steel, for secondary buttons and chips. */
-  --steel: radial-gradient(90% 150% at 100% 0%, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0) 55%), linear-gradient(225deg, #2e3035 0%, #212226 55%, #1a1b1f 100%);
-  --steel-hover: radial-gradient(90% 150% at 100% 0%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 60%), linear-gradient(225deg, #35373d 0%, #26282d 55%, #1e1f23 100%);
+  --steel: radial-gradient(90% 150% at 100% 0%, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0) 55%), linear-gradient(225deg, #222327 0%, #151518 55%, #0e0e10 100%);
+  --steel-hover: radial-gradient(90% 150% at 100% 0%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 60%), linear-gradient(225deg, #2a2b30 0%, #1a1a1e 55%, #121215 100%);
   --steel-edge: rgba(255, 255, 255, 0.1);
   --steel-ink: #d9dce1;
   --ok: #7fd6a8;
@@ -59,14 +59,27 @@
    falling away diagonally to the bottom-left. The same in both themes, as
    metal would be. */
 :root {
-  --chrome-glint: radial-gradient(90% 150% at 100% 0%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.45) 20%, rgba(255, 255, 255, 0) 46%);
-  --chrome-base: linear-gradient(225deg, #f6f7f9 0%, #d9dce0 18%, #b3b8bf 40%, #989da6 56%, #bfc3ca 72%, #e1e4e7 88%, #b2b7be 100%);
-  --chrome: var(--chrome-glint), var(--chrome-base);
-  --chrome-pressed: radial-gradient(90% 150% at 100% 0%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 40%), linear-gradient(225deg, #c9ccd1 0%, #aab0b7 45%, #9ca1a9 60%, #c3c7cc 100%);
-  /* The bevel the same light gives: top and right edges bright, bottom and left in shade. */
-  --chrome-bevel: inset -1px 1px 0 rgba(255, 255, 255, 0.95), inset 1px -1px 0 rgba(0, 0, 0, 0.2);
-  --chrome-edge: rgba(255, 255, 255, 0.75) rgba(255, 255, 255, 0.75) rgba(0, 0, 0, 0.35) rgba(0, 0, 0, 0.28);
-  --chrome-ink: #16181c;
+  /* A small, sharp glint where the light is. */
+  --chrome-glint: radial-gradient(38% 75% at 94% 6%, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.55) 30%, rgba(255, 255, 255, 0) 70%);
+  /* The surface is gently domed: lighter towards the top, shaded at the bottom. */
+  --chrome-dome: linear-gradient(180deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0) 46%, rgba(20, 28, 40, 0.1) 100%);
+  /* What chrome reflects: bright sky, a crisp dark horizon, a bright band
+     just past it, then the darker ground. Faintly cool in the dark bands. */
+  --chrome-base: linear-gradient(225deg,
+    #fbfcfd 0%, #e6e9ed 13%, #c6cbd2 29%, #a3a9b3 40%, #7d8591 46.5%,
+    #c4c9d0 49.5%, #e4e7eb 58%, #c3c8cf 72%, #9da4ae 88%, #b4bac2 100%);
+  --chrome: var(--chrome-glint), var(--chrome-dome), var(--chrome-base);
+  --chrome-pressed: linear-gradient(180deg, rgba(20, 28, 40, 0.12), rgba(255, 255, 255, 0.1)),
+    linear-gradient(225deg, #d4d8dd 0%, #aeb4bc 38%, #848b96 47%, #b8bdc4 52%, #c9cdd3 70%, #a2a8b1 100%);
+  /* The bevel the same light gives: a thin bright rim, top and right edges
+     catching the light, the bottom in soft shade. */
+  --chrome-bevel:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    inset -1px 1px 0 rgba(255, 255, 255, 0.95),
+    inset 1px -1px 0 rgba(0, 0, 0, 0.22),
+    inset 0 -7px 10px -8px rgba(20, 28, 40, 0.28);
+  --chrome-edge: rgba(255, 255, 255, 0.7) rgba(255, 255, 255, 0.7) rgba(0, 0, 0, 0.5) rgba(0, 0, 0, 0.42);
+  --chrome-ink: #1b1e23;
   --ease-flow: cubic-bezier(0.65, 0, 0.2, 1);
   --ease-lead: cubic-bezier(0.25, 0.8, 0.25, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -114,7 +127,8 @@ body {
   background: var(--chrome);
   border: 1px solid;
   border-color: var(--chrome-edge);
-  text-shadow: -0.5px 0.5px 0 rgba(255, 255, 255, 0.55);
+  /* Lightly engraved. */
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6), 0 -0.5px 0 rgba(0, 0, 0, 0.18);
   box-shadow: var(--chrome-bevel), -2px 3px 6px rgba(0, 0, 0, 0.35), -6px 10px 22px rgba(0, 0, 0, 0.22);
 }
 /* On hover the corner's glint blooms, as if the light came closer. */
@@ -416,7 +430,7 @@ body {
 
 .log-view {
   height: calc(100dvh - 19rem); min-height: 280px; overflow: auto; margin: 0; padding: 1rem;
-  border-radius: 0.85rem; border: 1px solid rgba(255, 255, 255, 0.08); background: #0d0e10; color: #d9dce1;
+  border-radius: 0.85rem; border: 1px solid rgba(255, 255, 255, 0.08); background: #050506; color: #d9dce1;
   font: 0.78rem/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .settings-row { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr); gap: 1rem 2rem; align-items: center; padding: 1rem 0; border-top: 1px solid var(--line); }

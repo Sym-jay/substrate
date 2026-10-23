@@ -55,7 +55,7 @@
 .session-picker { display: flex; gap: .25rem; overflow-x: auto; margin-top: .75rem; padding-block: .25rem; scrollbar-width: thin; scrollbar-color: var(--workspace-line) transparent; }
 .session-picker button { min-height: 44px; padding: .5rem .75rem; font-size: .875rem; color: var(--workspace-muted); white-space: nowrap; cursor: pointer; border-radius: .5rem; }
 .session-picker button[aria-pressed=true] { background: var(--workspace-tint); color: var(--workspace-ink); }
-.terminal-panel { margin-top: .75rem; background: #0d0e10; color: #eceef1; border: 1px solid rgba(255,255,255,.08); border-radius: .9rem; overflow: hidden; }
+.terminal-panel { margin-top: .75rem; background: #050506; color: #eceef1; border: 1px solid rgba(255,255,255,.08); border-radius: .9rem; overflow: hidden; }
 /* Filling the pane it's in, as on the Workspaces page. */
 .terminal-panel.is-fill { display: flex; flex-direction: column; height: 100%; margin-top: 0; }
 .terminal-panel.is-fill .terminal-screen { flex: 1; height: auto; min-height: 240px; }
@@ -76,4 +76,4 @@
 .desktop-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
 .desktop-state { font-size: .875rem; color: var(--workspace-muted); }
 .desktop-state.is-error { color: var(--bad); }
-.desktop-screen { width: 100%; aspect-ratio: 16 / 10; overflow: hidden; border-radius: .9rem; border: 1px solid var(--line); background: #0d0e10; }
+.desktop-screen { width: 100%; aspect-ratio: 16 / 10; overflow: hidden; border-radius: .9rem; border: 1px solid var(--line); background: #050506; }

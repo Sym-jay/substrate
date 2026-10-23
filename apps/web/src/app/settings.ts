@@ -74,7 +74,7 @@ export function applyAppearance() {
   const root = document.documentElement
   root.dataset.theme = theme === 'system' ? (systemDark() ? 'dark' : 'light') : theme
   root.dataset.motion = motion
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', root.dataset.theme === 'dark' ? '#0a0b0d' : '#e9ebef')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', root.dataset.theme === 'dark' ? '#000000' : '#e9ebef')
 }
 
 window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => {

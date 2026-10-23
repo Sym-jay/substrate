@@ -61,7 +61,7 @@ export function TerminalView({ path, title, fill, asleep, onWake }: Props) {
       scrollback: 10_000,
       screenReaderMode: true,
       theme: {
-        background: '#0d0e10', foreground: '#eceef1', cursor: '#d9dce1',
+        background: '#050506', foreground: '#eceef1', cursor: '#d9dce1',
         selectionBackground: '#4a4d55', black: '#1e2025', brightBlack: '#979aa3',
       },
     })
