@@ -72,6 +72,7 @@ Only me and a friend helping build it use it. Nothing here is production.
 | `apps/guestd` | Bun + TS, built with `bun build --compile` into one binary inside the rootfs and run by systemd. Runs terminals with `Bun.spawn({ terminal })`, keeps sessions and their scrollback, reports agent activity |
 | `packages/protocol` | zod schemas and types shared by all of the above |
 | `infra` | AWS CDK (`aws-cdk-lib` 2.273) in TS |
+| Sign-in | Clerk: `@clerk/react` in the web app, `@clerk/backend` in the control API (M4) |
 | `images` | Host setup script, guest kernel config and build script, rootfs build script |
 
 ## VM design
@@ -117,9 +118,8 @@ Only me and a friend helping build it use it. Nothing here is production.
 ## Access
 - The web UI is public at the CloudFront URL, so it works from a laptop, tablet
   or phone. The URL isn't written in this repo; share it directly.
-- The public URL needs a login before M2 puts terminals on it. Before starting
-  M2, give me the options (e.g. GitHub login limited to an allowlist of accounts)
-  and ask me to choose.
+- Sign-in is Clerk (M4). Without Clerk keys on the control box, VM routes stay
+  off on the public URL; `bun run dev --host` works with VMs locally meanwhile.
 - Preview URLs (M6) need a scheme that works through CloudFront; propose one
   before M6.
 
@@ -150,6 +150,22 @@ Stop/Notification hooks, Codex `notify`, an OpenCode plugin, and an idle check
 alerts me through ntfy, and typing into its terminal wakes it.
 Done when: an agent finishing a task sends the alert and pauses the VM, and typing
 resumes it.
+
+M4 also adds **sign-in with Clerk**:
+- Anyone can create an account and sign in (my choice for now). Setting
+  `SUBSTRATE_ALLOWED_EMAILS` on the control box limits it to verified emails.
+- Each VM belongs to the user who created it; others get a 404 for it. Each
+  user may have up to 3 VMs (`SUBSTRATE_MAX_VMS_PER_USER`). Ownership is in
+  SQLite on the control box; hostd knows nothing about users.
+- The web app sends the Clerk session token with every call. Terminals use
+  one-time tickets instead, because browsers can't add headers to WebSockets.
+- Keys live in Parameter Store (`bun run secrets --clerk`); the control API
+  hands the web app the publishable key at `/api/config`.
+- It uses Clerk's development instance: a production instance needs a custom
+  domain, which comes in Phase 2.
+Done when: signing in on the public URL shows only your own VMs and opens their
+terminals, signed-out requests can't reach any VM route, and a second account
+can't see or open the first account's VMs.
 
 **M5 Host auto-stop — deferred for the hackathon:** keep one EC2 sandbox host
 running throughout the hackathon to avoid host cold starts. Do not add the idle
@@ -230,9 +246,8 @@ in the browser, run an agent, and release it.
 Before anyone else uses Substrate. Phase 1 must be finished first.
 
 **Access**
-- A domain with HTTPS (Caddy on the control box) and GitHub login, replacing the
-  tunnel.
-- Terminal connections checked with short-lived tickets.
+- A custom domain with HTTPS, so sign-in can move to Clerk's production
+  instance. (Clerk sign-in, per-user VMs and terminal tickets arrive in M4.)
 
 **Data**
 - Postgres (Amazon RDS, small instance) for users, VMs, sessions, events and
@@ -279,7 +294,7 @@ discussions; it gets reviewed and turned into milestones after Phase 2.
 | Secrets | Secrets Manager + KMS |
 | Logs and metrics | CloudWatch + the AWS Distro for OpenTelemetry |
 | Email | Amazon SES |
-| Login | Better Auth with GitHub (Cognito can't use GitHub login without a custom adapter) |
+| Login | Clerk (from M4), on its production instance with the custom domain |
 | GitHub access | A GitHub App with short-lived per-repo tokens, replacing personal tokens |
 | Billing | Stripe, charged per second of active VM time |
 

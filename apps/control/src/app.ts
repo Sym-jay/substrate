@@ -1,20 +1,20 @@
 import type { Health, HostStatus, Status } from '@substrate/protocol'
-import { relayTo } from '@substrate/protocol/relay'
-import { Hono, type Context } from 'hono'
-import { serveStatic, upgradeWebSocket } from 'hono/bun'
+import { Hono } from 'hono'
+import { serveStatic } from 'hono/bun'
+import { vmRoutes, type VmRoutesOptions } from './vms.ts'
 
 type Options = {
   version: string
   region: string
   webDir: string
   readHost: () => Promise<HostStatus>
-  // Unset in local development, where there is no sandbox host.
-  hostd: { url: string; token: string } | null
-  // Serve VM routes even though nobody has logged in (local development only).
-  vmsWithoutLogin: boolean
+  // The web app reads this at startup, so builds don't need it. Null: no sign-in.
+  clerkPublishableKey: string | null
+  // VM routes, or why there aren't any (no sandbox host, or no sign-in).
+  vms: VmRoutesOptions | { unavailable: string }
 }
 
-export function createApp({ version, region, webDir, readHost, hostd, vmsWithoutLogin }: Options) {
+export function createApp({ version, region, webDir, readHost, clerkPublishableKey, vms }: Options) {
   const startedAt = new Date().toISOString()
   const app = new Hono()
 
@@ -28,35 +28,13 @@ export function createApp({ version, region, webDir, readHost, hostd, vmsWithout
     return c.json(status)
   })
 
-  // VMs and their terminals are hostd's: pass them through, adding its token.
-  const vmPaths = ['/api/vms', '/api/vms/*']
-  if (!hostd) {
-    app.on(['GET', 'POST', 'DELETE'], vmPaths, (c) => c.json({ error: 'no sandbox host configured' }, 503))
-  } else if (!vmsWithoutLogin) {
-    app.on(['GET', 'POST', 'DELETE'], vmPaths, (c) =>
-      c.json({ error: 'VMs need a login, which is not built yet. Use `bun run dev --host` meanwhile.' }, 503),
-    )
+  app.get('/api/config', (c) => c.json({ clerkPublishableKey }))
+
+  if ('unavailable' in vms) {
+    const { unavailable } = vms
+    app.on(['GET', 'POST', 'DELETE'], ['/api/vms', '/api/vms/*'], (c) => c.json({ error: unavailable }, 503))
   } else {
-    const auth = { Authorization: `Bearer ${hostd.token}` }
-    const hostdPath = (c: Context) => c.req.path.replace(/^\/api/, '')
-
-    app.get(
-      '/api/vms/:id/sessions/:session/terminal',
-      upgradeWebSocket((c) => relayTo(`${hostd.url.replace(/^http/, 'ws')}${hostdPath(c)}`, auth)),
-    )
-
-    app.on(['GET', 'POST', 'DELETE'], vmPaths, async (c) => {
-      const res = await fetch(`${hostd.url}${hostdPath(c)}`, {
-        method: c.req.method,
-        headers: { ...auth, 'content-type': 'application/json' },
-        body: c.req.method === 'POST' ? await c.req.text() : undefined,
-      }).catch(() => null)
-      if (!res) return c.json({ error: "can't reach the sandbox host. Is it running?" }, 502)
-      return new Response(res.body, {
-        status: res.status,
-        headers: { 'content-type': res.headers.get('content-type') ?? 'application/json' },
-      })
-    })
+    app.route('/api', vmRoutes(vms))
   }
 
   app.all('/api/*', (c) => c.json({ error: 'not found' }, 404))

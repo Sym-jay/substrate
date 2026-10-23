@@ -12,7 +12,8 @@ const stateStyle: Record<InstanceState, { dot: string; label: string }> = {
   terminated: { dot: 'bg-red-500', label: 'Terminated' },
 }
 
-export function App() {
+// `account` is the signed-in user's menu, when sign-in is on.
+export function App({ account }: { account?: ReactNode }) {
   const state = useStatus()
   const status = state.kind === 'ok' ? state.status : state.kind === 'error' ? state.last : null
 
@@ -20,12 +21,13 @@ export function App() {
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col gap-6 px-4 pt-[max(2rem,env(safe-area-inset-top))] pb-10">
       <header className="flex items-center gap-3">
         <img src="/favicon.svg" alt="" className="size-9" />
-        <div>
+        <div className="flex-1">
           <h1 className="text-lg font-semibold tracking-tight">Substrate</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Persistent sandboxes for coding agents
           </p>
         </div>
+        {account}
       </header>
 
       <WorkspacePanel />

@@ -12,17 +12,29 @@ id substrate >/dev/null 2>&1 || useradd --system --home-dir /var/lib/substrate -
 install -d -o substrate -g substrate /var/lib/substrate
 install -d /opt/substrate/releases
 
-# How to reach hostd: the host's private IP (it keeps it across stops) and the
-# token from Parameter Store. Without the token, the web UI shows no VMs.
+# Secrets from Parameter Store (`bun run secrets`): how to reach hostd (the
+# host's private IP, which it keeps across stops, and its token) and the Clerk
+# keys. VMs stay off unless both are there.
 secrets=/etc/substrate/control-secrets.env
-if token=$(aws ssm get-parameter --region "$AWS_REGION" --name /substrate/hostd-token --with-decryption --query Parameter.Value --output text 2>/dev/null); then
-  host_ip=$(aws ec2 describe-instances --region "$AWS_REGION" --instance-ids "$SUBSTRATE_HOST_INSTANCE_ID" --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text)
-  (umask 077 && printf 'SUBSTRATE_HOSTD_URL=http://%s:7070\nSUBSTRATE_HOSTD_TOKEN=%s\n' "$host_ip" "$token" >"$secrets")
-  log "hostd at ${host_ip}"
-else
-  rm -f "$secrets"
-  log "no /substrate/hostd-token in Parameter Store (run \`bun run secrets\`): VMs are unavailable"
-fi
+param() { aws ssm get-parameter --region "$AWS_REGION" --name "$1" --with-decryption --query Parameter.Value --output text 2>/dev/null; }
+(
+  umask 077
+  : >"${secrets}.tmp"
+  if token=$(param /substrate/hostd-token); then
+    host_ip=$(aws ec2 describe-instances --region "$AWS_REGION" --instance-ids "$SUBSTRATE_HOST_INSTANCE_ID" --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text)
+    printf 'SUBSTRATE_HOSTD_URL=http://%s:7070\nSUBSTRATE_HOSTD_TOKEN=%s\n' "$host_ip" "$token" >>"${secrets}.tmp"
+    log "hostd at ${host_ip}"
+  else
+    log "no /substrate/hostd-token in Parameter Store (run \`bun run secrets\`): VMs are off"
+  fi
+  if publishable=$(param /substrate/clerk-publishable-key) && secret=$(param /substrate/clerk-secret-key); then
+    printf 'CLERK_PUBLISHABLE_KEY=%s\nCLERK_SECRET_KEY=%s\n' "$publishable" "$secret" >>"${secrets}.tmp"
+    log "Clerk sign-in on"
+  else
+    log "no Clerk keys in Parameter Store (run \`bun run secrets --clerk\`): sign-in and VMs are off"
+  fi
+  mv "${secrets}.tmp" "$secrets"
+)
 
 cat >/etc/systemd/system/substrate-control.service <<'EOF'
 [Unit]
@@ -35,6 +47,7 @@ User=substrate
 EnvironmentFile=/etc/substrate/control.env
 EnvironmentFile=-/etc/substrate/control-secrets.env
 Environment=HOME=/var/lib/substrate
+Environment=SUBSTRATE_DB=/var/lib/substrate/control.db
 WorkingDirectory=/opt/substrate/control
 ExecStart=/opt/substrate/control/substrate-control
 Restart=always
