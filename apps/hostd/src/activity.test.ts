@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { ExternalActivity } from './activity.ts'
 
-test('SSH/preview traffic resets only its VM idle time, preserving guest events and uptime fields', () => {
+test('SSH/preview traffic resets only its VM idle time, preserving guest events and identity', () => {
   let now = 1000
   const activity = new ExternalActivity(() => now)
   const report = { bootId: 'same-boot', idleMs: 600_000, events: [] }

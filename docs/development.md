@@ -104,4 +104,6 @@ It adds UI management, running-state forks, private app previews, GitHub imports
 agent permission modes with disk rollback points, and SSH/VS Code access.
 Run `bun run check:m6` only after deploying M6 hostd and rebuilding the guest
 image; it creates and cleans up its own test workspaces without restarting the
-shared host. M6 AWS acceptance is pending.
+shared host. Automated M6 AWS checks pass, including public preview and SSH
+transport. Account-specific GitHub and interactive VS Code checks are listed in
+`m6.md`.
