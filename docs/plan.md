@@ -1,12 +1,19 @@
-# Substrate plan (Phase 1: personal use)
+# Substrate plan
 
-## Goal
-Build Substrate from scratch: persistent Firecracker microVM sandboxes on AWS for
-long-running coding agents (Claude Code, Codex, OpenCode, Antigravity CLI, custom
-agents). I use them from a laptop, tablet or phone. This is for one person (me).
-Nothing here is production or multi-user.
+Substrate runs persistent sandboxes for long-running coding agents (Claude Code,
+Codex, OpenCode, Antigravity CLI, custom agents). Each Linux workspace is a
+Firecracker microVM on AWS. You use them from a laptop, tablet or phone.
 
-## Ground rules
+| Phase | Who uses it | Goal |
+|---|---|---|
+| 1. Personal | Only me | Everything I need day to day, on one host, as cheaply as possible |
+| 2. Private beta | Me plus a few invited people | Safe to share: real login, isolation between users, billing |
+| 3. Public launch | Anyone | Sign-up, many hosts, scaling on demand (draft) |
+
+Finish each phase before starting the next. Phases 2 and 3 are outlines; they get
+expanded into milestones when their turn comes.
+
+## Ground rules (all phases)
 - Work in `~/substrate` (GitHub `harryfrzz/substrate`, branch `main`).
 - Build from scratch. Don't copy or reuse code from the older kestrel attempt, and
   never push from its folder.
@@ -15,16 +22,25 @@ Nothing here is production or multi-user.
 - The repo is public: never commit secrets, tokens, account IDs or IPs.
 - You can't run `cdk deploy` (the safety check blocks it). When infra changes, stop
   and ask me to run `! cd ~/substrate/infra && bunx cdk deploy`.
-- The host costs about $1.15/h. Stop it whenever you aren't testing on it, until M5
-  does this automatically.
-- Check each milestone on the real host against its "Done when" before starting
-  the next. Commit each milestone separately and push once it passes.
+- Check each milestone on real AWS against its "Done when" before starting the
+  next. Commit each milestone separately and push once it passes.
 - Leave alone any AWS resources the `Substrate` stack didn't create, including the
   shared `CDKToolkit` stack and its bucket.
+- Report what you checked and how, with numbers such as boot and resume times.
+- When something needs me (deploys, MFA, tokens), stop and give me the exact
+  command to run.
+
+---
+
+# Phase 1: Personal
+
+Only I use it. Nothing here is production or multi-user.
 
 ## AWS
 - Region `ap-south-1`. CDK is already bootstrapped there.
 - Use an admin IAM user with MFA for the CLI, not the root account.
+- The host costs about $1.15/h. Stop it whenever you aren't testing on it, until
+  M5 does this automatically.
 - One CDK stack named `Substrate`:
   - VPC with one public subnet and no NAT gateway. No inbound ports from the
     internet; all admin access goes through SSM.
@@ -54,7 +70,7 @@ Nothing here is production or multi-user.
 | `images` | Host setup script, guest kernel config and build script, rootfs build script |
 
 ## VM design
-- Firecracker v1.17.0. Add the jailer later.
+- Firecracker v1.17.0. Add the jailer in Phase 2.
 - Sizes: the default is 6 vCPU / 16 GB, with smaller presets of 4 vCPU / 8 GB and
   2 vCPU / 4 GB. With hyperthreading on, Firecracker only accepts 1 or an even
   number of vCPUs.
@@ -65,8 +81,8 @@ Nothing here is production or multi-user.
   (cgroups v2, overlayfs, netfilter/nftables, bridge, veth). Preinstalled: Docker,
   git, gh, Node, Bun, Python, tmux, Claude Code, Codex, OpenCode, Antigravity CLI
   (`agy`).
-- Linux only in Phase 1. macOS and Windows can't run on Firecracker, so they're out
-  of scope.
+- Firecracker only runs Linux. Windows and macOS workspaces are separate EC2
+  instances (M9, M10), shown in the same UI.
 - Disks: the base rootfs is a ZFS zvol snapshot, and each VM gets an instant
   copy-on-write clone of it. Turn compression on (lz4 or zstd) so memory snapshots
   of mostly empty RAM stay small.
@@ -148,14 +164,109 @@ terminal gets me back in under 90 s.
 (16 GB by default), and hand memory back when idle.
 Done when: three idle default VMs together use under about 16 GB of host RAM.
 
-## Out of scope for now (Phase 2)
-Postgres, multiple users, GitHub login, billing/Stripe, per-user quotas, an
-outbound allowlist proxy, a custom domain (unless I choose it for phone access),
-and macOS/Windows.
+**M9 Windows workspaces:** a Windows workspace is its own EC2 instance, not a
+microVM.
+- Windows Server 2025 with the license included, on `m8i.xlarge` (4 vCPU / 16 GB,
+  about $0.41/h in ap-south-1). Windows 11 can't be used this way: AWS only allows
+  it with your own license on dedicated hardware.
+- Created and started on demand from the same UI. It takes a few minutes to boot,
+  and the UI shows progress.
+- Remote desktop through Amazon DCV (free on EC2) in the browser, so it works on
+  phones and tablets. Reached through the control box like everything else, with
+  no open ports.
+- Comes with Git, Node, Claude Code and Codex. WSL2 can work too, since `m8i`
+  supports nested virtualization.
+- Disk on EBS. The same idle rules as M4 apply, but the instance is stopped rather
+  than paused.
+Done when: I can create a Windows workspace from the UI, open its desktop in the
+browser on my phone, run Claude Code in PowerShell, and it stops itself when idle.
 
-## How to work
-- Scaffold the monorepo, then start M0.
-- Do one milestone at a time. Report what you checked and how, with numbers such as
-  boot and resume times.
-- When something needs me (deploys, MFA, tokens), stop and give me the exact command
-  to run.
+**M10 macOS workspaces (optional):** a macOS workspace runs on an EC2 Mac
+dedicated host.
+- AWS bills Mac hosts in 24-hour minimums, so every start costs at least a full
+  day. The UI must warn about this before allocating one.
+- ap-south-1 only offers `mac1.metal` (Intel Mac mini). The nearest Apple Silicon
+  is `mac2.metal` (M1) in ap-southeast-1 (Singapore).
+- Apple's license allows at most 2 macOS VMs per Mac. For personal use, use the
+  host's own macOS directly.
+- Remote desktop through Apple Screen Sharing (VNC), shown in the browser with
+  noVNC and tunneled through the control box.
+- Release the host when done (after the 24-hour minimum).
+Done when: I can allocate a Mac from the UI after a cost warning, open its desktop
+in the browser, run an agent, and release it.
+
+---
+
+# Phase 2: Private beta
+
+Before anyone else uses Substrate. Phase 1 must be finished first.
+
+**Access**
+- A domain with HTTPS (Caddy on the control box) and GitHub login, replacing the
+  tunnel.
+- Terminal connections checked with short-lived tickets.
+
+**Data**
+- Postgres (Amazon RDS, small instance) for users, VMs, sessions, events and
+  billing, replacing SQLite.
+
+**Isolation between users**
+- The Firecracker jailer for every VM.
+- A separate network namespace per VM.
+- An outbound proxy with an allowlist.
+- Per-user quotas (VM count, sizes, disk, running hours).
+
+**Secrets**
+- All tokens in Parameter Store, rotated on a schedule.
+- Users' own agent API keys (Anthropic, OpenAI) encrypted with KMS and sent into
+  their VMs only.
+
+**Billing**
+- Monthly subscription plans through Stripe.
+- Usage measured from active VM time, which M4's events already record.
+
+**Notifications**
+- A channel chosen per user: ntfy, Telegram or email (Amazon SES).
+
+Done when: an invited person can sign in with GitHub, create and use their own VMs,
+can't see or reach mine, stays inside their quota, and is billed for active VM
+time.
+
+---
+
+# Phase 3: Public launch (draft)
+
+Open sign-up and many hosts. This is a draft from early architecture
+discussions; it gets reviewed and turned into milestones after Phase 2.
+
+| Need | AWS service / choice |
+|---|---|
+| Frontend | S3 + CloudFront |
+| DNS and TLS | Route 53 + ACM, including a wildcard cert for `*.preview.<domain>` |
+| API and gateway | Hono on Node/Bun in ECS Fargate behind an ALB. The terminal/preview gateway is split into its own service when traffic grows |
+| Database | Aurora Serverless v2 (Postgres), migrated from RDS |
+| Background jobs and schedules | SQS + EventBridge Scheduler |
+| Host fleet | EC2 Auto Scaling group of nested-virtualization hosts (`.metal` later for density), with warm pools because hosts boot slowly. A scheduler places VMs across hosts, and hosts connect outbound to the control plane |
+| Snapshots | Paused VMs are stored in S3 so they can wake on any host. Keep the fleet on one instance family, because Firecracker snapshots only restore on the same CPU type |
+| Secrets | Secrets Manager + KMS |
+| Logs and metrics | CloudWatch + the AWS Distro for OpenTelemetry |
+| Email | Amazon SES |
+| Login | Better Auth with GitHub (Cognito can't use GitHub login without a custom adapter) |
+| GitHub access | A GitHub App with short-lived per-repo tokens, replacing personal tokens |
+| Billing | Stripe, charged per second of active VM time |
+
+Also planned for this phase:
+- Windows and macOS as paid tiers.
+- A mobile chat view built on the agents' JSON output
+  (`claude -p --output-format stream-json`, `codex exec --json`), in addition to
+  the terminal.
+- Avoid API Gateway WebSockets for terminals: connections are capped at 2 hours,
+  drop after 10 idle minutes, and are billed per message.
+
+Done when: a new user can sign up and get a running VM within seconds, and the
+host fleet grows and shrinks on its own.
+
+---
+
+## How to start
+Scaffold the monorepo, then start Phase 1 at M0.
