@@ -14,6 +14,7 @@
     "deploy:infra": "cd infra && bunx cdk deploy",
     "deploy:control": "bun scripts/deploy-control.ts",
     "deploy:host": "bun scripts/deploy-host.ts",
+    "build:windows-image": "bun scripts/build-windows-image.ts",
     "images:build": "bun scripts/build-images.ts",
     "setup:host": "bun scripts/setup-host.ts",
     "host": "bun scripts/host.ts",
