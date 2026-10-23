@@ -48,13 +48,24 @@ bun test
 
 ## Working with AWS
 
-These commands need AWS credentials for the Substrate account (ask the owner),
-the AWS CLI v2, and the
-[Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html).
+These commands need the AWS CLI v2, the
+[Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html),
+and credentials for the Substrate account.
+
+The owner gives you an access key for the `substrate-dev` IAM user as a
+`[substrate]` profile. Add it to `~/.aws/credentials` (create the file if it
+doesn't exist), then select it in each shell:
+
+```sh
+export AWS_PROFILE=substrate
+aws sts get-caller-identity   # should show user/substrate-dev
+```
+
+Keep the key private: never commit it, paste it into chats, or share it.
 
 | Command | What it does |
 |---|---|
-| `bun run deploy:infra` | Deploys the CDK stack. The owner runs this one |
+| `bun run deploy:infra` | Deploys the CDK stack (`--require-approval never` skips the prompt) |
 | `bun run deploy:control` | Builds the web app and control API, installs them on the control box, waits for the public URL to serve the new version |
 | `bun run setup:host` | Runs `images/host/setup-host.sh` on the host |
 | `bun run host status` / `start` / `stop` | Checks, starts or stops the sandbox host |
