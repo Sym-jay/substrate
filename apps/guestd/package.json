@@ -1,0 +1,14 @@
+{
+  "name": "@substrate/guestd",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build --compile --minify --target=bun-linux-x64 src/index.ts --outfile dist/substrate-guestd",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@substrate/protocol": "workspace:*",
+    "hono": "^4.13.13",
+    "zod": "^4.6.7"
+  }
+}

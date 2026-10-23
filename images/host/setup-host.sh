@@ -3,8 +3,11 @@
 # the data disk, and IP forwarding. Safe to run again: every step checks first.
 # Run it with `bun run setup:host`.
 set -euo pipefail
+# SSM runs commands without HOME, which bun and its installer need.
+export HOME=${HOME:-/root}
 
 FIRECRACKER_VERSION=v1.17.0
+BUN_VERSION=1.4.4
 POOL=substrate
 
 # shellcheck source=/dev/null
@@ -13,9 +16,21 @@ source /etc/substrate/host.env # SUBSTRATE_DATA_VOLUME, SUBSTRATE_BUCKET, SUBSTR
 log() { echo "[setup-host] $*"; }
 
 export DEBIAN_FRONTEND=noninteractive
+# Ubuntu's needrestart otherwise prints a service report after every install.
+export NEEDRESTART_SUSPEND=1
 log "installing packages"
 apt-get update -qq
-apt-get install -y -qq zfsutils-linux nftables jq curl >/dev/null
+apt-get install -y -qq zfsutils-linux nftables jq curl unzip rsync >/dev/null
+# For building guest images: mmdebstrap for the rootfs, a toolchain for the kernel.
+apt-get install -y -qq mmdebstrap e2fsprogs xz-utils build-essential flex bison bc libelf-dev libssl-dev python3 >/dev/null
+
+if [[ "$(bun --version 2>/dev/null)" == "$BUN_VERSION" ]]; then
+  log "bun ${BUN_VERSION} already installed"
+else
+  log "installing bun ${BUN_VERSION}"
+  curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v${BUN_VERSION}" >/dev/null
+fi
+mkdir -p /var/log/substrate
 
 log "loading KVM"
 modprobe kvm_intel || true

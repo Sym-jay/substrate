@@ -40,3 +40,5 @@ export const Status = z.object({
   host: HostStatus,
 })
 export type Status = z.infer<typeof Status>
+
+export * from './vm.ts'

@@ -78,6 +78,9 @@ Only me and a friend helping build it use it. Nothing here is production.
 - Sizes: the default is 6 vCPU / 16 GB, with smaller presets of 4 vCPU / 8 GB and
   2 vCPU / 4 GB. With hyperthreading on, Firecracker only accepts 1 or an even
   number of vCPUs.
+- Disk: 32 GiB by default, chosen at creation (`--disk`), from the image's size
+  (8 GiB) up to the host's storage pool. Disks are thin, so they only use what
+  the VM writes, but every VM shares the one pool.
 - Capacity: CPU can be overcommitted but memory can't. hostd keeps about 4 GB for
   the host and refuses a VM that doesn't fit, which leaves room for about 7 default
   VMs (more once M8 lands).
@@ -90,13 +93,23 @@ Only me and a friend helping build it use it. Nothing here is production.
 - Disks: the base rootfs is a ZFS zvol snapshot, and each VM gets an instant
   copy-on-write clone of it. Turn compression on (lz4 or zstd) so memory snapshots
   of mostly empty RAM stay small.
+- Stopping a VM, or the whole host, shuts the guest down cleanly first: each
+  VM's systemd unit asks the guest agent to reboot, which (with `reboot=k`)
+  ends Firecracker. Guests flush writes within ~5 s, so even a host crash
+  loses at most a few seconds of writes. Firecracker's SendCtrlAltDel isn't
+  used because the 6.18 guest kernel doesn't detect its emulated i8042.
 - Network: one TAP device per VM on its own /30, with NAT out through nftables.
   The guest gets its IP from kernel boot arguments.
 - Host ↔ guest: TCP over the VM's private link, because Bun can't open vsock
   sockets. Each VM gets a token through Firecracker's metadata service (MMDS), and
   guestd only listens on the private link.
-- hostd is the source of truth for VMs (ZFS user properties plus a small state
-  file), so nothing is lost when it restarts.
+- hostd is the source of truth for VMs (each VM's ZFS dataset plus a `vm.json`
+  in it), so nothing is lost when it restarts. VMs run in their own systemd
+  units, so restarting hostd never stops them.
+- M1 boots VMs from Firecracker's `--config-file`, so no generated API client
+  yet; it arrives when pause/resume (M3) needs the API. Until M2 gives the
+  control box a reason to call hostd, hostd's token lives in a root-only file
+  on the host; M2 moves it to Parameter Store.
 - Start modes: blank (an agent starts right away in an empty workspace), terminal
   only, and from GitHub (M6).
 

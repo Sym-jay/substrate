@@ -38,13 +38,14 @@ bun test
 |---|---|
 | `apps/web` | Vite + React + Tailwind web app |
 | `apps/control` | Control API (Bun + Hono). Runs on the control box, serves the web app |
+| `apps/hostd` | Host daemon (Bun + Hono). Runs on the sandbox host: VM disks, networking, Firecracker |
+| `apps/guestd` | Guest agent. Baked into the VM image, answers hostd inside each VM |
 | `packages/protocol` | zod schemas shared by everything |
 | `infra` | AWS CDK stack (`Substrate`, ap-south-1) |
-| `images/host` | Sandbox host setup script (Ubuntu 24.04) |
+| `images/host` | Sandbox host setup and hostd install scripts (Ubuntu 24.04) |
+| `images/guest` | Guest kernel config and the VM image build (runs on the host) |
 | `images/control` | Control box setup script (Amazon Linux 2023) |
 | `scripts` | Deploy and admin commands, listed below |
-
-`apps/hostd` and `apps/guestd` arrive with M1.
 
 ## Working with AWS
 
@@ -67,10 +68,13 @@ Keep the key private: never commit it, paste it into chats, or share it.
 |---|---|
 | `bun run deploy:infra` | Deploys the CDK stack (`--require-approval never` skips the prompt) |
 | `bun run deploy:control` | Builds the web app and control API, installs them on the control box, waits for the public URL to serve the new version |
-| `bun run setup:host` | Runs `images/host/setup-host.sh` on the host |
+| `bun run deploy:host` | Ships hostd, the guest agent and the image scripts to the host as source, runs host setup, builds and restarts hostd. Running VMs keep running |
+| `bun run images:build` | Builds the guest kernel and a new VM image on the host (10–20 min). New VMs get it |
+| `bun run setup:host` | Runs only `images/host/setup-host.sh` on the host |
 | `bun run host status` / `start` / `stop` | Checks, starts or stops the sandbox host |
 | `bun run ssm host` / `control` | Opens a shell on either box through SSM |
-| `bun run check:m0` | Checks M0's "Done when" list against the real deployment |
+| `bun run vm list` / `create` / `start` / `stop` / `delete` / `exec` / `capacity` | Manages microVMs, e.g. `bun run vm create --name demo --size small --disk 64`, `bun run vm exec demo -- docker ps` |
+| `bun run check:m0` / `check:m1` | Checks a milestone's "Done when" list against the real deployment. `check:m1` creates and deletes a VM |
 
 **Cost:** the sandbox host (`r8i.4xlarge`) costs about $1.15 an hour while it runs.
 Stop it with `bun run host stop` when you're done, until M5 does that

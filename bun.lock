@@ -11,6 +11,7 @@
         "@aws-sdk/client-s3": "^3.1156.0",
         "@aws-sdk/client-ssm": "^3.1156.0",
         "@aws-sdk/client-sts": "^3.1156.0",
+        "@substrate/protocol": "workspace:*",
         "@types/bun": "^1.4.4",
         "typescript": "^7.0.2",
       },
@@ -21,6 +22,22 @@
         "@aws-sdk/client-ec2": "^3.1156.0",
         "@substrate/protocol": "workspace:*",
         "hono": "^4.13.13",
+      },
+    },
+    "apps/guestd": {
+      "name": "@substrate/guestd",
+      "dependencies": {
+        "@substrate/protocol": "workspace:*",
+        "hono": "^4.13.13",
+        "zod": "^4.6.7",
+      },
+    },
+    "apps/hostd": {
+      "name": "@substrate/hostd",
+      "dependencies": {
+        "@substrate/protocol": "workspace:*",
+        "hono": "^4.13.13",
+        "zod": "^4.6.7",
       },
     },
     "apps/web": {
@@ -168,6 +185,10 @@
     "@smithy/types": ["@smithy/types@4.19.0", "", { "dependencies": { "tslib": "^2.6.2" } }, "sha512-r7jh49VJxGerfAcTQA6gXcKc+98zOp/tqRwzYjgOE+iSQsP6cEU1hq2QzbuipmP68QtYdY9wKEhiCQZIzHgZ4Q=="],
 
     "@substrate/control": ["@substrate/control@workspace:apps/control"],
+
+    "@substrate/guestd": ["@substrate/guestd@workspace:apps/guestd"],
+
+    "@substrate/hostd": ["@substrate/hostd@workspace:apps/hostd"],
 
     "@substrate/infra": ["@substrate/infra@workspace:infra"],
 
