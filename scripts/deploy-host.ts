@@ -6,7 +6,7 @@ import { cp, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { instanceState, printRun, run, stackOutputs, upload, waitForSsm } from './lib/aws.ts'
+import { copy, instanceState, printRun, run, stackOutputs, upload, waitForSsm } from './lib/aws.ts'
 
 const root = join(import.meta.dir, '..')
 const out = await stackOutputs()
@@ -63,3 +63,7 @@ if (!result.ok) {
   console.error(`deploy failed (${result.status})`)
   process.exit(1)
 }
+
+// A replacement host runs host/setup-host.sh when it first boots (see the
+// stack's user data). Point it at this release only now that it has worked.
+await copy(out.ArtifactsBucket, `${artifactPrefix}/setup-host.sh`, 'host/setup-host.sh')

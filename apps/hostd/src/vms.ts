@@ -314,18 +314,21 @@ export class VmManager implements VmService {
         record.shouldRun = false
         await writeRecord(record)
       }
-      if (!(await firecracker.isRunning(id))) return
-      this.transitions.set(id, 'stopping')
-      try {
-        await this.shutDown(id)
-        if (record.checkpoint) {
-          const previous = record.checkpoint
-          record.checkpoint = null
-          await writeRecord(record)
-          await this.snapshots.discard(record, previous)
+      if (await firecracker.isRunning(id)) {
+        this.transitions.set(id, 'stopping')
+        try {
+          await this.shutDown(id)
+        } finally {
+          this.transitions.delete(id)
         }
-      } finally {
-        this.transitions.delete(id)
+      }
+      // A save is useless once the VM has shut down (or crashed) since it was
+      // made, so delete it, including for a VM that had already gone down.
+      if (record.checkpoint) {
+        const previous = record.checkpoint
+        record.checkpoint = null
+        await writeRecord(record)
+        await this.snapshots.discard(record, previous)
       }
     })
     return this.get(id)
@@ -375,7 +378,11 @@ export class VmManager implements VmService {
       const record = await this.record(id)
       if (!record.runCheckpoints.some((point) => point.id === checkpointId)) throw new HttpError(404, 'checkpoint not found')
       if (record.paused || await firecracker.isRunning(id)) throw new HttpError(409, 'Stop the workspace before rolling back its disk')
+      const save = record.checkpoint
       await this.runCheckpoints.restore(record, checkpointId)
+      // The rollback forgets the VM's last save (it no longer matches the
+      // disk), so delete its files too.
+      if (save) await this.snapshots.discard(record, save)
       return this.get(id)
     })
   }
@@ -473,6 +480,7 @@ export class VmManager implements VmService {
   async reconcile() {
     for (const record of await listRecords()) {
       await this.snapshots.reconcile(record)
+      await this.snapshots.prune(record)
       // VMs that were running before hostd knew to record it.
       if (!record.shouldRun && !record.paused && (await firecracker.isRunning(record.id))) {
         record.shouldRun = true

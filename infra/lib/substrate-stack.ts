@@ -32,6 +32,13 @@ export class SubstrateStack extends Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
+      // Every deploy uploads its own release (scripts/deploy-*.ts). Boxes need
+      // it only while installing, and what a new box boots from is copied to
+      // fixed keys, so old releases can go.
+      lifecycleRules: [
+        { prefix: 'host/releases/', expiration: Duration.days(14) },
+        { prefix: 'control/releases/', expiration: Duration.days(14) },
+      ],
     })
 
     const controlSg = new ec2.SecurityGroup(this, 'ControlSg', {

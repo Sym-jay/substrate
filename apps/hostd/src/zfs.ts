@@ -21,6 +21,11 @@ export async function rollback(name: string) {
   await sh`zfs rollback -r ${name}`
 }
 
+// Snapshots of one dataset itself, not of its children.
+export async function snapshots(dataset: string) {
+  return (await sh`zfs list -H -o name -t snapshot -d 1 ${dataset}`).split('\n').filter(Boolean)
+}
+
 export async function syncPool(pool: string) {
   await sh`zpool sync ${pool}`
 }

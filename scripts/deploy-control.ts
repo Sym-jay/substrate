@@ -4,7 +4,7 @@ import { $ } from 'bun'
 import { cp, mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { printRun, run, stackOutputs, upload } from './lib/aws.ts'
+import { copy, printRun, run, stackOutputs, upload } from './lib/aws.ts'
 
 const root = join(import.meta.dir, '..')
 const out = await stackOutputs()
@@ -50,6 +50,12 @@ if (!result.ok) {
   console.error(`install failed (${result.status})`)
   process.exit(1)
 }
+
+// A replacement control box runs control/setup-control.sh when it first boots
+// (see the stack's user data), which installs control/control.tar.gz. Point
+// both at this release only now that it has worked.
+await copy(out.ArtifactsBucket, `${artifactPrefix}/control.tar.gz`, 'control/control.tar.gz')
+await copy(out.ArtifactsBucket, `${artifactPrefix}/setup-control.sh`, 'control/setup-control.sh')
 
 // A brand-new CloudFront distribution can take a few minutes to reach every edge.
 console.log(`checking ${out.Url}`)

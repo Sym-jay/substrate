@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test'
+import { randomUUID } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -69,6 +70,7 @@ async function rig() {
       syncPool: async () => { step('disk:sync') },
       rollback: async (name) => { step('disk:rollback'); disk = disks.get(name)! },
       datasetExists: async (name) => disks.has(name),
+      snapshots: async (dataset) => [...disks.keys()].filter((name) => name.startsWith(`${dataset}@`)),
       destroy: async (name) => { step('disk:destroy'); disks.delete(name); return '' },
     },
     waitForGuest: async () => { step('guest:ready'); return { ok: true, vmId: record.id, version: 'test', uptimeMs: 500 } },
@@ -223,5 +225,37 @@ describe('snapshot lifecycle', () => {
     await expect(snapshots.resume(r.record)).rejects.toThrow('identity')
     expect(r.saved.paused).toBe(true)
     expect(r.running).toBe(false)
+  })
+
+  test('startup removes saves the record no longer names, keeping the one in use', async () => {
+    const r = await rig()
+    await r.snapshots.pause(r.record)
+    await r.snapshots.resume(r.record)
+    const kept = r.snapshots.paths(r.record, r.record.checkpoint!)
+    // Left by crashes: an uncommitted pause, and a fork's staging snapshot.
+    const orphan = r.snapshots.paths(r.record, { ...r.record.checkpoint!, id: randomUUID() })
+    await Bun.write(orphan.memory, 'orphan')
+    await r.dependencies.zfs.snapshot(orphan.disk)
+    await r.dependencies.zfs.snapshot('substrate/vms/vm-abc@fork-left-behind')
+    expect(await r.snapshots.prune(r.record)).toHaveLength(3)
+    // The running VM still reads this memory file.
+    expect(await Bun.file(kept.memory).exists()).toBe(true)
+    expect(await r.dependencies.zfs.datasetExists(kept.disk)).toBe(true)
+    expect(await Bun.file(orphan.memory).exists()).toBe(false)
+    expect(await r.dependencies.zfs.datasetExists(orphan.disk)).toBe(false)
+    expect(await r.dependencies.zfs.datasetExists('substrate/vms/vm-abc@fork-left-behind')).toBe(false)
+    expect(await r.snapshots.prune(r.record)).toEqual([])
+  })
+
+  test('a removal that fails never stops startup', async () => {
+    const r = await rig()
+    await r.dependencies.zfs.snapshot('substrate/vms/vm-abc/root@pause-stuck')
+    await r.dependencies.zfs.snapshot('substrate/vms/vm-abc@fork-gone')
+    const zfs = { ...r.dependencies.zfs, destroy: async (name: string) => {
+      if (name.endsWith('@pause-stuck')) throw new Error('dataset is busy')
+      return r.dependencies.zfs.destroy(name)
+    } }
+    const snapshots = new Snapshots({ ...r.dependencies, zfs })
+    expect(await snapshots.prune(r.record)).toEqual(['snapshot fork-gone'])
   })
 })
