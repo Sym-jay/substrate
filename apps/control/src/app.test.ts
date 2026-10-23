@@ -8,6 +8,7 @@ const app = createApp({
   region: 'ap-south-1',
   webDir: 'does-not-exist',
   readHost: async () => ({ configured: false }),
+  hostd: null,
 })
 
 describe('control API', () => {
@@ -30,6 +31,11 @@ describe('control API', () => {
     expect(await res.json()).toEqual({ error: 'not found' })
   })
 
+  test('VMs need a sandbox host', async () => {
+    expect((await app.request('/api/vms')).status).toBe(503)
+    expect((await app.request('/api/vms/vm-abc/sessions')).status).toBe(503)
+  })
+
   test('host errors become a 500', async () => {
     const failing = createApp({
       version: 'test',
@@ -38,6 +44,7 @@ describe('control API', () => {
       readHost: async () => {
         throw new Error('ec2 down')
       },
+      hostd: null,
     })
     const res = await failing.request('/api/status')
     expect(res.status).toBe(500)
