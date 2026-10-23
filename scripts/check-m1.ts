@@ -1,6 +1,6 @@
 // Checks M1's "Done when" list: creates a default-size VM, checks its boot
 // time, internet, Docker and agent CLIs, checks it's walled off from the host
-// and the VPC, then deletes it.
+// and the VPC, checks files survive a stop and start, then deletes it.
 import { DescribeInstancesCommand } from '@aws-sdk/client-ec2'
 import type { ExecResult, HostdHealth, Vm } from '@substrate/protocol'
 import { ec2, instanceState, stackOutputs } from './lib/aws.ts'
@@ -79,6 +79,20 @@ try {
     check("can't reach hostd through its gateway", facts.hostd_via_gateway === '000', facts.hostd_via_gateway)
     check("can't reach the VPC", facts.hostd_via_vpc === '000', facts.hostd_via_vpc)
   }
+
+  // Written just before the stop, so it's only on disk if the VM shut down cleanly.
+  const marker = `persist-${Date.now()}`
+  await hostd(host, 'POST', `/vms/${vm.id}/exec`, { command: `echo ${marker} > ~/marker` })
+  const stopStarted = Date.now()
+  const stopped = await hostd<Vm>(host, 'POST', `/vms/${vm.id}/stop`)
+  const stopSeconds = ((Date.now() - stopStarted) / 1000).toFixed(1)
+  const restarted = await hostd<Vm>(host, 'POST', `/vms/${vm.id}/start`)
+  const read = await hostd<ExecResult>(host, 'POST', `/vms/${vm.id}/exec`, { command: 'cat ~/marker' })
+  check(
+    'files survive a stop and start',
+    stopped.data?.state === 'stopped' && read.data?.stdout.trim() === marker,
+    `stop ${stopSeconds} s (incl. SSM), restart ${((restarted.data?.bootMs ?? 0) / 1000).toFixed(1)} s`,
+  )
 } finally {
   const deleted = await hostd(host, 'DELETE', `/vms/${vm.id}`)
   check('VM deleted', deleted.status === 204)

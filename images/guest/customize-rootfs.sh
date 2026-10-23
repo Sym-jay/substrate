@@ -103,6 +103,12 @@ in_root '
 '
 printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" >"$root/etc/resolv.conf"
 
+# If the host dies, a VM loses at most ~5 s of writes rather than ~30 s.
+printf "vm.dirty_expire_centisecs = 500\nvm.dirty_writeback_centisecs = 100\n" >"$root/etc/sysctl.d/90-substrate.conf"
+# Bound shutdown, so the host's clean stop (30 s) never has to fall back to a kill.
+mkdir -p "$root/etc/systemd/system.conf.d"
+printf "[Manager]\nDefaultTimeoutStopSec=10s\n" >"$root/etc/systemd/system.conf.d/substrate.conf"
+
 # Record what got installed, for current.json.
 as_dev 'cat <<EOF
 claude=$(claude --version 2>/dev/null | head -1)

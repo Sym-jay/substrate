@@ -61,10 +61,12 @@ export const apiSocket = (id: string) => `${config.paths.run}/${id}.sock`
 
 // Each VM runs in its own transient systemd unit, so restarting hostd never
 // touches running VMs. Serial console output goes to the unit's journal.
+// Stopping the unit, from hostd or because the host is shutting down, runs
+// vm-stop first, which shuts the guest down cleanly so no writes are lost.
 export async function launch(spec: LaunchSpec, files: { config: string; metadata: string }) {
   const socket = apiSocket(spec.id)
   await rm(socket, { force: true })
-  await sh`systemd-run --unit=${unitName(spec.id)} --description=${`Substrate VM ${spec.id}`} --collect --quiet -- ${config.firecracker} --api-sock ${socket} --config-file ${files.config} --metadata ${files.metadata} --level Warning`
+  await sh`systemd-run --unit=${unitName(spec.id)} --description=${`Substrate VM ${spec.id}`} --collect --quiet ${`--property=ExecStop=${config.vmStop} ${files.metadata}`} --property=TimeoutStopSec=30 --property=After=zfs.target -- ${config.firecracker} --api-sock ${socket} --config-file ${files.config} --metadata ${files.metadata} --level Warning`
 }
 
 export async function isRunning(id: string) {
@@ -72,19 +74,15 @@ export async function isRunning(id: string) {
   return state === 'active' || state === 'activating' || state === 'deactivating'
 }
 
-// Asks the guest to shut down cleanly; with reboot=k Firecracker then exits.
-export async function sendCtrlAltDel(id: string) {
-  const res = await fetch('http://localhost/actions', {
-    unix: apiSocket(id),
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action_type: 'SendCtrlAltDel' }),
-  })
-  if (!res.ok) throw new Error(`SendCtrlAltDel failed: ${res.status} ${await res.text()}`)
+// A clean shutdown through the unit's ExecStop; returns once the VM is down.
+export async function stop(id: string) {
+  await $`systemctl stop ${unitName(id)}`.quiet().nothrow()
 }
 
+// Skips the clean shutdown, for VMs that are being deleted or never booted.
 export async function kill(id: string) {
-  await $`systemctl stop ${unitName(id)}`.quiet().nothrow()
+  await $`systemctl kill --signal=SIGKILL ${unitName(id)}`.quiet().nothrow()
+  for (let i = 0; i < 50 && (await isRunning(id)); i++) await Bun.sleep(100)
 }
 
 export async function journalTail(id: string, lines = 25) {

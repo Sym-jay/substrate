@@ -93,6 +93,11 @@ Only me and a friend helping build it use it. Nothing here is production.
 - Disks: the base rootfs is a ZFS zvol snapshot, and each VM gets an instant
   copy-on-write clone of it. Turn compression on (lz4 or zstd) so memory snapshots
   of mostly empty RAM stay small.
+- Stopping a VM, or the whole host, shuts the guest down cleanly first: each
+  VM's systemd unit asks the guest agent to reboot, which (with `reboot=k`)
+  ends Firecracker. Guests flush writes within ~5 s, so even a host crash
+  loses at most a few seconds of writes. Firecracker's SendCtrlAltDel isn't
+  used because the 6.18 guest kernel doesn't detect its emulated i8042.
 - Network: one TAP device per VM on its own /30, with NAT out through nftables.
   The guest gets its IP from kernel boot arguments.
 - Host ↔ guest: TCP over the VM's private link, because Bun can't open vsock

@@ -267,12 +267,8 @@ export class VmManager implements VmService {
     }
   }
 
-  // Clean shutdown via Ctrl+Alt+Del, then a hard stop if the guest ignores it.
   private async shutDown(id: string) {
-    await firecracker.sendCtrlAltDel(id).catch(() => {})
-    const deadline = Date.now() + 15_000
-    while ((await firecracker.isRunning(id)) && Date.now() < deadline) await Bun.sleep(200)
-    await firecracker.kill(id)
+    await firecracker.stop(id)
     const record = await readRecord(id)
     if (record) await deleteTap(record.slot)
   }
