@@ -11,6 +11,7 @@ import {
 import { randomBytes } from 'node:crypto'
 import { hostCapacity } from './capacity.ts'
 import { config } from './config.ts'
+import { HttpError } from './errors.ts'
 import * as firecracker from './firecracker.ts'
 import { guestClient, waitForGuest, type GuestClient } from './guest.ts'
 import { currentImage } from './images.ts'
@@ -18,15 +19,6 @@ import { Mutex } from './mutex.ts'
 import { createTap, deleteTap, lowestFreeSlot, slotAddresses } from './network.ts'
 import { listRecords, readRecord, vmDir, writeRecord, type VmRecord } from './state.ts'
 import * as zfs from './zfs.ts'
-
-export class HttpError extends Error {
-  constructor(
-    readonly status: 400 | 404 | 409 | 502,
-    message: string,
-  ) {
-    super(message)
-  }
-}
 
 // What the HTTP API needs; tests substitute a fake.
 export interface VmService {
@@ -40,6 +32,8 @@ export interface VmService {
   guest(id: string): Promise<GuestClient>
   capacity(): Promise<Capacity>
 }
+
+export { HttpError }
 
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
 export function newVmId() {
