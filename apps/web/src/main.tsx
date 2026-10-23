@@ -3,7 +3,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App.tsx'
 import { ClerkApp } from './ClerkApp.tsx'
+import { applyAppearance } from './app/settings.ts'
 import './index.css'
+
+// The saved theme, before anything is drawn.
+applyAppearance()
 
 // Sign-in is on when the control API has Clerk keys; /api/config says so and
 // carries the publishable key, so builds don't need it.

@@ -25,12 +25,14 @@ const asleepLabels: Record<Asleep, string> = { pausing: 'Saving…', paused: 'Pa
 type Props = {
   path: string
   title: string
+  // Fill the pane it's in (the Workspaces page) rather than a fixed height.
+  fill?: boolean
   asleep?: Asleep
   // Called once when someone types into a paused terminal.
   onWake?: () => void
 }
 
-export function TerminalView({ path, title, asleep, onWake }: Props) {
+export function TerminalView({ path, title, fill, asleep, onWake }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const screen = useRef<{ term: Terminal; fit: FitAddon } | null>(null)
   const connected = useRef(false)
@@ -59,8 +61,8 @@ export function TerminalView({ path, title, asleep, onWake }: Props) {
       scrollback: 10_000,
       screenReaderMode: true,
       theme: {
-        background: '#18181b', foreground: '#f4f4f5', cursor: '#f4f4f5',
-        selectionBackground: '#52525b', black: '#27272a', brightBlack: '#a1a1aa',
+        background: '#0d0e10', foreground: '#eceef1', cursor: '#d9dce1',
+        selectionBackground: '#4a4d55', black: '#1e2025', brightBlack: '#979aa3',
       },
     })
     const fit = new FitAddon()
@@ -152,7 +154,7 @@ export function TerminalView({ path, title, asleep, onWake }: Props) {
   }, [path, retry, asleep])
 
   return (
-    <section aria-label={`${title} terminal`} className="terminal-panel">
+    <section aria-label={`${title} terminal`} className={`terminal-panel ${fill ? 'is-fill' : ''}`}>
       <div className="terminal-heading">
         <h3>{title}</h3>
         <span role="status" className="terminal-status">
