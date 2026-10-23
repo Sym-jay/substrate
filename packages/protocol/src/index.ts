@@ -42,3 +42,4 @@ export const Status = z.object({
 export type Status = z.infer<typeof Status>
 
 export * from './vm.ts'
+export * from './terminal.ts'
