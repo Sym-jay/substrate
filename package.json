@@ -1,0 +1,27 @@
+{
+  "name": "substrate",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*", "infra"],
+  "scripts": {
+    "dev": "bun scripts/dev.ts",
+    "typecheck": "bun run --filter '*' typecheck && tsc -p scripts",
+    "test": "bun test",
+    "deploy:infra": "cd infra && bunx cdk deploy",
+    "deploy:control": "bun scripts/deploy-control.ts",
+    "setup:host": "bun scripts/setup-host.ts",
+    "host": "bun scripts/host.ts",
+    "ssm": "bun scripts/ssm.ts",
+    "check:m0": "bun scripts/check-m0.ts"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-budgets": "^3.1156.0",
+    "@aws-sdk/client-cloudformation": "^3.1156.0",
+    "@aws-sdk/client-ec2": "^3.1156.0",
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/client-ssm": "^3.1156.0",
+    "@aws-sdk/client-sts": "^3.1156.0",
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}

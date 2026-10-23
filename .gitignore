@@ -1,0 +1,9 @@
+node_modules/
+dist/
+cdk.out/
+# CDK lookups record the AWS account ID, which must stay out of this public repo.
+cdk.context.json
+.env
+.env.*
+*.tar.gz
+.DS_Store

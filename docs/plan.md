@@ -6,7 +6,7 @@ Firecracker microVM on AWS. You use them from a laptop, tablet or phone.
 
 | Phase | Who uses it | Goal |
 |---|---|---|
-| 1. Personal | Only me | Everything I need day to day, on one host, as cheaply as possible |
+| 1. Personal | Me, plus a friend helping build it | Everything I need day to day, on one host, as cheaply as possible |
 | 2. Private beta | Me plus a few invited people | Safe to share: real login, isolation between users, billing |
 | 3. Public launch | Anyone | Sign-up, many hosts, scaling on demand (draft) |
 
@@ -34,7 +34,7 @@ expanded into milestones when their turn comes.
 
 # Phase 1: Personal
 
-Only I use it. Nothing here is production or multi-user.
+Only me and a friend helping build it use it. Nothing here is production.
 
 ## AWS
 - Region `ap-south-1`. CDK is already bootstrapped there.
@@ -42,20 +42,24 @@ Only I use it. Nothing here is production or multi-user.
 - The host costs about $1.15/h. Stop it whenever you aren't testing on it, until
   M5 does this automatically.
 - One CDK stack named `Substrate`:
-  - VPC with one public subnet and no NAT gateway. No inbound ports from the
-    internet; all admin access goes through SSM.
-  - Control box: `t4g.small`, Amazon Linux 2023 arm64, always on. Runs the control
-    API and the web UI.
+  - VPC with one public subnet and no NAT gateway. Nothing is reachable from the
+    internet except through CloudFront; all admin access goes through SSM.
+  - Control box: `t4g.small`, Amazon Linux 2023 arm64, always on, with an Elastic
+    IP. Runs the control API and the web UI.
+  - CloudFront in front of the control box: the public HTTPS URL
+    (`https://<id>.cloudfront.net`), with no domain needed. Caching is off.
   - Sandbox host: `r8i.4xlarge` (memory-optimized, 16 vCPU / 128 GiB), Ubuntu 24.04
     x86_64, with nested virtualization turned on through the launch template
     (`CpuOptions.NestedVirtualization: enabled`). 30 GB gp3 root disk, plus a
     separate 50 GB gp3 data disk (`RemovalPolicy.RETAIN`) that holds a ZFS pool.
-  - Security groups: the control box can reach hostd's port on the host. Nothing
-    else is open.
+  - Security groups: CloudFront (its AWS-managed prefix list) can reach the
+    control API's port, and the control box can reach hostd's port on the host.
+    Nothing else is open.
   - SSM Parameter Store SecureStrings for the control↔host token, and later the
     GitHub token. Create them with a script so they never land in shell history.
   - S3 bucket for build artifacts (kernel, rootfs, binaries).
-  - A monthly AWS Budget with an email alert.
+  - A monthly AWS Budget with an email alert. The account's existing budget
+    covers this, so the stack doesn't create one.
 
 ## Stack
 | Part | Choice |
@@ -66,7 +70,7 @@ Only I use it. Nothing here is production or multi-user.
 | `apps/hostd` | Bun + TS on the sandbox host. Talks to Firecracker's HTTP API over its Unix socket using a typed client generated from Firecracker's OpenAPI spec. Handles ZFS, TAP networking, snapshots and capacity checks |
 | `apps/guestd` | Bun + TS, built with `bun build --compile` into one binary inside the rootfs and run by systemd. Runs terminals with `Bun.spawn({ terminal })`, keeps sessions and their scrollback, reports agent activity |
 | `packages/protocol` | zod schemas and types shared by all of the above |
-| `infra` | AWS CDK (`aws-cdk-lib` 2.274) in TS |
+| `infra` | AWS CDK (`aws-cdk-lib` 2.273) in TS |
 | `images` | Host setup script, guest kernel config and build script, rootfs build script |
 
 ## VM design
@@ -97,25 +101,28 @@ Only I use it. Nothing here is production or multi-user.
   only, and from GitHub (M6).
 
 ## Access
-- To start: an SSM port-forward from my laptop to the control box. The UI is at
-  `http://localhost:8080` and previews at `http://<port>-<vm>.localhost:8080`.
-  Add `scripts/tunnel.ts` for this.
-- Phone and tablet access is a core goal. Before M6, give me the options
-  (e.g. Tailscale on the control box, or a domain with Caddy HTTPS and a login)
+- The web UI is public at the CloudFront URL, so it works from a laptop, tablet
+  or phone. The URL isn't written in this repo; share it directly.
+- The public URL needs a login before M2 puts terminals on it. Before starting
+  M2, give me the options (e.g. GitHub login limited to an allowlist of accounts)
   and ask me to choose.
+- Preview URLs (M6) need a scheme that works through CloudFront; propose one
+  before M6.
 
 ## Milestones
-**M0 AWS setup:** the CDK stack, host setup script, ZFS pool and budget.
+**M0 AWS setup:** the CDK stack, host setup script, ZFS pool, budget, and the
+public URL serving a status page (control box and host state).
 Done when: `cdk deploy` succeeds, both boxes are reachable over SSM, the host has
-`/dev/kvm`, the ZFS pool is on the data disk, and the budget alert exists.
+`/dev/kvm`, the ZFS pool is on the data disk, the budget alert exists, and the
+public URL serves the status page. `bun run check:m0` checks all of it.
 
 **M1 microVMs:** hostd can create, list and delete VMs; kernel and rootfs builds
 work.
 Done when: a default VM boots in about 4 s or less, has internet,
 `docker run hello-world` works, and every agent CLI prints its version.
 
-**M2 Terminals:** the web UI lists VMs, creates them (size and start mode), and
-opens browser terminals.
+**M2 Terminals:** a login on the public URL, then a web UI that lists VMs,
+creates them (size and start mode), and opens browser terminals.
 Done when: after closing the tab and reopening it, including from another device,
 the same session is there with its scrollback, and the process kept running.
 

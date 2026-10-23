@@ -4,7 +4,7 @@ Persistent sandboxes for long-running coding agents.
 
 Substrate runs each workspace in its own Firecracker microVM on AWS. You can start Claude Code, Codex, or any other agent in it, then open the same session from a laptop, tablet, or phone.
 
-> **Status:** planning. There's no code yet.
+> **Status:** M0 (AWS infrastructure) in progress.
 
 ## What it does
 
@@ -34,3 +34,7 @@ Browser / mobile / CLI
 - **Infrastructure:** AWS CDK in `ap-south-1`, one control box plus an `r8i.4xlarge` microVM host
 
 The full plan and milestones are in [docs/plan.md](docs/plan.md).
+
+## Developing
+
+See [docs/development.md](docs/development.md) to run it locally and work with the AWS deployment.

@@ -1,0 +1,69 @@
+# Developing Substrate
+
+Read [plan.md](plan.md) first: it has the milestones, the design, and the ground
+rules (TypeScript wherever possible, nothing secret in this public repo, one
+milestone at a time).
+
+## Run it locally
+
+You need [Bun](https://bun.sh) 1.4 or newer.
+
+```sh
+git clone https://github.com/harryfrzz/substrate
+cd substrate
+bun install
+bun run dev
+```
+
+Open http://localhost:5173. The web app talks to the control API on port 8080,
+which `bun run dev` starts too. Without AWS it shows "No host configured", which
+is expected.
+
+To work on the UI against the deployed control API instead of a local one:
+
+```sh
+API_URL=https://<public url> bun run --filter @substrate/web dev
+```
+
+Before pushing:
+
+```sh
+bun run typecheck
+bun test
+```
+
+## Layout
+
+| Path | What it is |
+|---|---|
+| `apps/web` | Vite + React + Tailwind web app |
+| `apps/control` | Control API (Bun + Hono). Runs on the control box, serves the web app |
+| `packages/protocol` | zod schemas shared by everything |
+| `infra` | AWS CDK stack (`Substrate`, ap-south-1) |
+| `images/host` | Sandbox host setup script (Ubuntu 24.04) |
+| `images/control` | Control box setup script (Amazon Linux 2023) |
+| `scripts` | Deploy and admin commands, listed below |
+
+`apps/hostd` and `apps/guestd` arrive with M1.
+
+## Working with AWS
+
+These commands need AWS credentials for the Substrate account (ask the owner),
+the AWS CLI v2, and the
+[Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html).
+
+| Command | What it does |
+|---|---|
+| `bun run deploy:infra` | Deploys the CDK stack. The owner runs this one |
+| `bun run deploy:control` | Builds the web app and control API, installs them on the control box, waits for the public URL to serve the new version |
+| `bun run setup:host` | Runs `images/host/setup-host.sh` on the host |
+| `bun run host status` / `start` / `stop` | Checks, starts or stops the sandbox host |
+| `bun run ssm host` / `control` | Opens a shell on either box through SSM |
+| `bun run check:m0` | Checks M0's "Done when" list against the real deployment |
+
+**Cost:** the sandbox host (`r8i.4xlarge`) costs about $1.15 an hour while it runs.
+Stop it with `bun run host stop` when you're done, until M5 does that
+automatically. The control box is cheap and stays on.
+
+The public URL is a CloudFront address. Ask the owner for it; it isn't written
+in this repo.

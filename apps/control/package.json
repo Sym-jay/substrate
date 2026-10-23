@@ -1,0 +1,15 @@
+{
+  "name": "@substrate/control",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "build": "bun build --compile --minify --target=bun-linux-arm64 src/index.ts --outfile dist/substrate-control",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@aws-sdk/client-ec2": "^3.1156.0",
+    "@substrate/protocol": "workspace:*",
+    "hono": "^4.13.13"
+  }
+}
