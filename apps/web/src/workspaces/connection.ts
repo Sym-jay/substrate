@@ -3,7 +3,8 @@ import { TerminalOutput, type TerminalInput } from '@substrate/protocol'
 export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'exited' | 'error'
 type Socket = Pick<WebSocket, 'readyState' | 'send' | 'close' | 'addEventListener' | 'removeEventListener'>
 type Options = {
-  url: string
+  // A function when each attempt needs a fresh URL (terminal tickets work once).
+  url: string | (() => Promise<string>)
   onMessage: (message: TerminalOutput) => void
   onState: (state: ConnectionState, detail?: string) => void
   socket?: (url: string) => Socket
@@ -20,11 +21,25 @@ export function connectTerminal({ url, onMessage, onState, socket = (url) => new
   let timer: ReturnType<typeof setTimeout> | undefined
   let unbind = () => {}
 
-  const connect = () => {
+  const retry = () => {
+    attempts++
+    onState('reconnecting')
+    timer = setTimeout(connect, Math.min(retryMs * 2 ** Math.min(attempts - 1, 4), 15_000))
+  }
+
+  const connect = async () => {
     if (stopped) return
     ready = false
     onState(attempts ? 'reconnecting' : 'connecting')
-    const ws = socket(url)
+    let target: string
+    try {
+      target = typeof url === 'string' ? url : await url()
+    } catch {
+      if (!stopped) retry()
+      return
+    }
+    if (stopped) return
+    const ws = socket(target)
     current = ws
     const message = (event: Event) => {
       const parsed = TerminalOutput.safeParse(parseJson((event as MessageEvent).data))
@@ -55,9 +70,7 @@ export function connectTerminal({ url, onMessage, onState, socket = (url) => new
       unbind()
       ready = false
       if (stopped) return
-      attempts++
-      onState('reconnecting')
-      timer = setTimeout(connect, Math.min(retryMs * 2 ** Math.min(attempts - 1, 4), 15_000))
+      retry()
     }
     ws.addEventListener('message', message)
     ws.addEventListener('close', close)
@@ -67,7 +80,7 @@ export function connectTerminal({ url, onMessage, onState, socket = (url) => new
       ws.removeEventListener('close', close)
     }
   }
-  connect()
+  void connect()
 
   return {
     send(message: TerminalInput) {

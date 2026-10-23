@@ -19,10 +19,12 @@ export DEBIAN_FRONTEND=noninteractive
 # Ubuntu's needrestart otherwise prints a service report after every install.
 export NEEDRESTART_SUSPEND=1
 log "installing packages"
-apt-get update -qq
-apt-get install -y -qq zfsutils-linux nftables jq curl unzip rsync >/dev/null
+# Wait for apt's lock instead of failing: Ubuntu's daily updates may hold it.
+apt() { apt-get -o DPkg::Lock::Timeout=300 "$@"; }
+apt update -qq
+apt install -y -qq zfsutils-linux nftables jq curl unzip rsync >/dev/null
 # For building guest images: mmdebstrap for the rootfs, a toolchain for the kernel.
-apt-get install -y -qq mmdebstrap e2fsprogs xz-utils build-essential flex bison bc libelf-dev libssl-dev python3 >/dev/null
+apt install -y -qq mmdebstrap e2fsprogs xz-utils build-essential flex bison bc libelf-dev libssl-dev python3 >/dev/null
 
 if [[ "$(bun --version 2>/dev/null)" == "$BUN_VERSION" ]]; then
   log "bun ${BUN_VERSION} already installed"

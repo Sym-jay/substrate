@@ -2,6 +2,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef, useState } from 'react'
 import '@xterm/xterm/css/xterm.css'
+import { workspaceApi } from './api.ts'
 import { connectTerminal, type ConnectionState } from './connection.ts'
 
 const labels: Record<ConnectionState, string> = {
@@ -48,10 +49,8 @@ export function TerminalView({ path, title }: { path: string; title: string }) {
     term.open(container.current)
     fit.fit()
 
-    const url = new URL(path, window.location.href)
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     const connection = connectTerminal({
-      url: url.href,
+      url: () => workspaceApi.terminalUrl(path),
       onState(next, message) {
         if (disposed) return
         connected = next === 'connected'

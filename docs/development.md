@@ -25,6 +25,17 @@ To work on the UI against the deployed control API instead of a local one:
 API_URL=https://<public url> bun run --filter @substrate/web dev
 ```
 
+To drive real VMs from the local UI without making anything public (needs the
+AWS setup below):
+
+```sh
+bun run dev --host
+```
+
+It tunnels to hostd over SSM. When the Clerk keys are in Parameter Store you
+sign in as on the real site, and each account sees only its own VMs; without
+them it runs without sign-in.
+
 Before pushing:
 
 ```sh
@@ -66,6 +77,7 @@ Keep the key private: never commit it, paste it into chats, or share it.
 
 | Command | What it does |
 |---|---|
+| `bun run secrets` | Creates the hostd token in Parameter Store if it's missing. With `--clerk`, also loads the Clerk keys (run `bunx clerk@latest auth login` first; owner only) |
 | `bun run deploy:infra` | Deploys the CDK stack (`--require-approval never` skips the prompt) |
 | `bun run deploy:control` | Builds the web app and control API, installs them on the control box, waits for the public URL to serve the new version |
 | `bun run deploy:host` | Ships hostd, the guest agent and the image scripts to the host as source, runs host setup, builds and restarts hostd. Running VMs keep running |
