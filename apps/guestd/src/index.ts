@@ -1,8 +1,10 @@
 import { GUESTD_PORT } from '@substrate/protocol'
 import { $ } from 'bun'
+import { websocket } from 'hono/bun'
 import { createApp } from './app.ts'
 import { exec } from './exec.ts'
 import { readGuestConfig, type GuestConfig } from './mmds.ts'
+import { Sessions } from './sessions.ts'
 
 // Set by `bun build --define` in images/host/install-hostd.sh.
 declare const BUILD_VERSION: string | undefined
@@ -22,7 +24,8 @@ for (let attempt = 1; !config; attempt++) {
   }
 }
 
-const app = createApp({ vmId: config.vmId, token: config.token, version, run: exec })
+const sessions = new Sessions()
+const app = createApp({ vmId: config.vmId, token: config.token, version, run: exec, sessions })
 // idleTimeout 0: an exec can legitimately run for minutes.
-Bun.serve({ hostname: config.guestIp, port: GUESTD_PORT, idleTimeout: 0, fetch: app.fetch })
+Bun.serve({ hostname: config.guestIp, port: GUESTD_PORT, idleTimeout: 0, fetch: app.fetch, websocket })
 console.log(`substrate-guestd ${version} for ${config.vmId} on ${config.guestIp}:${GUESTD_PORT}`)
