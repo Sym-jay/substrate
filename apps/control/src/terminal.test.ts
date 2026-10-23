@@ -14,6 +14,7 @@ import { guestClient } from '../../hostd/src/guest.ts'
 import type { VmService } from '../../hostd/src/vms.ts'
 import { createApp } from './app.ts'
 import { Owners } from './owners.ts'
+import { testDatabase } from './db.ts'
 import { Tickets } from './tickets.ts'
 
 const guestToken = 'g'.repeat(64)
@@ -68,8 +69,8 @@ const hostd = Bun.serve({
   fetch: createHostd({ token: hostdToken, version: 'test', image: async () => null, vms }).fetch,
 })
 
-const owners = new Owners(':memory:')
-owners.add('vm-abc', 'alice')
+const owners = new Owners(await testDatabase())
+await owners.add('vm-abc', 'alice')
 const asAlice = { 'x-test-user': 'alice' }
 
 const control = Bun.serve({

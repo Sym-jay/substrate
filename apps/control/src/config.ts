@@ -30,6 +30,39 @@ export const config = {
   // Optional: only these verified emails may sign in. Empty lets anyone in.
   allowedEmails: list(process.env.SUBSTRATE_ALLOWED_EMAILS),
   maxVmsPerUser: Number(process.env.SUBSTRATE_MAX_VMS_PER_USER ?? 3),
+  // Phase 2. Everyone's limits, unless an admin set their own (PUT
+  // /api/admin/quotas/:user). Admins have none unless one is set for them.
+  quota: {
+    maxVms: Number(process.env.SUBSTRATE_MAX_VMS_PER_USER ?? 3),
+    sizes: list(process.env.SUBSTRATE_QUOTA_SIZES ?? 'small,medium,large') as ('small' | 'medium' | 'large')[],
+    maxDiskGib: Number(process.env.SUBSTRATE_QUOTA_MAX_DISK_GIB ?? 128),
+    maxTotalDiskGib: Number(process.env.SUBSTRATE_QUOTA_MAX_TOTAL_DISK_GIB ?? 256),
+    maxRunningHours: Number(process.env.SUBSTRATE_QUOTA_RUNNING_HOURS ?? 200),
+    egress: (process.env.SUBSTRATE_QUOTA_EGRESS === 'allowlist' ? 'allowlist' : 'open') as 'open' | 'allowlist',
+  },
+  admins: list(process.env.SUBSTRATE_ADMINS),
+  // Postgres on RDS, once setup-control.sh found it (Parameter Store's
+  // /substrate/database). Without it, the SQLite file at `db`.
+  database: process.env.SUBSTRATE_DATABASE_HOST
+    ? {
+        hostname: process.env.SUBSTRATE_DATABASE_HOST,
+        port: Number(process.env.SUBSTRATE_DATABASE_PORT ?? 5432),
+        database: process.env.SUBSTRATE_DATABASE_NAME ?? 'substrate',
+        // Signs in with IAM (a 15-minute token per connection), never a password.
+        username: process.env.SUBSTRATE_DATABASE_USER ?? 'substrate_app',
+        // RDS's own master credentials (rotated by RDS), only to create that user once.
+        masterSecretArn: process.env.SUBSTRATE_DATABASE_MASTER_SECRET || null,
+        caFile: process.env.SUBSTRATE_DATABASE_CA || null,
+      }
+    : null,
+  // Encrypts users' agent keys and GitHub tokens. Without it, those are off.
+  kmsKeyId: process.env.SUBSTRATE_KMS_KEY || null,
+  publicUrl: process.env.SUBSTRATE_PUBLIC_URL || null,
+  // A GitHub OAuth app, for "Connect with GitHub" (docs/phase2.md).
+  githubOAuth:
+    process.env.SUBSTRATE_GITHUB_CLIENT_ID && process.env.SUBSTRATE_GITHUB_CLIENT_SECRET
+      ? { clientId: process.env.SUBSTRATE_GITHUB_CLIENT_ID, clientSecret: process.env.SUBSTRATE_GITHUB_CLIENT_SECRET }
+      : null,
   // Who owns which VM (SQLite).
   db: process.env.SUBSTRATE_DB ?? '.data/control.db',
   previewOrigin: process.env.SUBSTRATE_PREVIEW_ORIGIN || null,

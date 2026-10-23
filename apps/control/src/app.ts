@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { serveStatic } from 'hono/bun'
 import { vmRoutes, type VmRoutesOptions } from './vms.ts'
 import type { previewRoutes } from './previews.ts'
+import type { accountRoutes } from './account.ts'
 
 type Options = {
   version: string
@@ -14,9 +15,11 @@ type Options = {
   // VM routes, or why there aren't any (no sandbox host, or no sign-in).
   vms: VmRoutesOptions | { unavailable: string }
   previews?: ReturnType<typeof previewRoutes>
+  // Agent keys, GitHub, usage, quota and activity (Phase 2).
+  account?: ReturnType<typeof accountRoutes>
 }
 
-export function createApp({ version, region, webDir, readHost, clerkPublishableKey, vms, previews }: Options) {
+export function createApp({ version, region, webDir, readHost, clerkPublishableKey, vms, previews, account }: Options) {
   const startedAt = new Date().toISOString()
   const app = new Hono()
 
@@ -45,6 +48,8 @@ export function createApp({ version, region, webDir, readHost, clerkPublishableK
   } else {
     app.route('/api', vmRoutes(vms))
   }
+
+  if (account) app.route('/api', account)
 
   app.all('/api/*', (c) => c.json({ error: 'not found' }, 404))
 

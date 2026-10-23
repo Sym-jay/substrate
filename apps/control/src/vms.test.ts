@@ -4,6 +4,7 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { Hono } from 'hono'
 import { createApp } from './app.ts'
 import { Owners } from './owners.ts'
+import { testDatabase } from './db.ts'
 import { Tickets } from './tickets.ts'
 import { Jobs } from './jobs.ts'
 
@@ -60,6 +61,7 @@ fakeHostd.delete('/vms/:id', (c) => {
 const hostd = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: fakeHostd.fetch })
 afterAll(() => hostd.stop(true))
 
+const db = await testDatabase()
 const app = createApp({
   version: 'test',
   region: 'ap-south-1',
@@ -70,9 +72,9 @@ const app = createApp({
     hostd: { url: `http://127.0.0.1:${hostd.port}`, token: hostdToken },
     // Stands in for Clerk: the caller says who they are.
     authenticate: async (req) => (req.headers.get('x-test-user') ? { id: req.headers.get('x-test-user')! } : null),
-    owners: new Owners(':memory:'),
+    owners: new Owners(db),
     tickets: new Tickets(),
-    jobs: new Jobs(':memory:'),
+    jobs: new Jobs(db),
     githubToken: async (userId) => `private-token-for-${userId}`,
     maxVmsPerUser: 2,
   },
