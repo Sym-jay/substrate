@@ -96,10 +96,10 @@ export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser }
     }),
   )
 
-  app.on(['GET', 'POST', 'DELETE'], ['/vms/:id', '/vms/:id/*'], async (c) => {
+  app.on(['GET', 'POST', 'PATCH', 'DELETE'], ['/vms/:id', '/vms/:id/*'], async (c) => {
     const res = await callHostd(hostdPath(c), {
       method: c.req.method,
-      body: c.req.method === 'POST' ? await c.req.text() : undefined,
+      body: c.req.method === 'POST' || c.req.method === 'PATCH' ? await c.req.text() : undefined,
     })
     if (!res) return unreachable(c)
     if (c.req.method === 'DELETE' && res.status === 204) owners.remove(c.req.param('id') ?? '')

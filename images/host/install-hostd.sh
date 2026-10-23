@@ -33,6 +33,17 @@ else
   log "no /substrate/hostd-token in Parameter Store (run \`bun run secrets\`): the control box can't reach hostd"
 fi
 
+# Settings hostd reads at start. SUBSTRATE_PUBLIC_URL comes from deploy-host.ts.
+{
+  echo "SUBSTRATE_PUBLIC_URL=${SUBSTRATE_PUBLIC_URL:-}"
+  if topic=$(aws ssm get-parameter --region "$SUBSTRATE_REGION" --name /substrate/ntfy-topic --with-decryption --query Parameter.Value --output text 2>/dev/null); then
+    echo "SUBSTRATE_NTFY_TOPIC=${topic}"
+    log "alerts go to the ntfy topic in Parameter Store" >&2
+  else
+    log "no /substrate/ntfy-topic in Parameter Store (run \`bun run secrets --ntfy\`): alerts only go to hostd's log" >&2
+  fi
+} | (umask 077 && cat >/etc/substrate/hostd.env)
+
 ln -sfn "$release" /opt/substrate/hostd/current
 # At a fixed path, because running VM units refer to it.
 install -D -m 0755 "$release/images/host/vm-stop.sh" /usr/local/lib/substrate/vm-stop
@@ -47,6 +58,7 @@ Wants=network-online.target
 
 [Service]
 ExecStart=/opt/substrate/hostd/current/bin/substrate-hostd
+EnvironmentFile=-/etc/substrate/hostd.env
 Restart=always
 RestartSec=2
 # VMs live in their own systemd units, so stopping hostd leaves them running.

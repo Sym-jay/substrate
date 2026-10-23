@@ -2,6 +2,7 @@
 //   bun run vm list
 //   bun run vm create [--name NAME] [--size large|medium|small] [--disk GIB]
 //   bun run vm start|stop|pause|resume|delete VM
+//   bun run vm auto-pause VM MINUTES|off
 //   bun run vm exec VM [--root] -- COMMAND...
 //   bun run vm capacity
 // VM is an id (vm-xxxxxxxx) or a name.
@@ -13,7 +14,7 @@ const [command, ...args] = process.argv.slice(2)
 const { HostInstanceId: host } = await stackOutputs()
 
 const usage = () => {
-  console.error('usage: bun run vm list | create [--name N] [--size S] [--disk GIB] | start|stop|pause|resume|delete VM | exec VM [--root] -- CMD | capacity')
+  console.error('usage: bun run vm list | create [--name N] [--size S] [--disk GIB] | start|stop|pause|resume|delete VM | auto-pause VM MINUTES|off | exec VM [--root] -- CMD | capacity')
   process.exit(1)
 }
 
@@ -22,7 +23,7 @@ function option(name: string) {
   return i === -1 ? undefined : args[i + 1]
 }
 
-async function call<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown) {
+async function call<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown) {
   const res = await hostd<T>(host, method, path, body)
   if (res.status >= 400) {
     console.error(errorMessage(res))
@@ -72,6 +73,13 @@ switch (command) {
   case 'resume':
     console.log(describe(await call<Vm>('POST', `/vms/${await resolve(args[0])}/${command}`)))
     break
+  case 'auto-pause': {
+    const minutes = args[1] === 'off' ? null : Number(args[1])
+    if (minutes !== null && !Number.isInteger(minutes)) usage()
+    const vm = await call<Vm>('PATCH', `/vms/${await resolve(args[0])}`, { autoPauseMinutes: minutes })
+    console.log(`${vm.id} ${vm.name}: ${vm.autoPauseMinutes == null ? 'never pauses itself' : `pauses after ${vm.autoPauseMinutes} idle minute${vm.autoPauseMinutes === 1 ? '' : 's'}`}`)
+    break
+  }
   case 'delete':
     await call('DELETE', `/vms/${await resolve(args[0])}`)
     console.log('deleted')

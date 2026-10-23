@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import { bearerAuth } from 'hono/bearer-auth'
 import { upgradeWebSocket } from 'hono/bun'
 import { HTTPException } from 'hono/http-exception'
+import type { Activity } from './activity.ts'
 import type { Sessions } from './sessions.ts'
 
 type Options = {
@@ -12,12 +13,13 @@ type Options = {
   version: string
   run: (req: ExecRequest) => Promise<ExecResult>
   sessions: Sessions
+  activity: Activity
 }
 
 // A browser that stops reading gets dropped rather than buffered forever.
 const MAX_BUFFERED_BYTES = 1024 * 1024
 
-export function createApp({ vmId, token, version, run, sessions }: Options) {
+export function createApp({ vmId, token, version, run, sessions, activity }: Options) {
   const started = performance.now()
   const app = new Hono()
 
@@ -27,6 +29,9 @@ export function createApp({ vmId, token, version, run, sessions }: Options) {
   app.get('/health', (c) =>
     c.json({ ok: true, vmId, version, uptimeMs: Math.round(performance.now() - started) } satisfies GuestHealth),
   )
+
+  // hostd polls this for alerts and auto-pause.
+  app.get('/activity', (c) => c.json(activity.report()))
 
   app.post('/exec', async (c) => {
     const parsed = ExecRequest.safeParse(await c.req.json().catch(() => null))

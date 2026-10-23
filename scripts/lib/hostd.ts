@@ -7,7 +7,7 @@ export type HostdResponse<T> = { status: number; data: T }
 // 24 KB output limit) come back truncated.
 export async function hostd<T>(
   hostInstanceId: string,
-  method: 'GET' | 'POST' | 'DELETE',
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
 ): Promise<HostdResponse<T>> {

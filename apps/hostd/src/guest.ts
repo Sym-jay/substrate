@@ -1,4 +1,4 @@
-import { ExecResult, GUESTD_PORT, GuestHealth, Session, type CreateSession, type ExecRequest } from '@substrate/protocol'
+import { ExecResult, GUESTD_PORT, GuestActivity, GuestHealth, Session, type CreateSession, type ExecRequest } from '@substrate/protocol'
 import { HttpError } from './errors.ts'
 
 export function guestClient(guestIp: string, token: string, port = GUESTD_PORT) {
@@ -21,6 +21,14 @@ export function guestClient(guestIp: string, token: string, port = GUESTD_PORT) 
       })
       if (!res.ok) throw new Error(`guest exec returned ${res.status}: ${await res.text()}`)
       return ExecResult.parse(await res.json())
+    },
+
+    // Null from a guest agent older than M4, which doesn't report activity.
+    async activity() {
+      const res = await fetch(`${base}/activity`, { headers, signal: AbortSignal.timeout(2_000) })
+      if (res.status === 404) return null
+      if (!res.ok) throw new Error(`guest activity returned ${res.status}`)
+      return GuestActivity.parse(await res.json())
     },
 
     async sessions() {

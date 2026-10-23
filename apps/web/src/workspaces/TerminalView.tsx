@@ -18,8 +18,23 @@ const keys = [
   ['Down', '\x1b[B'], ['Left', '\x1b[D'], ['Right', '\x1b[C'],
 ] as const
 
-export function TerminalView({ path, title }: { path: string; title: string }) {
+// Why there's no connection: the VM is being saved, is paused, or is waking up.
+export type Asleep = 'pausing' | 'paused' | 'waking'
+const asleepLabels: Record<Asleep, string> = { pausing: 'Saving…', paused: 'Paused', waking: 'Waking…' }
+
+type Props = {
+  path: string
+  title: string
+  asleep?: Asleep
+  // Called once when someone types into a paused terminal.
+  onWake?: () => void
+}
+
+export function TerminalView({ path, title, asleep, onWake }: Props) {
   const container = useRef<HTMLDivElement>(null)
+  const screen = useRef<{ term: Terminal; fit: FitAddon } | null>(null)
+  const connected = useRef(false)
+  const wake = useRef(onWake)
   const input = useRef<(data: string) => void>(() => {})
   const ctrl = useRef(false)
   const [controlHeld, setControlHeld] = useState(false)
@@ -28,10 +43,14 @@ export function TerminalView({ path, title }: { path: string; title: string }) {
   const [retry, setRetry] = useState(0)
 
   useEffect(() => {
+    wake.current = onWake
+  })
+
+  // The screen outlives connections, so a paused session keeps showing its
+  // last output.
+  useEffect(() => {
     if (!container.current) return
-    let disposed = false
     let frame = 0
-    let connected = false
     const term = new Terminal({
       cursorBlink: true,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -48,13 +67,41 @@ export function TerminalView({ path, title }: { path: string; title: string }) {
     term.loadAddon(fit)
     term.open(container.current)
     fit.fit()
+    screen.current = { term, fit }
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => { if (connected.current) fit.fit() })
+    })
+    observer.observe(container.current)
+    return () => {
+      screen.current = null
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+      term.dispose()
+    }
+  }, [path])
 
+  useEffect(() => {
+    if (!screen.current) return
+    const { term, fit } = screen.current
+    if (asleep) {
+      // The first key typed into a paused (or pausing) terminal wakes the VM.
+      // It isn't sent on: you can't see yet what it would be answering.
+      term.options.disableStdin = asleep === 'waking'
+      const typing = term.onData(() => {
+        typing.dispose()
+        wake.current?.()
+      })
+      return () => typing.dispose()
+    }
+
+    let disposed = false
     const connection = connectTerminal({
       url: () => workspaceApi.terminalUrl(path),
       onState(next, message) {
         if (disposed) return
-        connected = next === 'connected'
-        term.options.disableStdin = !connected
+        connected.current = next === 'connected'
+        term.options.disableStdin = !connected.current
         setState(next)
         setDetail(message ?? '')
       },
@@ -91,53 +138,49 @@ export function TerminalView({ path, title }: { path: string; title: string }) {
     input.current = (data) => { sendInput(data); term.focus() }
     const typing = term.onData(sendInput)
     const resize = term.onResize(({ cols, rows }) => connection.send({ type: 'resize', cols, rows }))
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => { if (!disposed && connected) fit.fit() })
-    })
-    observer.observe(container.current)
 
     return () => {
       disposed = true
+      connected.current = false
       ctrl.current = false
+      setControlHeld(false)
       input.current = () => {}
-      cancelAnimationFrame(frame)
-      observer.disconnect()
       typing.dispose()
       resize.dispose()
       connection.dispose()
-      term.dispose()
     }
-  }, [path, retry])
+  }, [path, retry, asleep])
 
   return (
     <section aria-label={`${title} terminal`} className="terminal-panel">
       <div className="terminal-heading">
         <h3>{title}</h3>
         <span role="status" className="terminal-status">
-          <span className={`status-dot ${state === 'connected' ? 'is-running' : ''}`} />
-          {labels[state]}
+          <span className={`status-dot ${!asleep && state === 'connected' ? 'is-running' : ''}`} />
+          {asleep ? asleepLabels[asleep] : labels[state]}
         </span>
       </div>
       <div ref={container} className="terminal-screen" />
       <div className="terminal-keys" aria-label="Terminal keyboard shortcuts">
         <button
-          type="button" aria-pressed={controlHeld} disabled={state !== 'connected'}
+          type="button" aria-pressed={controlHeld} disabled={!!asleep || state !== 'connected'}
           onPointerDown={(e) => e.preventDefault()}
           onClick={() => { ctrl.current = !ctrl.current; setControlHeld(ctrl.current) }}
         >Ctrl</button>
         {keys.map(([label, data]) => (
           <button
-            key={label} type="button" disabled={state !== 'connected'}
+            key={label} type="button" disabled={!!asleep || state !== 'connected'}
             aria-label={`Send ${label}`} onPointerDown={(e) => e.preventDefault()}
             onClick={() => input.current(data)}
           >{label}</button>
         ))}
       </div>
-      {state === 'reconnecting' && <p className="terminal-note" role="status">Reattaching to your session. The process keeps running.</p>}
-      {state === 'exited' && <p className="terminal-note">This process has ended. Start a new session to continue.</p>}
-      {state === 'error' && <p className="terminal-note" role="alert">{detail}</p>}
-      {(state === 'error' || state === 'reconnecting') && (
+      {asleep === 'paused' && <p className="terminal-note" role="status">This workspace is paused, with everything saved. Type anything here to wake it.</p>}
+      {asleep === 'pausing' && <p className="terminal-note" role="status">Saving this workspace so it can pause. Typing here wakes it once that’s done.</p>}
+      {!asleep && state === 'reconnecting' && <p className="terminal-note" role="status">Reattaching to your session. The process keeps running.</p>}
+      {!asleep && state === 'exited' && <p className="terminal-note">This process has ended. Start a new session to continue.</p>}
+      {!asleep && state === 'error' && <p className="terminal-note" role="alert">{detail}</p>}
+      {!asleep && (state === 'error' || state === 'reconnecting') && (
         <button type="button" className="workspace-button secondary terminal-retry" onClick={() => setRetry((n) => n + 1)}>Reconnect now</button>
       )}
     </section>

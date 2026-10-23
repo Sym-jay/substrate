@@ -5,6 +5,8 @@ import { createApp } from './app.ts'
 import { config } from './config.ts'
 import { currentImage } from './images.ts'
 import { applyFirewall, defaultUplink } from './network.ts'
+import { AutoPause } from './autopause.ts'
+import { logOnly, ntfy } from './notify.ts'
 import { VmManager } from './vms.ts'
 
 // The bearer token for this API. Generated once and kept on the data disk;
@@ -25,6 +27,10 @@ await applyFirewall(uplink, config.paths.run)
 
 const vms = new VmManager()
 await vms.reconcile()
+
+if (!config.ntfy) console.log('no ntfy topic (`bun run secrets --ntfy`): alerts only go to this log')
+const notify = config.ntfy ? ntfy(config.ntfy, config.publicUrl) : logOnly
+new AutoPause({ vms, notify, quietMs: config.autoPause.quietMs }).start(config.autoPause.pollMs)
 
 const app = createApp({
   token,

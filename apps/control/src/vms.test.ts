@@ -10,7 +10,7 @@ const hostdToken = 'h'.repeat(64)
 const hostdVms = new Map<string, Vm>()
 let created = 0
 
-// Just enough of hostd: list, create, get, delete.
+// Just enough of hostd: list, create, get, update, delete.
 const fakeHostd = new Hono()
 fakeHostd.use('*', async (c, next) => {
   if (c.req.header('Authorization') !== `Bearer ${hostdToken}`) return c.json({ error: 'unauthorized' }, 401)
@@ -38,6 +38,11 @@ fakeHostd.post('/vms', async (c) => {
   return c.json(vm, 201)
 })
 fakeHostd.get('/vms/:id', (c) => c.json(hostdVms.get(c.req.param('id'))))
+fakeHostd.patch('/vms/:id', async (c) => {
+  const vm = { ...hostdVms.get(c.req.param('id'))!, ...((await c.req.json()) as Partial<Vm>) }
+  hostdVms.set(vm.id, vm)
+  return c.json(vm)
+})
 fakeHostd.delete('/vms/:id', (c) => {
   hostdVms.delete(c.req.param('id'))
   return c.body(null, 204)
@@ -91,6 +96,7 @@ describe('VMs per user', () => {
       [`/api/vms/${aliceVm.id}`, 'GET'],
       [`/api/vms/${aliceVm.id}/sessions`, 'GET'],
       [`/api/vms/${aliceVm.id}/stop`, 'POST'],
+      [`/api/vms/${aliceVm.id}`, 'PATCH'],
       [`/api/vms/${aliceVm.id}`, 'DELETE'],
       [`/api/vms/${aliceVm.id}/sessions/s/terminal/ticket`, 'POST'],
     ] as const) {
@@ -100,6 +106,12 @@ describe('VMs per user', () => {
     }
     expect(hostdVms.has(aliceVm.id)).toBe(true)
     expect((await alice(`/api/vms/${aliceVm.id}`)).status).toBe(200)
+  })
+
+  test('the owner can change when their VM auto-pauses', async () => {
+    const res = await alice(`/api/vms/${aliceVm.id}`, { method: 'PATCH', body: JSON.stringify({ autoPauseMinutes: 30 }) })
+    expect(res.status).toBe(200)
+    expect(hostdVms.get(aliceVm.id)?.autoPauseMinutes).toBe(30)
   })
 
   test('each user has a VM limit', async () => {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { VmName, VmSizes, type Agent, type Session, type Vm, type VmSizeName } from '@substrate/protocol'
 import { workspaceApi, WorkspaceApiError } from './api.ts'
-import { TerminalView } from './TerminalView.tsx'
+import { TerminalView, type Asleep } from './TerminalView.tsx'
 import './workspaces.css'
 
 const spec = ({ vcpus, memMib }: { vcpus: number; memMib: number }) => `${vcpus} vCPU · ${memMib / 1024} GB`
@@ -226,6 +226,11 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
     finally { if (current === generation.current) setBusy(false) }
   }
 
+  const asleep: Asleep | undefined =
+    vm.state === 'pausing' ? 'pausing'
+      : vm.state === 'resuming' || (vm.state === 'paused' && operation === 'resume') ? 'waking'
+      : vm.state === 'paused' ? 'paused' : undefined
+
   return (
     <section className="workspace-sessions" aria-label={`${vm.name} sessions`}>
       <div className="workspace-heading">
@@ -241,7 +246,8 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
               </>}
         </div>
       </div>
-      {vm.state !== 'running' ? <p className="workspace-hint">{
+      <AutoPauseSetting vm={vm} onChange={onChange} />
+      {vm.state !== 'running' && !(selected && asleep) ? <p className="workspace-hint">{
         vm.state === 'paused' ? 'Paused. Your processes and terminal sessions are saved. Resume to continue.'
           : vm.state === 'pausing' ? 'Saving your workspace. This can take a moment.'
           : vm.state === 'resuming' ? 'Restoring your workspace…'
@@ -254,10 +260,43 @@ function WorkspaceSessions({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => voi
       {sessions.length > 0 && <div className="session-picker" role="group" aria-label="Select terminal session">
         {sessions.map((session, i) => <button type="button" key={session.id} aria-pressed={session.id === active} onClick={() => setActive(session.id)}>{label(session, i)}{session.state === 'exited' ? ' · ended' : ''}</button>)}
       </div>}
-      {selected && vm.state === 'running' && <TerminalView key={selected.id} path={workspaceApi.terminalPath(vm.id, selected.id)} title={label(selected, sessions.indexOf(selected))} />}
+      {selected && (vm.state === 'running' || asleep) && <TerminalView
+        key={selected.id} path={workspaceApi.terminalPath(vm.id, selected.id)} title={label(selected, sessions.indexOf(selected))}
+        asleep={asleep} onWake={() => void changeState('resume')}
+      />}
       {vm.state === 'paused' && vm.lastError && <p role="alert" className="workspace-error">{vm.lastError}. Your saved session is available to retry.</p>}
       {selected && vm.state === 'running' && <p className="workspace-hint">Closing this tab leaves the session running. Open this workspace again to return to it.</p>}
     </section>
+  )
+}
+
+const autoPauseChoices = [null, 5, 10, 30, 60, 240]
+const after = (minutes: number) => minutes < 60 || minutes % 60 ? `After ${minutes} min idle` : `After ${minutes / 60} h idle`
+
+// Pauses the VM after it has been idle this long (see docs/m4.md).
+function AutoPauseSetting({ vm, onChange }: { vm: Vm; onChange: (vm: Vm) => void }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  // An older hostd doesn't have the setting.
+  if (vm.autoPauseMinutes === undefined) return null
+  const current = vm.autoPauseMinutes
+  const choices = autoPauseChoices.includes(current) ? autoPauseChoices : [...autoPauseChoices, current].sort((a, b) => (a ?? 0) - (b ?? 0))
+  const change = async (value: string) => {
+    setBusy(true)
+    setError('')
+    try { onChange(await workspaceApi.update(vm.id, { autoPauseMinutes: value === 'off' ? null : Number(value) })) }
+    catch (error) { setError(errorMessage(error)) }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="workspace-autopause">
+      <label>Auto-pause
+        <select value={current ?? 'off'} disabled={busy} onChange={(e) => void change(e.target.value)}>
+          {choices.map((minutes) => <option key={minutes ?? 'off'} value={minutes ?? 'off'}>{minutes === null ? 'Off' : after(minutes)}</option>)}
+        </select>
+      </label>
+      {error && <p role="alert" className="workspace-error">{error}</p>}
+    </div>
   )
 }
 

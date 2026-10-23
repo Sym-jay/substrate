@@ -3,6 +3,8 @@
 //   bun run secrets          creates the hostd token if it doesn't exist yet
 //   bun run secrets --clerk  also (re)loads the Clerk keys from Substrate's Clerk
 //                            application; run `bunx clerk@latest auth login` first
+//   bun run secrets --ntfy   also creates the ntfy topic for alerts (docs/m4.md),
+//                            and prints it so you can subscribe
 import { GetParameterCommand, PutParameterCommand, SSMClient } from '@aws-sdk/client-ssm'
 import { $ } from 'bun'
 import { randomBytes } from 'node:crypto'
@@ -19,6 +21,8 @@ const HOSTD_TOKEN = '/substrate/hostd-token'
 // Read by setup-control.sh. The publishable key is public (it ships to browsers).
 const CLERK_PUBLISHABLE_KEY = '/substrate/clerk-publishable-key'
 const CLERK_SECRET_KEY = '/substrate/clerk-secret-key'
+// Read by install-hostd.sh. Anyone who knows the topic can read its alerts.
+const NTFY_TOPIC = '/substrate/ntfy-topic'
 
 const ssm = new SSMClient({ region })
 
@@ -69,6 +73,16 @@ if (process.argv.includes('--clerk')) {
   }
 } else if (!(await exists(CLERK_SECRET_KEY))) {
   console.log('no Clerk keys yet: run `bunx clerk@latest auth login`, then `bun run secrets --clerk`')
+}
+
+if (process.argv.includes('--ntfy')) {
+  if (!(await exists(NTFY_TOPIC))) {
+    // Unguessable, since ntfy.sh topics are open to anyone who knows the name.
+    await put(NTFY_TOPIC, `substrate-${randomBytes(12).toString('hex')}`, 'SecureString')
+    console.log(`created ${NTFY_TOPIC}`)
+  }
+  const topic = (await ssm.send(new GetParameterCommand({ Name: NTFY_TOPIC, WithDecryption: true }))).Parameter?.Value
+  console.log(`Alerts go to https://ntfy.sh/${topic}. Subscribe to "${topic}" in the ntfy app, and keep the name private.`)
 }
 
 console.log('To use them: `bun run deploy:host` and `bun run deploy:control`.')

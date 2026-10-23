@@ -1,11 +1,13 @@
 import {
   VmSizes,
+  DEFAULT_AUTO_PAUSE_MINUTES,
   DEFAULT_DISK_GIB,
   DEFAULT_VM_SIZE,
   type Capacity,
   type CreateVm,
   type ExecRequest,
   type ExecResult,
+  type UpdateVm,
   type Vm,
 } from '@substrate/protocol'
 import { randomBytes } from 'node:crypto'
@@ -30,6 +32,7 @@ export interface VmService {
   stop(id: string): Promise<Vm>
   pause(id: string): Promise<Vm>
   resume(id: string): Promise<Vm>
+  update(id: string, input: UpdateVm): Promise<Vm>
   remove(id: string): Promise<void>
   exec(id: string, req: ExecRequest): Promise<ExecResult>
   guest(id: string): Promise<GuestClient>
@@ -92,6 +95,8 @@ export class VmManager implements VmService {
         paused: false,
         pauseMs: null,
         resumeMs: null,
+        awakeSince: null,
+        autoPauseMinutes: DEFAULT_AUTO_PAUSE_MINUTES,
       }
       try {
         await zfs.createFilesystem(dataset(id))
@@ -160,6 +165,15 @@ export class VmManager implements VmService {
     catch (error) { throw new HttpError(502, `couldn't resume ${record.name}: ${error instanceof Error ? error.message : error}`) }
     finally { this.transitions.delete(record.id) }
     return this.get(record.id)
+  }
+
+  async update(id: string, input: UpdateVm) {
+    return this.lock.run(async () => {
+      const record = await this.record(id)
+      record.autoPauseMinutes = input.autoPauseMinutes
+      await writeRecord(record)
+      return this.get(id)
+    })
   }
 
   async stop(id: string) {
@@ -289,7 +303,7 @@ export class VmManager implements VmService {
       await deleteTap(record.slot)
       throw err
     }
-    record.startedAt = new Date().toISOString()
+    record.startedAt = record.awakeSince = new Date().toISOString()
   }
 
   // Waits for the guest agent and records how long the boot took.

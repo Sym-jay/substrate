@@ -34,7 +34,8 @@ bun run dev --host
 
 It tunnels to hostd over SSM. When the Clerk keys are in Parameter Store you
 sign in as on the real site, and each account sees only its own VMs; without
-them it runs without sign-in.
+them, or with `--no-login`, it runs without sign-in and sees only the VMs it
+created that way.
 
 Before pushing:
 
@@ -77,7 +78,7 @@ Keep the key private: never commit it, paste it into chats, or share it.
 
 | Command | What it does |
 |---|---|
-| `bun run secrets` | Creates the hostd token in Parameter Store if it's missing. With `--clerk`, also loads the Clerk keys (run `bunx clerk@latest auth login` first; owner only) |
+| `bun run secrets` | Creates the hostd token in Parameter Store if it's missing. With `--clerk`, also loads the Clerk keys (run `bunx clerk@latest auth login` first; owner only). With `--ntfy`, creates the topic for alerts and prints it, so you can subscribe in the ntfy app |
 | `bun run deploy:infra` | Deploys the CDK stack (`--require-approval never` skips the prompt) |
 | `bun run deploy:control` | Builds the web app and control API, installs them on the control box, waits for the public URL to serve the new version |
 | `bun run deploy:host` | Ships hostd, the guest agent and the image scripts to the host as source, runs host setup, builds and restarts hostd. Running VMs keep running |
@@ -85,7 +86,7 @@ Keep the key private: never commit it, paste it into chats, or share it.
 | `bun run setup:host` | Runs only `images/host/setup-host.sh` on the host |
 | `bun run host status` / `start` / `stop` | Checks, starts or stops the sandbox host |
 | `bun run ssm host` / `control` | Opens a shell on either box through SSM |
-| `bun run vm list` / `create` / `start` / `stop` / `delete` / `exec` / `capacity` | Manages microVMs, e.g. `bun run vm create --name demo --size small --disk 64`, `bun run vm exec demo -- docker ps` |
+| `bun run vm list` / `create` / `start` / `stop` / `pause` / `resume` / `auto-pause` / `delete` / `exec` / `capacity` | Manages microVMs, e.g. `bun run vm create --name demo --size small --disk 64`, `bun run vm exec demo -- docker ps`, `bun run vm auto-pause demo 30` (or `off`) |
 | `bun run check:m0` / `check:m1` | Checks a milestone's "Done when" list against the real deployment. `check:m1` creates and deletes a VM |
 
 **Cost:** the sandbox host (`r8i.4xlarge`) costs about $1.15 an hour while it runs.

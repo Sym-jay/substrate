@@ -14,6 +14,19 @@ export const config = {
   memReserveMib: 4_096,
   // How long a VM may take from launch to its guest agent answering.
   bootTimeoutMs: 60_000,
+  // Agent alerts and auto-pause notices go to this ntfy topic (`bun run
+  // secrets --ntfy`). Without one they're only logged.
+  ntfy: process.env.SUBSTRATE_NTFY_TOPIC
+    ? { server: process.env.SUBSTRATE_NTFY_SERVER ?? 'https://ntfy.sh', topic: process.env.SUBSTRATE_NTFY_TOPIC }
+    : null,
+  // The web app, so tapping an alert opens the VM.
+  publicUrl: process.env.SUBSTRATE_PUBLIC_URL || null,
+  autoPause: {
+    // How often hostd asks each running VM's guest agent what it's been doing.
+    pollMs: 5_000,
+    // No agent alerts while someone typed in the VM this recently: they're watching.
+    quietMs: 120_000,
+  },
   paths: {
     root,
     token: `${root}/hostd-token`,

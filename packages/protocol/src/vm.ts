@@ -32,6 +32,11 @@ export const Vm = z.object({
   pausedAt: z.string().nullable().optional(),
   pauseMs: z.number().nullable().optional(),
   resumeMs: z.number().nullable().optional(),
+  // When the VM last booted or resumed.
+  awakeSince: z.string().nullable().optional(),
+  // Pause the VM after this many idle minutes; null never does. Optional so
+  // the client can still read a hostd from before M4.
+  autoPauseMinutes: z.number().int().nullable().optional(),
 })
 export type Vm = z.infer<typeof Vm>
 
@@ -47,6 +52,13 @@ export const CreateVm = z.object({
   diskGib: z.number().int().min(8).max(1024).optional(),
 })
 export type CreateVm = z.infer<typeof CreateVm>
+
+// A new VM pauses after this many idle minutes.
+export const DEFAULT_AUTO_PAUSE_MINUTES = 10
+export const AutoPauseMinutes = z.number().int().min(1).max(1440).nullable()
+
+export const UpdateVm = z.object({ autoPauseMinutes: AutoPauseMinutes })
+export type UpdateVm = z.infer<typeof UpdateVm>
 
 export const ExecRequest = z.object({
   command: z.string().min(1),

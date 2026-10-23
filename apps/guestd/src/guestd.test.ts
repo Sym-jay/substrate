@@ -1,6 +1,11 @@
-import { ExecResult, GuestHealth } from '@substrate/protocol'
+import { ExecResult, GuestActivity, GuestHealth } from '@substrate/protocol'
 import { describe, expect, test } from 'bun:test'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { Activity, cpuSampler } from './activity.ts'
 import { createApp } from './app.ts'
+import { interpret, sendEvent, serveEvents } from './events.ts'
 import { exec, shellFor, withTimeout } from './exec.ts'
 import { Sessions, TerminalSession, sessionArgv, withControllingTerminal } from './sessions.ts'
 
@@ -13,6 +18,7 @@ const app = createApp({
   version: 'test',
   run: async (req) => ({ exitCode: 0, stdout: req.command, stderr: '', durationMs: 1, timedOut: false }),
   sessions: new Sessions(),
+  activity: new Activity(),
 })
 
 describe('guestd API', () => {
@@ -104,4 +110,79 @@ describe('exec', () => {
     expect(result.timedOut).toBe(true)
     expect(result.exitCode).toBeNull()
   }, 10_000)
+})
+
+describe('activity', () => {
+  test('idle time restarts on activity, and events record how long nobody typed', () => {
+    let now = 1_000
+    const activity = new Activity(() => now)
+    now += 60_000
+    expect(activity.report().idleMs).toBe(60_000)
+    activity.record({ agent: 'claude', kind: 'start', message: null })
+    activity.input()
+    now += 5_000
+    activity.touch()
+    now += 30_000
+    activity.record({ agent: 'claude', kind: 'stop', message: null })
+    now += 1_000
+    const report = activity.report()
+    expect(report.idleMs).toBe(1_000)
+    // Nobody had typed before the first event.
+    expect(report.events).toMatchObject([{ seq: 1, inputIdleMs: null }, { seq: 2, agent: 'claude', kind: 'stop', inputIdleMs: 35_000 }])
+  })
+
+  test('keeps only the latest events', () => {
+    const activity = new Activity()
+    for (let i = 0; i < 60; i++) activity.record({ agent: 'codex', kind: 'stop', message: null })
+    const { events } = activity.report()
+    expect(events).toHaveLength(50)
+    expect(events[0]!.seq).toBe(11)
+    expect(events[0]!.inputIdleMs).toBeNull()
+  })
+
+  test('is served to hostd with the token', async () => {
+    expect((await app.request('/activity')).status).toBe(401)
+    const res = await app.request('/activity', { headers: auth })
+    expect(GuestActivity.parse(await res.json()).events).toEqual([])
+  })
+})
+
+test('the CPU sampler counts busy CPUs since the last sample', async () => {
+  // user nice system idle iowait irq softirq steal, then two CPUs.
+  const stats = ['cpu  100 0 100 800 0 0 0 0\ncpu0 x\ncpu1 x\n', 'cpu  150 0 100 1150 0 0 0 100\ncpu0 x\ncpu1 x\n']
+  const sample = cpuSampler(async () => stats.shift()!)
+  expect(await sample()).toBe(0)
+  // 50 busy of 500 jiffies, over 2 CPUs; stolen time isn't the VM's work.
+  expect(await sample()).toBeCloseTo(0.2)
+})
+
+describe('agent events', () => {
+  test('Claude Code alerts only for notifications that need you', () => {
+    const attention = (payload: unknown) => interpret({ agent: 'claude', kind: 'attention', payload })
+    expect(attention({ notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' }))
+      .toEqual({ agent: 'claude', kind: 'attention', message: 'Claude needs your permission to use Bash' })
+    expect(attention({ notification_type: 'idle_prompt', message: 'Claude is waiting for your input' })).toBeNull()
+    expect(attention({ message: 'x'.repeat(500) })?.message).toHaveLength(200)
+    expect(interpret({ agent: 'claude', kind: 'stop', payload: { last_assistant_message: 'secret' } }))
+      .toEqual({ agent: 'claude', kind: 'stop', message: null })
+  })
+
+  test("Codex's turn-complete is a stop; other notify types are skipped", () => {
+    expect(interpret({ agent: 'codex', kind: 'stop', payload: { type: 'agent-turn-complete' } })?.kind).toBe('stop')
+    expect(interpret({ agent: 'codex', kind: 'stop', payload: { type: 'something-new' } })).toBeNull()
+  })
+
+  test('substrate-event reaches guestd over its socket', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'guestd-'))
+    const socket = join(dir, 'events.sock')
+    const activity = new Activity()
+    await serveEvents(activity, socket)
+    try {
+      expect(await sendEvent(['codex', 'stop', '{"type":"agent-turn-complete"}'], socket)).toBe(0)
+      expect(await sendEvent(['vim', 'stop', '{}'], socket)).toBe(0)
+      expect(activity.report().events).toMatchObject([{ agent: 'codex', kind: 'stop' }])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

@@ -1,4 +1,4 @@
-import { Session, Vm, type CreateSession, type CreateVm } from '@substrate/protocol'
+import { Session, Vm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
 import { authHeaders } from '../auth.ts'
 
 export class WorkspaceApiError extends Error {
@@ -39,6 +39,9 @@ export const workspaceApi = {
   },
   async resume(vmId: string) {
     return Vm.parse(await request(`${vmPath(vmId)}/resume`, post({})))
+  },
+  async update(vmId: string, input: UpdateVm) {
+    return Vm.parse(await request(vmPath(vmId), { ...post(input), method: 'PATCH' }))
   },
   async sessions(vmId: string, signal?: AbortSignal) {
     return Session.array().parse(await request(`${vmPath(vmId)}/sessions`, { signal }))

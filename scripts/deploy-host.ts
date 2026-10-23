@@ -49,7 +49,8 @@ const result = await run(
     'bash /opt/substrate/setup-host.sh',
     `aws s3 cp --quiet s3://${out.ArtifactsBucket}/host/src.tar.gz /tmp/substrate-src.tar.gz`,
     'tar -xzf /tmp/substrate-src.tar.gz -O ./images/host/install-hostd.sh >/opt/substrate/install-hostd.sh',
-    'bash /opt/substrate/install-hostd.sh /tmp/substrate-src.tar.gz',
+    // Where alerts link to. Passed at deploy time, since the repo never holds the URL.
+    `SUBSTRATE_PUBLIC_URL=${out.Url} bash /opt/substrate/install-hostd.sh /tmp/substrate-src.tar.gz`,
     'rm -f /tmp/substrate-src.tar.gz',
   ].join('\n'),
 )

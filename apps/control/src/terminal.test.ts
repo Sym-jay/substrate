@@ -6,6 +6,7 @@ import { websocket } from 'hono/bun'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Activity } from '../../guestd/src/activity.ts'
 import { createApp as createGuestd } from '../../guestd/src/app.ts'
 import { Sessions } from '../../guestd/src/sessions.ts'
 import { createApp as createHostd } from '../../hostd/src/app.ts'
@@ -18,6 +19,8 @@ import { Tickets } from './tickets.ts'
 const guestToken = 'g'.repeat(64)
 const hostdToken = 'h'.repeat(64)
 const shell = () => ['/bin/bash', '--noprofile', '--norc', '-i']
+let clock = 0
+const activity = new Activity(() => clock)
 
 const guestd = Bun.serve({
   hostname: '127.0.0.1',
@@ -30,7 +33,8 @@ const guestd = Bun.serve({
     run: async () => {
       throw new Error('unused')
     },
-    sessions: new Sessions(shell, mkdtempSync(join(tmpdir(), 'substrate-test-'))),
+    sessions: new Sessions(shell, mkdtempSync(join(tmpdir(), 'substrate-test-')), activity),
+    activity,
   }).fetch,
 })
 
@@ -45,6 +49,7 @@ const vms: VmService = {
   stop: unused,
   pause: unused,
   resume: unused,
+  update: unused,
   remove: unused,
   exec: unused,
   capacity: unused,
@@ -145,6 +150,12 @@ test('a session survives the tab closing, with its scrollback, and keeps running
     await (await fetch(`http://127.0.0.1:${control.port}/api/vms/vm-abc/sessions`, { headers: asAlice })).json(),
   )
   expect(list.map((s) => [s.id, s.state])).toEqual([[session.id, 'running']])
+
+  // What auto-pause sees through hostd: typing and output were activity.
+  clock += 60_000
+  activity.record({ agent: 'claude', kind: 'stop', message: null })
+  const seenByHostd = await guestClient('127.0.0.1', guestToken, guestd.port).activity()
+  expect(seenByHostd).toMatchObject({ idleMs: 0, events: [{ kind: 'stop', inputIdleMs: 60_000 }] })
 }, 20_000)
 
 test('a session that does not exist closes the socket', async () => {
