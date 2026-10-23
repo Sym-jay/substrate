@@ -1,4 +1,4 @@
-import { Session, Vm, RunCheckpoint, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
+import { AccountSshKey, Session, SshToken, Vm, VmGui, VmLogs, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
 import { authHeaders } from '../auth.ts'
 
 export class WorkspaceApiError extends Error {
@@ -68,6 +68,20 @@ export const workspaceApi = {
   async sessions(vmId: string, signal?: AbortSignal) {
     return Session.array().parse(await request(`${vmPath(vmId)}/sessions`, { signal }))
   },
+  // The VM's desktop: whether it has one, setting one up, and VNC to it.
+  async gui(vmId: string, signal?: AbortSignal) {
+    return VmGui.parse(await request(`${vmPath(vmId)}/gui`, { signal }))
+  },
+  async setupGui(vmId: string) {
+    return VmGui.parse(await request(`${vmPath(vmId)}/gui/setup`, post({})))
+  },
+  async guiConnection(vmId: string) {
+    const { ticket } = (await request(`${vmPath(vmId)}/gui/ticket`, post({}))) as { ticket: string }
+    const url = new URL(`${vmPath(vmId)}/gui/vnc`, window.location.href)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    url.searchParams.set('ticket', ticket)
+    return { url: url.href }
+  },
   async createSession(vmId: string, input: CreateSession = {}) {
     return Session.parse(await request(`${vmPath(vmId)}/sessions`, post(input)))
   },
@@ -83,4 +97,56 @@ export const workspaceApi = {
     url.searchParams.set('ticket', ticket)
     return url.href
   },
+}
+
+// Windows workspaces (M9).
+const windowsPath = (id: string) => `/api/windows/${encodeURIComponent(id)}`
+export const windowsApi = {
+  async list(signal?: AbortSignal) {
+    return WindowsWorkspace.array().parse(await request('/api/windows', { signal }))
+  },
+  async create(input: CreateWindowsWorkspace) {
+    return WindowsWorkspace.parse(await request('/api/windows', post(input)))
+  },
+  async start(id: string) { return WindowsWorkspace.parse(await request(`${windowsPath(id)}/start`, post({}))) },
+  async stop(id: string) { return WindowsWorkspace.parse(await request(`${windowsPath(id)}/stop`, post({}))) },
+  async update(id: string, input: UpdateWindowsWorkspace) {
+    return WindowsWorkspace.parse(await request(windowsPath(id), { ...post(input), method: 'PATCH' }))
+  },
+  async remove(id: string) { await request(windowsPath(id), { method: 'DELETE' }) },
+  async credentials(id: string) { return WindowsCredentials.parse(await request(`${windowsPath(id)}/credentials`)) },
+  async terminals(id: string, signal?: AbortSignal) {
+    return Session.array().parse(await request(`${windowsPath(id)}/terminals`, { signal }))
+  },
+  async createTerminal(id: string) { return Session.parse(await request(`${windowsPath(id)}/terminals`, post({}))) },
+  terminalPath(id: string, terminalId: string) {
+    return `${windowsPath(id)}/terminals/${encodeURIComponent(terminalId)}`
+  },
+  // The desktop's WebSocket URL (with a one-time ticket) and VNC password.
+  async desktop(id: string) {
+    const { ticket, password } = (await request(`${windowsPath(id)}/desktop/ticket`, post({}))) as { ticket: string; password: string }
+    const url = new URL(`${windowsPath(id)}/desktop`, window.location.href)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    url.searchParams.set('ticket', ticket)
+    return { url: url.href, password }
+  },
+}
+
+// For the dashboard's pages.
+export type Job = { id: string; vmId: string; state: 'running' | 'done' | 'failed'; error: string | null; kind: 'create' | 'fork' | null; createdAt: string | null }
+export const dashboardApi = {
+  async jobs(signal?: AbortSignal) { return (await request('/api/jobs', { signal })) as Job[] },
+  async logs(vmId: string, lines: number, signal?: AbortSignal) {
+    return VmLogs.parse(await request(`${vmPath(vmId)}/logs?lines=${lines}`, { signal }))
+  },
+}
+
+// SSH with your own keys: keys on your account, and tokens for ssh-proxy.mjs.
+export const sshApi = {
+  async keys() { return AccountSshKey.array().parse(await request('/api/ssh/keys')) },
+  async addKey(publicKey: string, name?: string) { return AccountSshKey.parse(await request('/api/ssh/keys', post({ publicKey, name: name || undefined }))) },
+  async removeKey(id: string) { await request(`/api/ssh/keys/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
+  async tokens() { return SshToken.array().parse(await request('/api/ssh/tokens')) },
+  async createToken(name: string) { return (await request('/api/ssh/tokens', post({ name }))) as SshToken & { token: string } },
+  async revokeToken(id: string) { await request(`/api/ssh/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
 }

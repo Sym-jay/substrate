@@ -221,8 +221,8 @@ Done when: three idle default VMs together use under about 16 GB of host RAM.
 
 **M9 Windows workspaces:** a Windows workspace is its own EC2 instance, not a
 microVM.
-- Windows Server 2025 with the license included, on `m8i.xlarge` (4 vCPU / 16 GB,
-  about $0.41/h in ap-south-1). Windows 11 can't be used this way: AWS only allows
+- Windows Server 2025 with the license included, on `m8i.4xlarge` (16 vCPU / 64 GB,
+  about $1.63/h in ap-south-1), one on at a time. Windows 11 can't be used this way: AWS only allows
   it with your own license on dedicated hardware.
 - Created and started on demand from the same UI. It takes a few minutes to boot,
   and the UI shows progress.
@@ -235,6 +235,10 @@ microVM.
   than paused.
 Done when: I can create a Windows workspace from the UI, open its desktop in the
 browser on my phone, run Claude Code in PowerShell, and it stops itself when idle.
+
+See `docs/m9.md`. Built with VNC (TightVNC and noVNC) rather than DCV for the
+desktop, through the control box's WebSocket relay; DCV is the upgrade if VNC
+is too slow.
 
 **M10 macOS workspaces (optional):** a macOS workspace runs on an EC2 Mac
 dedicated host.

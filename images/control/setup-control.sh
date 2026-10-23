@@ -84,6 +84,12 @@ fi
 if preview_origin=$(aws ssm get-parameter --region "$AWS_REGION" --name /substrate/preview-origin --query Parameter.Value --output text 2>/dev/null); then
   (umask 077 && printf 'SUBSTRATE_PREVIEW_ORIGIN=%s\n' "$preview_origin" >>"$secrets")
 fi
+# Windows workspaces (M9): the subnet they start in. The control box reaches
+# them with ssh, under setsid for terminals.
+if windows_subnet=$(param /substrate/windows-subnet); then
+  (umask 077 && printf 'SUBSTRATE_WINDOWS_SUBNET=%s\n' "$windows_subnet" >>"$secrets")
+  command -v ssh >/dev/null && command -v setsid >/dev/null || dnf install -y -q openssh-clients util-linux
+fi
 
 # Phase 2: Postgres on RDS (IAM sign-in, so only where it is; RDS's CA to
 # check it), the KMS key for users' keys, the public URL, GitHub's OAuth app

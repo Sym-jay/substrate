@@ -14,6 +14,7 @@
     "deploy:infra": "cd infra && bunx cdk deploy",
     "deploy:control": "bun scripts/deploy-control.ts",
     "deploy:host": "bun scripts/deploy-host.ts",
+    "build:windows-image": "bun scripts/build-windows-image.ts",
     "images:build": "bun scripts/build-images.ts",
     "setup:host": "bun scripts/setup-host.ts",
     "host": "bun scripts/host.ts",
@@ -25,6 +26,7 @@
     "check:m3": "bun scripts/check-m3.ts",
     "check:m6": "bun scripts/check-m6.ts",
     "check:m8": "bun scripts/check-m8.ts",
+    "check:m9": "bun scripts/check-m9.ts",
     "generate:firecracker": "bun scripts/generate-firecracker.ts",
     "github:token": "bun scripts/github-token.ts",
     "secrets": "bun scripts/secrets.ts"

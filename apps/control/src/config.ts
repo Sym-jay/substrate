@@ -1,3 +1,5 @@
+import { dirname, join } from 'node:path'
+
 // Set by `bun build --define` in scripts/deploy-control.ts.
 declare const BUILD_VERSION: string | undefined
 
@@ -66,6 +68,22 @@ export const config = {
   // Who owns which VM (SQLite).
   db: process.env.SUBSTRATE_DB ?? '.data/control.db',
   previewOrigin: process.env.SUBSTRATE_PREVIEW_ORIGIN || null,
+  // Windows workspaces (M9): on once setup-control.sh has found their subnet
+  // (Parameter Store's /substrate/windows-subnet, from the stack).
+  windows: process.env.SUBSTRATE_WINDOWS_SUBNET
+    ? {
+        subnetId: process.env.SUBSTRATE_WINDOWS_SUBNET,
+        instanceType: process.env.SUBSTRATE_WINDOWS_INSTANCE_TYPE ?? 'm8i.4xlarge',
+        launchTemplate: 'substrate-windows',
+        imageParameter: '/substrate/windows-ami',
+        // The account's 64 vCPUs also run the host (32) and the control box.
+        maxRunning: Number(process.env.SUBSTRATE_MAX_WINDOWS_RUNNING ?? 1),
+        maxPerUser: Number(process.env.SUBSTRATE_MAX_WINDOWS_PER_USER ?? 2),
+        idleStopMinutes: Number(process.env.SUBSTRATE_WINDOWS_IDLE_STOP_MINUTES ?? 30),
+        // The control box's SSH key for them, and their host keys.
+        sshDir: join(dirname(process.env.SUBSTRATE_DB ?? '.data/control.db'), 'windows'),
+      }
+    : null,
   // The built web app, relative to the working directory.
   webDir: process.env.SUBSTRATE_WEB_DIR ?? 'web',
   version: typeof BUILD_VERSION === 'string' ? BUILD_VERSION : 'dev',

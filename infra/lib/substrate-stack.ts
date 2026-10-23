@@ -190,6 +190,79 @@ export class SubstrateStack extends Stack {
       }),
     )
 
+    // Windows workspaces (M9). The control box reaches each one's SSH (for
+    // terminals) and VNC (for the desktop); nothing else can.
+    const windowsSg = new ec2.SecurityGroup(this, 'WindowsSg', {
+      vpc,
+      description: 'Substrate Windows workspaces: SSH and VNC from the control box only',
+    })
+    windowsSg.addIngressRule(controlSg, ec2.Port.tcp(22), 'Control box to SSH (terminals)')
+    windowsSg.addIngressRule(controlSg, ec2.Port.tcp(5900), 'Control box to VNC (desktop)')
+    const windowsRole = new iam.Role(this, 'WindowsRole', {
+      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+      managedPolicies: [ssmCore],
+    })
+    const windowsProfile = new iam.InstanceProfile(this, 'WindowsProfile', {
+      role: windowsRole,
+      instanceProfileName: config.windows.instanceProfile,
+    })
+    // Nested virtualization (for WSL2) can only be switched on through a launch template.
+    const windowsTemplate = new ec2.CfnLaunchTemplate(this, 'WindowsTemplate', {
+      launchTemplateName: config.windows.launchTemplate,
+      launchTemplateData: {
+        iamInstanceProfile: { arn: windowsProfile.instanceProfileArn },
+        securityGroupIds: [windowsSg.securityGroupId],
+        metadataOptions: { httpEndpoint: 'enabled', httpTokens: 'required', httpPutResponseHopLimit: 1 },
+        blockDeviceMappings: [
+          {
+            deviceName: '/dev/sda1',
+            ebs: { volumeSize: config.windows.rootGiB, volumeType: 'gp3', encrypted: true, deleteOnTermination: true },
+          },
+        ],
+      },
+    })
+    windowsTemplate.addPropertyOverride('LaunchTemplateData.CpuOptions.NestedVirtualization', 'enabled')
+    new ssm.StringParameter(this, 'WindowsSubnet', { parameterName: config.windows.subnetParameter, stringValue: vpc.publicSubnets[0]!.subnetId })
+
+    // The control box creates, starts, stops and deletes them: only instances
+    // it tagged as workspaces, from this template, in this subnet.
+    const ec2Arn = (resource: string, name = '*') => this.formatArn({ service: 'ec2', resource, resourceName: name })
+    controlRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['ec2:RunInstances'],
+        resources: [ec2Arn('instance'), ec2Arn('volume'), ec2Arn('network-interface')],
+        conditions: { StringEquals: { 'aws:RequestTag/substrate:windows': 'workspace' } },
+      }),
+    )
+    controlRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['ec2:RunInstances'],
+        resources: [
+          `arn:${this.partition}:ec2:${this.region}::image/*`,
+          ec2Arn('subnet', vpc.publicSubnets[0]!.subnetId),
+          ec2Arn('security-group', windowsSg.securityGroupId),
+          ec2Arn('launch-template', windowsTemplate.ref),
+        ],
+      }),
+    )
+    controlRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['ec2:CreateTags'],
+        resources: [ec2Arn('instance'), ec2Arn('volume'), ec2Arn('network-interface')],
+        conditions: { StringEquals: { 'ec2:CreateAction': 'RunInstances' } },
+      }),
+    )
+    controlRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['ec2:StartInstances', 'ec2:StopInstances', 'ec2:TerminateInstances'],
+        resources: [ec2Arn('instance')],
+        conditions: { StringEquals: { 'aws:ResourceTag/substrate:windows': 'workspace' } },
+      }),
+    )
+    controlRole.addToPolicy(new iam.PolicyStatement({ actions: ['iam:PassRole'], resources: [windowsRole.roleArn] }))
+    // CPU, so a workspace busy with an agent isn't stopped as idle.
+    controlRole.addToPolicy(new iam.PolicyStatement({ actions: ['cloudwatch:GetMetricData'], resources: ['*'] }))
+
     const controlUserData = ec2.UserData.forLinux()
     controlUserData.addCommands(
       'mkdir -p /etc/substrate /opt/substrate',

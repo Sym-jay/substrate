@@ -12,6 +12,8 @@ import { previewPort, previewPrefix } from './previews.ts'
 import { quotaError, type QuotaChange, type Quotas } from './quotas.ts'
 import { monthOf, type Usage } from './usage.ts'
 import { sessionsTable, type Events, type Users } from './users.ts'
+import type { SshAccess } from './ssh-access.ts'
+import { sshRoutes } from './ssh.ts'
 
 // hostd's address and token. The token is read on every call: it rotates.
 export type Hostd = { url: string; readonly token: string }
@@ -34,6 +36,8 @@ export type VmRoutesOptions = {
   sessions?: ReturnType<typeof sessionsTable>
   agentEnv?: (userId: string) => Promise<AgentEnv>
   now?: () => number
+  // Account SSH keys and tokens; SSH with your own keys is off without it.
+  sshAccess?: SshAccess
 }
 
 type Env = { Variables: { user: User } }
@@ -46,9 +50,10 @@ const openQuota = (maxVms: number): Quota => ({
 // VMs and their terminals, passed through to hostd with its token. Every
 // route needs a signed-in user, and each user only sees their own VMs.
 export function vmRoutes(o: VmRoutesOptions) {
-  const { hostd, authenticate, owners, tickets, capabilities, jobs, previewOrigin, githubToken } = o
+  const { hostd, authenticate, owners, tickets, capabilities, jobs, previewOrigin, githubToken, sshAccess } = o
   const now = o.now ?? Date.now
   const app = new Hono<Env>()
+  if (sshAccess) app.route('/', sshRoutes({ hostd, authenticate, owners, access: sshAccess }))
   const auth = () => ({ Authorization: `Bearer ${hostd.token}` })
   const hostdPath = (c: Context) => c.req.path.replace(/^\/api/, '')
   const callHostd = (path: string, init: RequestInit = {}) =>
@@ -80,6 +85,18 @@ export function vmRoutes(o: VmRoutesOptions) {
     upgradeWebSocket((c) => relayTo(`${hostd.url.replace(/^http/, 'ws')}${hostdPath(c)}`, auth())),
   )
 
+  // The desktop (VNC), for noVNC: a one-time ticket, like terminals.
+  app.get(
+    '/vms/:id/gui/vnc',
+    async (c, next) => {
+      const id = c.req.param('id')
+      const user = tickets.redeem(c.req.query('ticket') ?? '', id, 'gui')
+      if (!user || (await owners.owner(id)) !== user) return c.json({ error: 'missing or expired desktop ticket' }, 401)
+      await next()
+    },
+    upgradeWebSocket((c) => relayTo(`${hostd.url.replace(/^http/, 'ws')}${hostdPath(c)}`, auth())),
+  )
+
   app.get('/vms/:id/ssh', async (c, next) => {
     const id = c.req.param('id')
     const grant = await capabilities?.read(c.req.query('access') ?? '', 'ssh', id, 22)
@@ -98,7 +115,13 @@ export function vmRoutes(o: VmRoutesOptions) {
   app.use('/vms/*', signedIn)
   app.use('/jobs', signedIn)
   app.use('/jobs/*', signedIn)
+  app.use('/capacity', signedIn)
   app.get('/jobs', async (c) => c.json((await jobs?.list(c.var.user.id)) ?? []))
+  // The host's CPUs and memory.
+  app.get('/capacity', async (c) => {
+    const res = await callHostd('/capacity')
+    return res?.ok ? c.json(await res.json()) : unreachable(c)
+  })
   app.get('/jobs/:id', async (c) => {
     const job = await jobs?.read(c.req.param('id'), c.var.user.id)
     return job ? c.json(job) : c.json({ error: 'job not found' }, 404)
@@ -179,6 +202,10 @@ export function vmRoutes(o: VmRoutesOptions) {
     c.json({
       ticket: tickets.issue({ userId: c.var.user.id, vmId: c.req.param('id'), sessionId: c.req.param('session') }),
     }),
+  )
+
+  app.post('/vms/:id/gui/ticket', (c) =>
+    c.json({ ticket: tickets.issue({ userId: c.var.user.id, vmId: c.req.param('id'), sessionId: 'gui' }) }),
   )
 
   app.post('/vms/:id/fork', (c) => exclusive(c.var.user.id, async () => {
@@ -280,8 +307,8 @@ export function vmRoutes(o: VmRoutesOptions) {
     // can authenticate navigation cookies as well as API bearer tokens.
     const suffix = hostdPath(c).replace(/^\/vms\/[^/]+/, '')
     const allowed: Record<string, RegExp> = {
-      GET: /^(?:|\/(?:sessions|checkpoints|logs))$/,
-      POST: /^\/(?:start|stop|pause|resume|resize|disk|exec|sessions|ssh\/keys|checkpoints\/[a-f0-9-]{36}\/restore)$/,
+      GET: /^(?:|\/(?:sessions|checkpoints|logs|gui))$/,
+      POST: /^\/(?:start|stop|pause|resume|resize|disk|exec|sessions|ssh\/keys|gui\/setup|checkpoints\/[a-f0-9-]{36}\/restore)$/,
       PATCH: /^$/,
       DELETE: /^$/,
     }

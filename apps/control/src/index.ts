@@ -2,7 +2,7 @@ import { AGENT_KEY_ENV, type AgentEnv, type Vm } from '@substrate/protocol'
 import { websocket } from 'hono/bun'
 import { accountRoutes } from './account.ts'
 import { createApp } from './app.ts'
-import { clerkAuth, localDevAuth } from './auth.ts'
+import { clerkAuth, localDevAuth, type Authenticate } from './auth.ts'
 import { Capabilities } from './capabilities.ts'
 import { config } from './config.ts'
 import { openDatabase } from './open-database.ts'
@@ -13,12 +13,19 @@ import { Jobs } from './jobs.ts'
 import { Metering } from './metering.ts'
 import { Owners } from './owners.ts'
 import { previewRoutes } from './previews.ts'
+import { SshAccess } from './ssh-access.ts'
 import { Quotas } from './quotas.ts'
 import { kmsCipher, UserSecrets } from './secrets.ts'
 import { Tickets } from './tickets.ts'
 import { Usage } from './usage.ts'
 import { Events, sessionsTable, Users } from './users.ts'
 import type { Hostd } from './vms.ts'
+import { awsWindowsCloud } from './windows/cloud.ts'
+import { windowsRoutes } from './windows/routes.ts'
+import { WindowsSsh } from './windows/ssh.ts'
+import { WindowsStore } from './windows/store.ts'
+import { WindowsTerminals, withControllingTerminal } from './windows/terminals.ts'
+import { WindowsWorkspaces } from './windows/workspaces.ts'
 
 const authenticate = config.clerk
   ? clerkAuth({ ...config.clerk, authorizedParties: config.authorizedParties, allowedEmails: config.allowedEmails })
@@ -32,6 +39,9 @@ const owners = new Owners(db)
 const tickets = new Tickets()
 const capabilities = new Capabilities(db)
 const jobs = new Jobs(db)
+// Account SSH keys and Windows workspaces stay in the control box's SQLite
+// file for now; the rest moved to `db` (Phase 2).
+const sshAccess = new SshAccess(config.db)
 await jobs.start()
 const users = new Users(db)
 const events = new Events(db)
@@ -89,12 +99,34 @@ if (hostd) {
   }).start()
 }
 
+// Windows workspaces (M9), on the deployed control box.
+const windows = config.windows && authenticate ? await setUpWindows(config.windows, authenticate) : undefined
+
+async function setUpWindows(windows: NonNullable<typeof config.windows>, authenticate: Authenticate) {
+  const ssh = new WindowsSsh(windows.sshDir)
+  await ssh.init()
+  const workspaces = new WindowsWorkspaces({
+    store: new WindowsStore(config.db),
+    cloud: awsWindowsCloud({ region: config.region, ...windows }),
+    ssh,
+    terminals: new WindowsTerminals(),
+    instanceType: windows.instanceType,
+    maxRunning: windows.maxRunning,
+    maxPerUser: windows.maxPerUser,
+    idleStopMinutes: windows.idleStopMinutes,
+    shell: withControllingTerminal,
+  })
+  workspaces.run()
+  return windowsRoutes({ authenticate, workspaces, tickets })
+}
+
 const app = createApp({
   version: config.version,
   region: config.region,
   webDir: config.webDir,
   readHost: createHostReader(config.hostInstanceId, config.region),
   clerkPublishableKey: config.clerk?.publishableKey ?? null,
+  windows,
   previews: hostd && config.previewOrigin ? previewRoutes({ hostd, owners, tickets, capabilities }) : undefined,
   account: authenticate
     ? accountRoutes({ authenticate, users, events, usage, quotas, owners, vmsOf, secrets, github, keysChanged, admins: config.admins })
@@ -109,6 +141,7 @@ const app = createApp({
           owners,
           tickets,
           capabilities,
+          sshAccess,
           jobs,
           previewOrigin: config.previewOrigin,
           githubToken: (userId) => (github ? github.token(userId) : legacyGitHubTokens(config.region)(userId)),

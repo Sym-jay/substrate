@@ -50,6 +50,22 @@ export const config = {
     dataSnapshots: { time: '21:30', keep: 7 },
   },
 
+  // Windows workspaces (M9): an EC2 instance each, from our own image
+  // (`bun run build:windows-image`), in the same subnet as the host.
+  windows: {
+    // 16 vCPU / 64 GiB; nested virtualization, so WSL2 works.
+    instanceType: 'm8i.4xlarge',
+    builderInstanceType: 'm8i.2xlarge',
+    rootGiB: 100,
+    // Fixed names: the control box and the image build look them up.
+    launchTemplate: 'substrate-windows',
+    instanceProfile: 'substrate-windows',
+    baseImageParameter: '/aws/service/ami-windows-latest/Windows_Server-2025-English-Full-Base',
+    // Set by the image build to the newest image; new workspaces use it.
+    imageParameter: '/substrate/windows-ami',
+    subnetParameter: '/substrate/windows-subnet',
+  },
+
   // AWS-managed list of CloudFront's origin-facing addresses in ap-south-1.
   cloudFrontPrefixList: 'pl-9aa247f3',
 } as const
