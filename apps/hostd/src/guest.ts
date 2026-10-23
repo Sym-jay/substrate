@@ -1,5 +1,5 @@
 import { ExecResult, GUESTD_PORT, GuestHealth, Session, type CreateSession, type ExecRequest } from '@substrate/protocol'
-import { HttpError } from './vms.ts'
+import { HttpError } from './errors.ts'
 
 export function guestClient(guestIp: string, token: string, port = GUESTD_PORT) {
   const base = `http://${guestIp}:${port}`

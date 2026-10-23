@@ -10,9 +10,11 @@ type Options = {
   readHost: () => Promise<HostStatus>
   // Unset in local development, where there is no sandbox host.
   hostd: { url: string; token: string } | null
+  // Serve VM routes even though nobody has logged in (local development only).
+  vmsWithoutLogin: boolean
 }
 
-export function createApp({ version, region, webDir, readHost, hostd }: Options) {
+export function createApp({ version, region, webDir, readHost, hostd, vmsWithoutLogin }: Options) {
   const startedAt = new Date().toISOString()
   const app = new Hono()
 
@@ -30,6 +32,10 @@ export function createApp({ version, region, webDir, readHost, hostd }: Options)
   const vmPaths = ['/api/vms', '/api/vms/*']
   if (!hostd) {
     app.on(['GET', 'POST', 'DELETE'], vmPaths, (c) => c.json({ error: 'no sandbox host configured' }, 503))
+  } else if (!vmsWithoutLogin) {
+    app.on(['GET', 'POST', 'DELETE'], vmPaths, (c) =>
+      c.json({ error: 'VMs need a login, which is not built yet. Use `bun run dev --host` meanwhile.' }, 503),
+    )
   } else {
     const auth = { Authorization: `Bearer ${hostd.token}` }
     const hostdPath = (c: Context) => c.req.path.replace(/^\/api/, '')

@@ -65,6 +65,7 @@ const control = Bun.serve({
     webDir: 'does-not-exist',
     readHost: async () => ({ configured: false }),
     hostd: { url: `http://127.0.0.1:${hostd.port}`, token: hostdToken },
+    vmsWithoutLogin: true,
   }).fetch,
 })
 

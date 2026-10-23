@@ -9,6 +9,7 @@ const app = createApp({
   webDir: config.webDir,
   readHost: createHostReader(config.hostInstanceId, config.region),
   hostd: config.hostd,
+  vmsWithoutLogin: config.vmsWithoutLogin,
 })
 
 // Creating a VM waits for it to boot, which can take longer than Bun's default 10 s.

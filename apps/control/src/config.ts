@@ -13,6 +13,10 @@ export const config = {
     process.env.SUBSTRATE_HOSTD_URL && process.env.SUBSTRATE_HOSTD_TOKEN
       ? { url: process.env.SUBSTRATE_HOSTD_URL, token: process.env.SUBSTRATE_HOSTD_TOKEN }
       : null,
+  // There's no login yet, so VM routes on the public URL would hand anyone a
+  // shell. Until there is one, they only work where this says the control API
+  // isn't public: `bun run dev --host` sets it, the control box never does.
+  vmsWithoutLogin: process.env.SUBSTRATE_VMS_WITHOUT_LOGIN === '1',
   // The built web app, relative to the working directory.
   webDir: process.env.SUBSTRATE_WEB_DIR ?? 'web',
   version: typeof BUILD_VERSION === 'string' ? BUILD_VERSION : 'dev',
