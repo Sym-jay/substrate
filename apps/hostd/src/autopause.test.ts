@@ -16,12 +16,18 @@ function setup(vmFields: Partial<Vm> = {}) {
     awakeSince: new Date(T0).toISOString(), autoPauseMinutes: 10, ...vmFields,
   }
   let activity: GuestActivity | null = { bootId: 'boot-1', idleMs: 0, events: [] }
+  let silent = false
   const alerts: Alert[] = []
   const paused: string[] = []
   const auto = new AutoPause({
     vms: {
       list: async () => [vm],
-      guest: async () => ({ activity: async () => activity }) as unknown as GuestClient,
+      guest: async () => ({
+        activity: async () => {
+          if (silent) throw new Error('timed out')
+          return activity
+        },
+      }) as unknown as GuestClient,
       pause: async (id) => {
         paused.push(id)
         vm.state = 'paused'
@@ -36,6 +42,7 @@ function setup(vmFields: Partial<Vm> = {}) {
     vm, alerts, paused, auto,
     advance: (ms: number) => (now += ms),
     report: (next: GuestActivity | null) => (activity = next),
+    silence: (on: boolean) => (silent = on),
   }
 }
 
@@ -117,5 +124,40 @@ describe('auto-pause', () => {
     t.report({ bootId: 'boot-2', idleMs: 0, events: [event(1, { agent: 'codex' })] })
     await t.auto.tick()
     expect(t.alerts).toMatchObject([{ title: 'Codex finished' }])
+  })
+
+  test('pauses a VM awake past its limit even while busy, and says why', async () => {
+    const t = setup({ autoPauseMinutes: null, maxAwakeHours: 24 })
+    t.advance(23 * 60 * MIN)
+    await t.auto.tick()
+    expect(t.paused).toEqual([])
+    t.advance(60 * MIN)
+    // Busy, and with a guest from before M4 that reports no activity.
+    t.report(null)
+    await t.auto.tick()
+    await settle()
+    expect(t.paused).toEqual(['vm-abc'])
+    expect(t.alerts).toMatchObject([{ title: 'demo paused after 24 h', priority: 'default' }])
+  })
+
+  test('says once when a guest stops answering, and again after it recovers', async () => {
+    const t = setup({ autoPauseMinutes: null })
+    t.silence(true)
+    await t.auto.tick()
+    t.advance(MIN)
+    await t.auto.tick()
+    expect(t.alerts).toEqual([])
+    t.advance(MIN)
+    await t.auto.tick()
+    t.advance(MIN)
+    await t.auto.tick()
+    expect(t.alerts).toMatchObject([{ title: "demo isn't responding", priority: 'high' }])
+    t.silence(false)
+    await t.auto.tick()
+    t.silence(true)
+    await t.auto.tick()
+    t.advance(3 * MIN)
+    await t.auto.tick()
+    expect(t.alerts).toHaveLength(2)
   })
 })

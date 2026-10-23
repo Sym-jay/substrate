@@ -7,7 +7,9 @@ import { currentImage } from './images.ts'
 import { applyFirewall, defaultUplink } from './network.ts'
 import { AutoPause } from './autopause.ts'
 import { logOnly, ntfy } from './notify.ts'
+import { Supervisor } from './supervisor.ts'
 import { VmManager } from './vms.ts'
+import * as zfs from './zfs.ts'
 
 // The bearer token for this API. Generated once and kept on the data disk;
 // on the host, `bun run vm` reads it to talk to hostd.
@@ -25,17 +27,22 @@ const token = await loadToken()
 const uplink = await defaultUplink()
 await applyFirewall(uplink, config.paths.run)
 
-const vms = new VmManager()
-await vms.reconcile()
-
 if (!config.ntfy) console.log('no ntfy topic (`bun run secrets --ntfy`): alerts only go to this log')
 const notify = config.ntfy ? ntfy(config.ntfy, config.publicUrl) : logOnly
+
+const vms = new VmManager(notify)
+await vms.reconcile()
+const pool = () => zfs.poolStatus(config.pool)
+
 new AutoPause({ vms, notify, quietMs: config.autoPause.quietMs }).start(config.autoPause.pollMs)
+// Its first pass, right away, brings back VMs that were running before a host crash.
+new Supervisor({ vms, pool, notify }).start(config.autoPause.pollMs)
 
 const app = createApp({
   token,
   version: config.version,
   image: async () => (await currentImage())?.version ?? null,
+  pool,
   vms,
 })
 

@@ -33,13 +33,17 @@ function type(schema: Schema): string {
   if (schema.additionalProperties) return `Record<string, ${schema.additionalProperties === true ? 'unknown' : type(schema.additionalProperties)}>`
   throw new Error(`unsupported schema: ${JSON.stringify(schema)}`)
 }
-const calls = [ ['GET', '/'], ['PATCH', '/vm'], ['PUT', '/snapshot/create'], ['PUT', '/snapshot/load'], ['PUT', '/mmds'] ] as const
-const operations = calls.map(([method, path]) => {
+// A third element names the concrete path hostd calls for a templated one.
+const calls: [string, string, string?][] = [
+  ['GET', '/'], ['PATCH', '/vm'], ['PUT', '/snapshot/create'], ['PUT', '/snapshot/load'], ['PUT', '/mmds'],
+  ['PATCH', '/drives/{drive_id}', '/drives/rootfs'],
+]
+const operations = calls.map(([method, path, concrete = path]) => {
   const operation = spec.paths[path]?.[method.toLowerCase()]
   if (!operation) throw new Error(`missing ${method} ${path}`)
   const body = operation.parameters?.find((p) => p.in === 'body')?.schema
   const response = operation.responses['200']?.schema
-  return `  '${method} ${path}': { body: ${body ? type(body) : 'undefined'}; response: ${response ? type(response) : 'void'} }`
+  return `  '${method} ${concrete}': { body: ${body ? type(body) : 'undefined'}; response: ${response ? type(response) : 'void'} }`
 })
 const definitions: string[] = []
 // Set iteration includes references added while visiting a definition.

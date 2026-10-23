@@ -10,6 +10,15 @@ export const Agents = {
   opencode: 'opencode',
   agy: 'agy',
 } as const
+// The same, picking up the most recent conversation in the session's folder,
+// after a VM is brought back from a crash or a save it couldn't restore.
+// Antigravity has no such flag, so it starts afresh.
+export const AgentResume: Record<keyof typeof Agents, string> = {
+  claude: 'claude --continue',
+  codex: 'codex resume --last',
+  opencode: 'opencode --continue',
+  agy: 'agy',
+}
 export const Agent = z.enum(['claude', 'codex', 'opencode', 'agy'])
 export type Agent = z.infer<typeof Agent>
 

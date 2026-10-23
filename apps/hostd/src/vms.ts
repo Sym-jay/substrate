@@ -2,23 +2,26 @@ import {
   VmSizes,
   DEFAULT_AUTO_PAUSE_MINUTES,
   DEFAULT_DISK_GIB,
+  DEFAULT_MAX_AWAKE_HOURS,
   DEFAULT_VM_SIZE,
   type Capacity,
   type CreateVm,
   type ExecRequest,
   type ExecResult,
+  type GrowDisk,
   type UpdateVm,
   type Vm,
 } from '@substrate/protocol'
 import { randomBytes } from 'node:crypto'
 import { hostCapacity } from './capacity.ts'
 import { config } from './config.ts'
-import { HttpError } from './errors.ts'
+import { HttpError, message } from './errors.ts'
 import * as firecracker from './firecracker.ts'
 import { guestClient, waitForGuest, type GuestClient } from './guest.ts'
 import { currentImage } from './images.ts'
 import { Mutex } from './mutex.ts'
 import { createTap, deleteTap, lowestFreeSlot, slotAddresses } from './network.ts'
+import { logOnly, type Notify } from './notify.ts'
 import { listRecords, readRecord, vmDir, writeRecord, type VmRecord } from './state.ts'
 import { Snapshots } from './snapshots.ts'
 import * as zfs from './zfs.ts'
@@ -33,6 +36,7 @@ export interface VmService {
   pause(id: string): Promise<Vm>
   resume(id: string): Promise<Vm>
   update(id: string, input: UpdateVm): Promise<Vm>
+  growDisk(id: string, input: GrowDisk): Promise<Vm>
   remove(id: string): Promise<void>
   exec(id: string, req: ExecRequest): Promise<ExecResult>
   guest(id: string): Promise<GuestClient>
@@ -54,6 +58,8 @@ export class VmManager implements VmService {
   private lock = new Mutex()
   private transitions = new Map<string, 'starting' | 'stopping' | 'pausing' | 'resuming'>()
   private snapshots = new Snapshots()
+
+  constructor(private readonly notify: Notify = logOnly) {}
 
   async list() {
     const records = await listRecords()
@@ -97,6 +103,8 @@ export class VmManager implements VmService {
         resumeMs: null,
         awakeSince: null,
         autoPauseMinutes: DEFAULT_AUTO_PAUSE_MINUTES,
+        maxAwakeHours: DEFAULT_MAX_AWAKE_HOURS,
+        shouldRun: true,
       }
       try {
         await zfs.createFilesystem(dataset(id))
@@ -117,10 +125,36 @@ export class VmManager implements VmService {
     const started = performance.now()
     return this.lock.run(async () => {
       const record = await this.record(id)
+      if (!record.shouldRun) {
+        record.shouldRun = true
+        await writeRecord(record)
+      }
       if (record.paused) return this.restore(record, started)
       if (await firecracker.isRunning(id)) return this.get(id)
       await this.ensureFits(record.memMib)
       await this.launch(record)
+      return this.awaitBoot(record)
+    })
+  }
+
+  // VMs that should be running but aren't, and weren't paused: after a host
+  // crash or reboot, a guest kernel panic, or `sudo reboot` inside the VM.
+  async crashed() {
+    const vms: Vm[] = []
+    for (const record of await listRecords()) {
+      if (!record.shouldRun || record.paused || this.transitions.has(record.id)) continue
+      if (!(await firecracker.isRunning(record.id))) vms.push(await this.toVm(record))
+    }
+    return vms
+  }
+
+  // Boots a crashed VM again, reopening the sessions it had.
+  async recover(id: string) {
+    return this.lock.run(async () => {
+      const record = await this.record(id)
+      if (!record.shouldRun || record.paused || (await firecracker.isRunning(id))) return this.toVm(record)
+      await this.ensureFits(record.memMib)
+      await this.launch(record, { resumeSessions: true })
       return this.awaitBoot(record)
     })
   }
@@ -161,18 +195,79 @@ export class VmManager implements VmService {
     if (await firecracker.isRunning(record.id)) await this.snapshots.reconcile(record)
     await this.ensureFits(record.memMib)
     this.transitions.set(record.id, 'resuming')
-    try { await this.snapshots.resume(record, started) }
-    catch (error) { throw new HttpError(502, `couldn't resume ${record.name}: ${error instanceof Error ? error.message : error}`) }
-    finally { this.transitions.delete(record.id) }
-    return this.get(record.id)
+    let failure: unknown
+    let resumed = false
+    try {
+      // Twice, since a restore can fail for passing reasons; the save is kept
+      // for exactly that.
+      for (let attempt = 1; attempt <= 2 && !resumed; attempt++) {
+        try {
+          await this.snapshots.resume(record, started)
+          resumed = true
+        } catch (error) {
+          failure = error
+          console.error(`resume ${record.id}, attempt ${attempt}: ${message(error)}`)
+        }
+      }
+    } finally {
+      this.transitions.delete(record.id)
+    }
+    return resumed ? this.get(record.id) : this.bootFromSave(record, failure)
+  }
+
+  // The saved memory can't be loaded (say, after a Firecracker upgrade), so
+  // boot fresh from the disk saved with it, reopening sessions with agents
+  // continuing their conversations, and say so.
+  private async bootFromSave(record: VmRecord, failure: unknown) {
+    const reason = failure instanceof Error ? failure.message : String(failure)
+    await zfs.rollback(this.snapshots.paths(record, record.checkpoint!).disk)
+    // The save stays until the next pause or stop, in case it's needed by hand.
+    record.paused = false
+    await writeRecord(record)
+    await this.launch(record, { resumeSessions: true })
+    const vm = await this.awaitBoot(record)
+    void this.notify({
+      vm, title: `${record.name} restarted from its save`, priority: 'high', tags: ['warning'],
+      message: `Its saved memory couldn't be restored (${reason}), so it booted fresh from the disk saved with it. Its sessions were reopened, with agents continuing their last conversations.`,
+    })
+    return vm
   }
 
   async update(id: string, input: UpdateVm) {
     return this.lock.run(async () => {
       const record = await this.record(id)
-      record.autoPauseMinutes = input.autoPauseMinutes
+      if (input.autoPauseMinutes !== undefined) record.autoPauseMinutes = input.autoPauseMinutes
+      if (input.maxAwakeHours !== undefined) record.maxAwakeHours = input.maxAwakeHours
       await writeRecord(record)
       return this.get(id)
+    })
+  }
+
+  // Raises a VM's disk limit. A running VM gets the space straight away. A
+  // paused one must be resumed first: its saved state has the old size.
+  async growDisk(id: string, { diskGib }: GrowDisk) {
+    return this.lock.run(async () => {
+      const record = await this.record(id)
+      if (record.paused) throw new HttpError(409, `${record.name} is paused; resume it first`)
+      // The same size again retries growing the filesystem.
+      if (diskGib < record.diskGib) throw new HttpError(400, `the disk is ${record.diskGib} GiB, and disks can only grow`)
+      await this.checkPoolFits(diskGib)
+      const device = zfs.zvolDevice(rootVolume(id))
+      await zfs.setVolumeSize(rootVolume(id), diskGib)
+      record.diskGib = diskGib
+      await writeRecord(record)
+      if (await firecracker.isRunning(id)) {
+        // Firecracker rereads the size and tells the guest, which then grows
+        // its filesystem with the resize ioctl.
+        await firecracker.api(id)('PATCH /drives/rootfs', { drive_id: 'rootfs', path_on_host: device })
+        const result = await (await this.guest(id)).exec({ command: growFilesystemInGuest(diskGib), user: 'root', timeoutMs: 60_000 })
+        if (result.exitCode !== 0) {
+          throw new HttpError(502, `the disk grew, but the guest couldn't grow its filesystem: ${(result.stderr || result.stdout).trim()}`)
+        }
+      } else {
+        await zfs.growFilesystem(device)
+      }
+      return this.toVm(record)
     })
   }
 
@@ -180,6 +275,11 @@ export class VmManager implements VmService {
     await this.lock.run(async () => {
       const record = await this.record(id)
       if (record.paused) throw new HttpError(409, `${record.name} is paused; resume it before stopping`)
+      // First, so a stop is never mistaken for a crash.
+      if (record.shouldRun) {
+        record.shouldRun = false
+        await writeRecord(record)
+      }
       if (!(await firecracker.isRunning(id))) return
       this.transitions.set(id, 'stopping')
       try {
@@ -227,6 +327,11 @@ export class VmManager implements VmService {
   async reconcile() {
     for (const record of await listRecords()) {
       await this.snapshots.reconcile(record)
+      // VMs that were running before hostd knew to record it.
+      if (!record.shouldRun && !record.paused && (await firecracker.isRunning(record.id))) {
+        record.shouldRun = true
+        await writeRecord(record)
+      }
     }
   }
 
@@ -240,7 +345,7 @@ export class VmManager implements VmService {
     const running = await firecracker.isRunning(record.id)
     const state =
       this.transitions.get(record.id) ?? (record.paused ? 'paused' : running ? 'running' : record.lastError ? 'failed' : 'stopped')
-    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, ...rest } = record
+    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, shouldRun: _shouldRun, ...rest } = record
     return { ...rest, state, pausedAt: record.paused ? record.checkpoint?.createdAt ?? null : null, guestIp: slotAddresses(slot).guestIp }
   }
 
@@ -259,11 +364,15 @@ export class VmManager implements VmService {
   private async checkDiskSize(diskGib: number, rootfsSnapshot: string) {
     const imageGib = Math.ceil(await zfs.volumeSizeGib(rootfsSnapshot.split('@')[0]!))
     if (diskGib < imageGib) throw new HttpError(400, `the disk must be at least ${imageGib} GiB, the image's size`)
+    await this.checkPoolFits(diskGib)
+    return diskGib
+  }
+
+  private async checkPoolFits(diskGib: number) {
     const poolGib = await zfs.poolSizeGib(config.pool)
     if (diskGib > poolGib) {
       throw new HttpError(400, `the disk can't be bigger than the host's storage pool (${poolGib} GiB)`)
     }
-    return diskGib
   }
 
   private async ensureFits(memMib: number) {
@@ -276,7 +385,8 @@ export class VmManager implements VmService {
     }
   }
 
-  private async launch(record: VmRecord) {
+  // `resumeSessions` asks guestd to reopen the sessions the VM had (see sessions.ts).
+  private async launch(record: VmRecord, { resumeSessions = false } = {}) {
     const net = slotAddresses(record.slot)
     const dir = vmDir(record.id)
     const spec = {
@@ -290,7 +400,7 @@ export class VmManager implements VmService {
     }
     await Bun.write(`${dir}/firecracker.json`, JSON.stringify(firecracker.firecrackerConfig(spec), null, 2))
     const metadata = {
-      substrate: { vmId: record.id, name: record.name, token: record.token, guestIp: net.guestIp, hostIp: net.hostIp },
+      substrate: { vmId: record.id, name: record.name, token: record.token, guestIp: net.guestIp, hostIp: net.hostIp, resumeSessions },
     }
     await Bun.write(`${dir}/metadata.json`, JSON.stringify(metadata), { mode: 0o600 })
 
@@ -341,4 +451,23 @@ export class VmManager implements VmService {
     await deleteTap(record.slot)
     if (await zfs.datasetExists(dataset(record.id))) await zfs.destroy(dataset(record.id))
   }
+}
+
+// Run as root in the guest. Waits for the guest to see the bigger disk, then
+// grows / with EXT4_IOC_RESIZE_FS, which works on a mounted filesystem
+// without opening the disk itself (resize2fs would, and is refused).
+function growFilesystemInGuest(diskGib: number) {
+  return `python3 - ${diskGib * 2 ** 30} <<'PY'
+import fcntl, os, struct, sys, time
+want = int(sys.argv[1])
+for _ in range(100):
+    size = int(open('/sys/block/vda/size').read()) * 512
+    if size >= want:
+        break
+    time.sleep(0.1)
+else:
+    sys.exit(f'the guest still sees a {size}-byte disk')
+fd = os.open('/', os.O_RDONLY)
+fcntl.ioctl(fd, 0x40086610, struct.pack('Q', size // os.statvfs('/').f_frsize))
+PY`
 }

@@ -186,3 +186,64 @@ describe('agent events', () => {
     }
   })
 })
+
+// Ends every session and waits until the list on disk says so.
+async function stopAll(sessions: Sessions) {
+  const all = sessions.list().map((s) => sessions.get(s.id)!)
+  for (const s of all) s.stop()
+  await Promise.all(all.map((s) => s.exited))
+  await Bun.sleep(50)
+}
+
+describe('reopening sessions after a restart', () => {
+  test('agents resume their last conversation', () => {
+    const ctty = ['setsid', '--ctty', '--wait']
+    expect(sessionArgv({ agent: 'claude' }, true)).toEqual([...ctty, 'runuser', '-l', 'dev', '-c', 'claude --continue; exec bash -l'])
+    expect(sessionArgv({ agent: 'codex' }, true).at(-1)).toBe('codex resume --last; exec bash -l')
+    expect(sessionArgv({}, true)).toEqual([...ctty, 'runuser', '-l', 'dev'])
+  })
+
+  test('running sessions come back under the same IDs, only when asked', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'guestd-'))
+    const file = join(dir, 'state', 'sessions.json')
+    const started: [string | undefined, boolean][] = []
+    const argv = (req: { agent?: string }, resume = false) => {
+      started.push([req.agent, resume])
+      return ['sleep', '30']
+    }
+    try {
+      const before = new Sessions(argv, dir, undefined, file)
+      await before.start(false)
+      const shell = before.create({})!
+      const agent = before.create({ agent: 'claude' })!
+      const ended = before.create({})!
+      ended.stop()
+      await ended.exited
+      await Bun.sleep(50)
+      // The VM crashes: the file still lists what was running then.
+      const crashed = await Bun.file(file).text()
+      await stopAll(before)
+      await Bun.write(file, crashed)
+
+      // The VM crashed: the next guestd reopens what was running.
+      const after = new Sessions(argv, dir, undefined, file)
+      await after.start(true)
+      expect(after.list().map((s) => [s.id, s.agent]).sort()).toEqual([[shell.id, null], [agent.id, 'claude']].sort())
+      expect(started.slice(-2).map(([agent, resume]) => `${agent ?? 'shell'}:${resume}`).sort()).toEqual(['claude:true', 'shell:true'])
+      let scrollback = ''
+      after.get(agent.id)!.attach((m) => { if (m.type === 'ready') scrollback = m.scrollback })
+      expect(scrollback).toContain("Continuing claude's last conversation")
+      await stopAll(after)
+
+      // A normal boot starts empty, and forgets the old list.
+      const fresh = new Sessions(argv, dir, undefined, file)
+      await fresh.start(false)
+      expect(fresh.list()).toEqual([])
+      const later = new Sessions(argv, dir, undefined, file)
+      await later.start(true)
+      expect(later.list()).toEqual([])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})

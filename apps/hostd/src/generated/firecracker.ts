@@ -7,9 +7,12 @@ export type Vm = { "state": "Paused" | "Resumed" }
 export type SnapshotCreateParams = { "mem_file_path": string; "snapshot_path": string; "snapshot_type"?: "Full" | "Diff"; "sync_snapshot_files"?: boolean }
 export type SnapshotLoadParams = { "enable_diff_snapshots"?: boolean; "track_dirty_pages"?: boolean; "mem_file_path"?: string; "mem_backend"?: MemoryBackend; "snapshot_path": string; "resume_vm"?: boolean; "network_overrides"?: Array<NetworkOverride>; "vsock_override"?: VsockOverride; "clock_realtime"?: boolean; "huge_pages"?: "Snapshot" | "None" | "Transparent" | "2M" }
 export type MmdsContentsObject = Record<string, unknown>
+export type PartialDrive = { "drive_id": string; "path_on_host"?: string; "rate_limiter"?: RateLimiter }
 export type MemoryBackend = { "backend_type": "File" | "Uffd"; "backend_path": string }
 export type NetworkOverride = { "iface_id": string; "host_dev_name": string }
 export type VsockOverride = { "uds_path": string }
+export type RateLimiter = { "bandwidth"?: TokenBucket; "ops"?: TokenBucket }
+export type TokenBucket = { "one_time_burst"?: number; "refill_time": number; "size": number }
 
 export type FirecrackerApi = {
   'GET /': { body: undefined; response: InstanceInfo }
@@ -17,4 +20,5 @@ export type FirecrackerApi = {
   'PUT /snapshot/create': { body: SnapshotCreateParams; response: void }
   'PUT /snapshot/load': { body: SnapshotLoadParams; response: void }
   'PUT /mmds': { body: MmdsContentsObject; response: void }
+  'PATCH /drives/rootfs': { body: PartialDrive; response: void }
 }

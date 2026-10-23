@@ -1,5 +1,6 @@
 import { CfnOutput, Duration, Fn, RemovalPolicy, Size, Stack, Tags, type StackProps } from 'aws-cdk-lib'
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
+import * as dlm from 'aws-cdk-lib/aws-dlm'
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as iam from 'aws-cdk-lib/aws-iam'
@@ -70,6 +71,34 @@ export class SubstrateStack extends Stack {
       // Holds the ZFS pool with every VM, so it outlives the host and the stack.
       removalPolicy: RemovalPolicy.RETAIN,
       volumeName: 'substrate-host-data',
+    })
+
+    // Daily snapshots of the data disk, by Data Lifecycle Manager. ZFS keeps
+    // its pool consistent on disk at every moment, so a snapshot of the live
+    // disk restores like a power cut: at most seconds of writes lost.
+    Tags.of(hostData).add('substrate:backup', 'daily')
+    const snapshotRole = new iam.Role(this, 'DataSnapshotRole', {
+      assumedBy: new iam.ServicePrincipal('dlm.amazonaws.com'),
+      managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSDataLifecycleManagerServiceRole')],
+    })
+    new dlm.CfnLifecyclePolicy(this, 'DataSnapshots', {
+      description: 'Substrate daily snapshots of the host data disk',
+      state: 'ENABLED',
+      executionRoleArn: snapshotRole.roleArn,
+      policyDetails: {
+        policyType: 'EBS_SNAPSHOT_MANAGEMENT',
+        resourceTypes: ['VOLUME'],
+        targetTags: [{ key: 'substrate:backup', value: 'daily' }],
+        schedules: [
+          {
+            name: 'Daily',
+            createRule: { interval: 24, intervalUnit: 'HOURS', times: [config.host.dataSnapshots.time] },
+            retainRule: { count: config.host.dataSnapshots.keep },
+            copyTags: true,
+            tagsToAdd: [{ key: 'substrate:snapshot', value: 'daily' }],
+          },
+        ],
+      },
     })
 
     const hostUserData = ec2.UserData.forLinux()
