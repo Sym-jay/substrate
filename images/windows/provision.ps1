@@ -26,7 +26,8 @@ Download (LatestAsset 'git-for-windows/git' '^Git-[\d.]+-64-bit\.exe$') "$dir\gi
 Install "$dir\git.exe" '/VERYSILENT /NORESTART /NOCANCEL /SP- /SUPPRESSMSGBOXES'
 
 Step 'Node.js LTS'
-$node = (Invoke-RestMethod -UseBasicParsing -Uri 'https://nodejs.org/dist/index.json' | Where-Object { $_.lts } | Select-Object -First 1).version
+# The parentheses make Windows PowerShell pass the array on item by item.
+$node = ((Invoke-RestMethod -UseBasicParsing -Uri 'https://nodejs.org/dist/index.json') | Where-Object { $_.lts } | Select-Object -First 1).version
 Download "https://nodejs.org/dist/$node/node-$node-x64.msi" "$dir\node.msi"
 Install 'msiexec.exe' "/i $dir\node.msi /qn /norestart"
 
@@ -36,9 +37,10 @@ Install 'msiexec.exe' "/i $dir\pwsh.msi /qn /norestart ADD_PATH=1 REGISTER_MANIF
 
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 
-# In Node's own folder, which is on everyone's PATH, rather than SYSTEM's profile.
+# In Node's own folder, which is on everyone's PATH, rather than SYSTEM's
+# profile. npm runs install scripts only for packages it's told it may.
 Step 'Claude Code and Codex'
-& npm.cmd install --global --prefix "$env:ProgramFiles\nodejs" '@anthropic-ai/claude-code' '@openai/codex'
+& npm.cmd install --global --prefix "$env:ProgramFiles\nodejs" --allow-scripts=@anthropic-ai/claude-code '@anthropic-ai/claude-code' '@openai/codex'
 if ($LASTEXITCODE) { throw "npm install exited with $LASTEXITCODE" }
 
 # Built into Windows Server 2025. It's first started at a workspace's first

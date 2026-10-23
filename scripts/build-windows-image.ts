@@ -3,7 +3,8 @@
 // list through SSM. It then restarts the builder (for WSL), has EC2Launch
 // generalize it (sysprep), and saves it as an image. New workspaces start
 // from the newest one; existing ones keep theirs. Takes 30–45 minutes.
-// `--keep` leaves the builder up if a step fails, to look into.
+// `--keep` leaves the builder up if a step fails, to look into; `--builder ID`
+// carries on with one left up, skipping its boot.
 import {
   CreateImageCommand,
   DeleteSnapshotCommand,
@@ -22,6 +23,7 @@ import { config } from '../infra/lib/config.ts'
 import { ec2, printRun, region, run, send, waitForSsm } from './lib/aws.ts'
 
 const keep = process.argv.includes('--keep')
+const reuse = process.argv.includes('--builder') ? process.argv[process.argv.indexOf('--builder') + 1] : undefined
 const root = join(import.meta.dir, '..')
 const ssm = new SSMClient({ region })
 const param = async (name: string) => {
@@ -41,24 +43,29 @@ const baseImage = await param(config.windows.baseImageParameter)
 const subnet = await param(config.windows.subnetParameter)
 const name = `substrate-windows-${new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)}`
 
-console.log(`starting a builder (${config.windows.builderInstanceType}) from ${baseImage}`)
-const { Instances = [] } = await ec2.send(
-  new RunInstancesCommand({
-    LaunchTemplate: { LaunchTemplateName: config.windows.launchTemplate },
-    ImageId: baseImage,
-    InstanceType: config.windows.builderInstanceType as _InstanceType,
-    SubnetId: subnet,
-    MinCount: 1,
-    MaxCount: 1,
-    TagSpecifications: [
-      { ResourceType: 'instance', Tags: tags('builder', 'substrate-windows-builder') },
-      { ResourceType: 'volume', Tags: tags('builder', 'substrate-windows-builder') },
-    ],
-  }),
-)
-const builder = Instances[0]?.InstanceId
-if (!builder) throw new Error('EC2 started no builder')
+const builder = reuse ?? (await launchBuilder())
 console.log(`builder ${builder}`)
+
+async function launchBuilder() {
+  console.log(`starting a builder (${config.windows.builderInstanceType}) from ${baseImage}`)
+  const { Instances = [] } = await ec2.send(
+    new RunInstancesCommand({
+      LaunchTemplate: { LaunchTemplateName: config.windows.launchTemplate },
+      ImageId: baseImage,
+      InstanceType: config.windows.builderInstanceType as _InstanceType,
+      SubnetId: subnet,
+      MinCount: 1,
+      MaxCount: 1,
+      TagSpecifications: [
+        { ResourceType: 'instance', Tags: tags('builder', 'substrate-windows-builder') },
+        { ResourceType: 'volume', Tags: tags('builder', 'substrate-windows-builder') },
+      ],
+    }),
+  )
+  const id = Instances[0]?.InstanceId
+  if (!id) throw new Error('EC2 started no builder')
+  return id
+}
 
 let ok = false
 try {

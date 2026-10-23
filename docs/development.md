@@ -82,6 +82,7 @@ Keep the key private: never commit it, paste it into chats, or share it.
 | `bun run deploy:infra` | Deploys the CDK stack (`--require-approval never` skips the prompt) |
 | `bun run deploy:control` | Builds the web app and control API, installs them on the control box, waits for the public URL to serve the new version |
 | `bun run deploy:host` | Ships hostd, the guest agent and the image scripts to the host as source, runs host setup, builds and restarts hostd. Running VMs keep running |
+| `bun run build:windows-image` | Builds the Windows workspace image on a temporary builder (30–45 min). `--keep` keeps a failed builder; `--builder ID` carries on with it |
 | `bun run images:build` | Builds the guest kernel and a new VM image on the host (10–20 min). New VMs get it |
 | `bun run setup:host` | Runs only `images/host/setup-host.sh` on the host |
 | `bun run host status` / `start` / `stop` | Checks, starts or stops the sandbox host |
