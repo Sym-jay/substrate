@@ -32,6 +32,8 @@ if (process.argv.includes('--host')) {
     SUBSTRATE_HOST_INSTANCE_ID: out.HostInstanceId,
     SUBSTRATE_HOSTD_URL: `http://127.0.0.1:${TUNNEL_PORT}`,
     SUBSTRATE_HOSTD_TOKEN: param.Parameter?.Value,
+    // This control API only listens on localhost, so VMs without a login are fine.
+    SUBSTRATE_VMS_WITHOUT_LOGIN: '1',
   })
 }
 
