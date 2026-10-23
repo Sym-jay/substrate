@@ -95,8 +95,13 @@ Only me and a friend helping build it use it. Nothing here is production.
 - Host ↔ guest: TCP over the VM's private link, because Bun can't open vsock
   sockets. Each VM gets a token through Firecracker's metadata service (MMDS), and
   guestd only listens on the private link.
-- hostd is the source of truth for VMs (ZFS user properties plus a small state
-  file), so nothing is lost when it restarts.
+- hostd is the source of truth for VMs (each VM's ZFS dataset plus a `vm.json`
+  in it), so nothing is lost when it restarts. VMs run in their own systemd
+  units, so restarting hostd never stops them.
+- M1 boots VMs from Firecracker's `--config-file`, so no generated API client
+  yet; it arrives when pause/resume (M3) needs the API. Until M2 gives the
+  control box a reason to call hostd, hostd's token lives in a root-only file
+  on the host; M2 moves it to Parameter Store.
 - Start modes: blank (an agent starts right away in an empty workspace), terminal
   only, and from GitHub (M6).
 
