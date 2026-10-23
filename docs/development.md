@@ -44,6 +44,20 @@ bun run typecheck
 bun test
 ```
 
+The control box's tests use an in-memory SQLite by default. To run them against
+Postgres as in production, point `TEST_DATABASE_URL` at any Postgres you can
+throw away; each test gets a fresh schema:
+
+```sh
+docker run -d --name substrate-pg -e POSTGRES_PASSWORD=test -p 55432:5432 postgres:17-alpine
+TEST_DATABASE_URL=postgres://postgres:test@localhost:55432/postgres bun test apps/control
+```
+
+VM isolation (Phase 2's jailer, network namespaces and egress proxy) is checked
+on real Firecracker by `scripts/check-isolation.ts`, on any Linux machine with
+KVM, Firecracker and the jailer; its header says how to run it. See
+[phase2.md](phase2.md).
+
 ## Layout
 
 | Path | What it is |
@@ -78,10 +92,11 @@ Keep the key private: never commit it, paste it into chats, or share it.
 
 | Command | What it does |
 |---|---|
-| `bun run secrets` | Creates the hostd token in Parameter Store if it's missing. With `--clerk`, also loads the Clerk keys (run `bunx clerk@latest auth login` first; owner only). With `--ntfy`, creates the topic for alerts and prints it, so you can subscribe in the ntfy app |
+| `bun run secrets` | Creates the hostd token in Parameter Store if it's missing. With `--clerk`, also loads the Clerk keys (run `bunx clerk@latest auth login` first; owner only). With `--ntfy`, creates the topic for alerts and prints it, so you can subscribe in the ntfy app. With `--github-oauth`, asks for the GitHub OAuth app's client ID and secret ([phase2.md](phase2.md)) |
 | `bun run deploy:infra` | Deploys the CDK stack (`--require-approval never` skips the prompt) |
 | `bun run deploy:control` | Builds the web app and control API, installs them on the control box, waits for the public URL to serve the new version |
 | `bun run deploy:host` | Ships hostd, the guest agent and the image scripts to the host as source, runs host setup, builds and restarts hostd. Running VMs keep running |
+| `bun run build:windows-image` | Builds the Windows workspace image on a temporary builder (30–45 min). `--keep` keeps a failed builder; `--builder ID` carries on with it |
 | `bun run images:build` | Builds the guest kernel and a new VM image on the host (10–20 min). New VMs get it |
 | `bun run setup:host` | Runs only `images/host/setup-host.sh` on the host |
 | `bun run host status` / `start` / `stop` | Checks, starts or stops the sandbox host |

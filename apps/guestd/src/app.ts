@@ -1,4 +1,5 @@
-import { CreateSession, ExecRequest, GitHubRepo, SshKey, StartGuestTask, CancelGuestTask, TaskId, type ExecResult, type GuestHealth } from '@substrate/protocol'
+import { AgentEnv, CreateSession, ExecRequest, GitHubRepo, SshKey, StartGuestTask, CancelGuestTask, TaskId, type ExecResult, type GuestHealth } from '@substrate/protocol'
+import { writeAgentEnv } from './environment.ts'
 import { z } from 'zod'
 import { setupRepository } from './repository.ts'
 import { authorizeSsh } from './ssh.ts'
@@ -17,6 +18,8 @@ type Options = {
   version: string
   run: (req: ExecRequest) => Promise<ExecResult>
   sessions: Sessions
+  // Where the user's agent keys go (environment.ts); tests substitute a fake.
+  agentEnv?: (env: AgentEnv) => Promise<unknown>
   activity: Activity
   tasks?: Tasks
 }
@@ -24,7 +27,7 @@ type Options = {
 // A browser that stops reading gets dropped rather than buffered forever.
 const MAX_BUFFERED_BYTES = 1024 * 1024
 
-export function createApp({ vmId, token, version, run, sessions, activity, tasks }: Options) {
+export function createApp({ vmId, token, version, run, sessions, activity, tasks, agentEnv = writeAgentEnv }: Options) {
   const started = performance.now()
   const app = new Hono()
 
@@ -63,6 +66,14 @@ export function createApp({ vmId, token, version, run, sessions, activity, tasks
     const parsed = ExecRequest.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? 'invalid request' }, 400)
     return c.json(await run(parsed.data))
+  })
+
+  // The user's agent keys, from the control box through hostd only.
+  app.put('/agent-env', async (c) => {
+    const parsed = AgentEnv.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ error: 'invalid agent environment' }, 400)
+    await agentEnv(parsed.data)
+    return c.body(null, 204)
   })
 
   app.post('/repository', async (c) => {

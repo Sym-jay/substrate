@@ -8,8 +8,12 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "@aws-sdk/client-ssm": "^3.1156.0",
+    "@aws-sdk/client-cloudwatch": "^3.1156.0",
     "@aws-sdk/client-ec2": "^3.1156.0",
+    "@aws-sdk/client-kms": "^3.1156.0",
+    "@aws-sdk/client-secrets-manager": "^3.1156.0",
+    "@aws-sdk/client-ssm": "^3.1156.0",
+    "@aws-sdk/rds-signer": "^3.1156.0",
     "@clerk/backend": "^3.26.1",
     "@substrate/protocol": "workspace:*",
     "hono": "^4.13.13"

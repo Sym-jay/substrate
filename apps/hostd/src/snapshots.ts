@@ -4,11 +4,15 @@ import { config } from './config.ts'
 import { message } from './errors.ts'
 import * as firecracker from './firecracker.ts'
 import { guestClient, waitForGuest } from './guest.ts'
-import { createTap, deleteTap, slotAddresses } from './network.ts'
+import { deleteTap, slotAddresses } from './network.ts'
 import { vmDir, writeRecord, type Checkpoint, type VmRecord } from './state.ts'
+import * as vmm from './vmm.ts'
 import * as zfs from './zfs.ts'
 
-export const snapshotDependencies = { firecracker, zfs, mkdir, readdir, rm, vmDir, writeRecord, createTap, deleteTap, guestClient, waitForGuest }
+export const snapshotDependencies = {
+  firecracker, zfs, mkdir, readdir, rm, vmDir, writeRecord, deleteTap, guestClient, waitForGuest,
+  startNetwork: vmm.startNetwork, launchForRestore: vmm.launchForRestore, ownSnapshotDir: vmm.ownSnapshotDir,
+}
 
 // VmManager holds its lifecycle mutex around these operations. Each generation
 // is immutable: a resumed Firecracker process demand-pages its memory file for
@@ -16,9 +20,15 @@ export const snapshotDependencies = { firecracker, zfs, mkdir, readdir, rm, vmDi
 export class Snapshots {
   constructor(private readonly deps = snapshotDependencies) {}
 
+  // `load` is where Firecracker sees the files: in its chroot, if it's jailed.
   paths(record: VmRecord, checkpoint: Checkpoint) {
-    const dir = `${this.deps.vmDir(record.id)}/snapshots/${checkpoint.id}`
-    return { dir, state: `${dir}/state`, memory: `${dir}/memory`, disk: `${config.pool}/vms/${record.id}/root@pause-${checkpoint.id}` }
+    const base = vmm.isJailed(record) ? `${firecracker.jailRoot(record.id)}/snapshots` : `${this.deps.vmDir(record.id)}/snapshots`
+    const dir = `${base}/${checkpoint.id}`
+    const seen = vmm.isJailed(record) ? `/snapshots/${checkpoint.id}` : dir
+    return {
+      dir, state: `${dir}/state`, memory: `${dir}/memory`, disk: `${config.pool}/vms/${record.id}/root@pause-${checkpoint.id}`,
+      load: { state: `${seen}/state`, memory: `${seen}/memory` },
+    }
   }
 
   async pause(record: VmRecord) {
@@ -38,12 +48,13 @@ export class Snapshots {
       await d.rm(files.dir, { recursive: true, force: true }).catch(() => {})
     }
     await d.mkdir(files.dir, { recursive: true, mode: 0o700 })
+    await d.ownSnapshotDir(record, files.dir)
     try {
       await api('PATCH /vm', { state: 'Paused' })
       frozen = true
       // Firecracker also drains and fsyncs the block device before returning.
       await api('PUT /snapshot/create', {
-        snapshot_type: 'Full', snapshot_path: files.state, mem_file_path: files.memory,
+        snapshot_type: 'Full', snapshot_path: files.load.state, mem_file_path: files.load.memory,
         sync_snapshot_files: true,
       }, 300_000)
       await d.zfs.snapshot(files.disk)
@@ -86,24 +97,21 @@ export class Snapshots {
       if (await d.firecracker.isRunning(record.id)) await d.firecracker.kill(record.id)
       // Also resets disk writes made by a restore that failed after unpausing.
       await d.zfs.rollback(files.disk)
-      await d.createTap(record.slot)
-      const root = record.rootPath ? { source: d.zfs.zvolDevice(`${config.pool}/vms/${record.id}/root`), target: record.rootPath } : undefined
-      await d.firecracker.launchForRestore(record.id, `${d.vmDir(record.id)}/metadata.json`, root)
+      await d.startNetwork(record)
+      await d.launchForRestore(record)
       const info = await d.firecracker.waitForApi(record.id)
       if (info.vmm_version !== checkpoint.firecrackerVersion) {
         throw new Error(`snapshot needs Firecracker ${checkpoint.firecrackerVersion}; installed ${info.vmm_version}`)
       }
       const api = d.firecracker.api(record.id)
       await api('PUT /snapshot/load', {
-        snapshot_path: files.state, mem_backend: { backend_type: 'File', backend_path: files.memory },
-        network_overrides: [{ iface_id: 'eth0', host_dev_name: slotAddresses(record.slot).tap }],
+        snapshot_path: files.load.state, mem_backend: { backend_type: 'File', backend_path: files.load.memory },
+        network_overrides: [{ iface_id: 'eth0', host_dev_name: vmm.tapName(record) }],
         resume_vm: false, clock_realtime: true,
       })
       // MMDS configuration survives a snapshot; its contents do not.
       const net = slotAddresses(record.slot)
-      await api('PUT /mmds', {
-        substrate: { vmId: record.id, name: record.name, token: record.token, guestIp: net.guestIp, hostIp: net.hostIp },
-      })
+      await api('PUT /mmds', vmm.metadata(record))
       await api('PATCH /vm', { state: 'Resumed' })
       const health = await d.waitForGuest(d.guestClient(net.guestIp, record.token), {
         timeoutMs: config.bootTimeoutMs,
@@ -160,9 +168,11 @@ export class Snapshots {
         console.error(`prune ${record.id}: couldn't remove ${what}: ${message(err)}`)
       }
     }
-    const dir = `${d.vmDir(record.id)}/snapshots`
-    for (const name of await d.readdir(dir).catch(() => [] as string[])) {
-      if (name !== keep) await attempt(`saved memory ${name}`, () => d.rm(`${dir}/${name}`, { recursive: true, force: true }))
+    // Saves can be in either place: a VM can change isolation between boots.
+    for (const dir of [`${d.vmDir(record.id)}/snapshots`, `${firecracker.jailRoot(record.id)}/snapshots`]) {
+      for (const name of await d.readdir(dir).catch(() => [] as string[])) {
+        if (name !== keep) await attempt(`saved memory ${name}`, () => d.rm(`${dir}/${name}`, { recursive: true, force: true }))
+      }
     }
     const dataset = `${config.pool}/vms/${record.id}`
     const snapshots = [

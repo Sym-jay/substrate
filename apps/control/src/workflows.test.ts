@@ -10,6 +10,7 @@ import { Owners } from './owners.ts'
 import { Jobs } from './jobs.ts'
 import { Tickets } from './tickets.ts'
 import { Workflows, WorkflowStore } from './workflows.ts'
+import { testDatabase } from './db.ts'
 
 const cleanups: (() => Promise<void>)[] = []
 afterAll(async () => { for (const cleanup of cleanups.reverse()) await cleanup() })
@@ -21,7 +22,8 @@ async function eventually<T>(read: () => T | Promise<T>, ready: (value: T) => bo
 }
 async function rig() {
   const directory = await mkdtemp(join(tmpdir(), 'substrate-workflows-'))
-  const owner = new Owners(':memory:'), jobs = new Jobs(':memory:'), store = new WorkflowStore(join(directory, 'control.db'))
+  const db = await testDatabase()
+  const owner = new Owners(db), jobs = new Jobs(db), store = new WorkflowStore(join(directory, 'control.db'))
   const records = new Map<string, Vm>(), guests = new Map<string, GuestTasks>(), folders = new Map<string, string>()
   const calls: string[] = []
   let forks = 0, failFork = false, loseStart = false, loseReads = false
@@ -36,7 +38,7 @@ async function rig() {
     records.set(id, vm)
     return vm
   }
-  await addVm('vm-source'); owner.add('vm-source', 'alice')
+  await addVm('vm-source'); await owner.add('vm-source', 'alice')
   await writeFile(join(folders.get('vm-source')!, 'seed'), 'same starting state')
   const host = new Hono()
   host.use('*', async (c, next) => { if (c.req.header('authorization') !== 'Bearer host-token') return c.json({ error: 'no' }, 401); calls.push(`${c.req.method} ${c.req.path}`); await next() })

@@ -10,6 +10,8 @@ export const GuestConfig = z.object({
   // Set when hostd brought this VM back after a crash, or from the disk of a
   // save it couldn't restore: reopen the sessions that were running.
   resumeSessions: z.boolean().default(false),
+  // The host's egress proxy, when this VM's egress is allowlisted.
+  proxy: z.string().nullable().default(null),
 })
 export type GuestConfig = z.infer<typeof GuestConfig>
 

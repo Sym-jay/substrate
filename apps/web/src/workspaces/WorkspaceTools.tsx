@@ -3,7 +3,7 @@ import { VmName, VmSizes, type Vm, type VmSizeName, type RunCheckpoint } from '@
 import { workspaceApi } from './api.ts'
 
 const message = (error: unknown) => error instanceof Error ? error.message : 'The request failed. Try again.'
-const field = 'w-full rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-sm dark:border-zinc-700'
+const field = 'input'
 
 export function WorkspaceTools({ vm, onChange, onFork, onDeleted }: {
   vm: Vm; onChange: (vm: Vm) => void; onFork: (vm: Vm) => void; onDeleted: () => void
@@ -50,7 +50,7 @@ export function WorkspaceTools({ vm, onChange, onFork, onDeleted }: {
     setTimeout(() => URL.revokeObjectURL(url), 1_000)
   }
 
-  return <section aria-label="Workspace tools" className="mt-6 space-y-5 border-t border-zinc-200 pt-5 text-sm dark:border-zinc-800">
+  return <section aria-label="Workspace tools" className="mt-6 space-y-5 border-t border-[var(--line)] pt-5 text-sm ">
     {vm.lastError && <p role="alert" className="workspace-error">{vm.lastError}</p>}
     {error && <p role="alert" className="workspace-error">{error}</p>}
     {busy && <p role="status" className="workspace-hint">{busy}</p>}
@@ -87,11 +87,11 @@ export function WorkspaceTools({ vm, onChange, onFork, onDeleted }: {
     </details>
 
     <details>
-      <summary className="cursor-pointer py-2 font-medium">Run checkpoints <span className="text-zinc-500">({points.length})</span></summary>
+      <summary className="cursor-pointer py-2 font-medium">Run checkpoints <span className="text-faint">({points.length})</span></summary>
       <p className="workspace-hint">A disk checkpoint is taken before every agent session. Stop the workspace before restoring one.</p>
-      {points.length === 0 ? <p className="workspace-hint">No run checkpoints yet.</p> : <ul className="mt-3 divide-y divide-zinc-200 dark:divide-zinc-800">
+      {points.length === 0 ? <p className="workspace-hint">No run checkpoints yet.</p> : <ul className="mt-3 divide-y divide-[var(--line)]">
         {[...points].reverse().map((point) => <li key={point.id} className="flex items-center justify-between gap-3 py-3">
-          <div><p>{point.label}</p><p className="text-xs text-zinc-500">{new Date(point.createdAt).toLocaleString()}</p></div>
+          <div><p>{point.label}</p><p className="text-xs text-faint">{new Date(point.createdAt).toLocaleString()}</p></div>
           <button type="button" className="workspace-button secondary" disabled={!!busy || !stopped} onClick={() => setRestore(point)}>Restore</button>
         </li>)}
       </ul>}
@@ -111,14 +111,16 @@ export function WorkspaceTools({ vm, onChange, onFork, onDeleted }: {
       {preview && <div className="mt-3 space-y-2">
         <a className="inline-block py-2 font-medium underline underline-offset-4" href={preview.url} target="_blank" rel="noreferrer">Open app preview</a>
         <p className="workspace-hint">Run the app on 0.0.0.0 and configure this base path for assets and development WebSockets:</p>
-        <code className="block break-all rounded-lg bg-zinc-100 p-3 text-xs dark:bg-zinc-900">{preview.basePath}</code>
+        <code className="mono block break-all border border-[var(--line)] p-3 text-xs">{preview.basePath}</code>
         <p className="workspace-hint">For Vite: <code>npm run dev -- --host 0.0.0.0 --base {preview.basePath}</code></p>
       </div>}
     </details>
 
     <details>
       <summary className="cursor-pointer py-2 font-medium">SSH and VS Code</summary>
-      <p className="workspace-hint">Add your public SSH key, then download a connection file. Your private key stays on your device.</p>
+      <p className="workspace-hint">With your key under <a className="underline underline-offset-2" href="#ssh-access">SSH access</a>, connect from your terminal or VS Code Remote-SSH:</p>
+      <code className="mt-2 block rounded-lg bg-zinc-100 p-3 text-xs dark:bg-zinc-900">ssh {vm.name}.substrate</code>
+      <p className="workspace-hint">Or, for this workspace only, add a public key here and download a short-lived connection file. Your private key stays on your device.</p>
       <form className="mt-3 space-y-3" onSubmit={(event) => submit(event, async (data) => {
         await workspaceApi.authorizeSsh(vm.id, String(data.get('key') ?? '').trim())
         setSsh(await workspaceApi.sshAccess(vm.id))
@@ -129,12 +131,12 @@ export function WorkspaceTools({ vm, onChange, onFork, onDeleted }: {
       {ssh && <div className="mt-3 space-y-3">
         <button type="button" className="workspace-button secondary" onClick={downloadSsh}>Download SSH connection</button>
         <p className="workspace-hint">Connection access expires {new Date(ssh.expiresAt).toLocaleTimeString()}. Replace the two local paths below, then use this command or put its ProxyCommand in your VS Code SSH config.</p>
-        <code className="block overflow-x-auto rounded-lg bg-zinc-100 p-3 text-xs dark:bg-zinc-900">{`ssh -o 'ProxyCommand=bun /path/to/substrate/scripts/ssh-proxy.ts /path/to/${vm.id}-ssh.json' dev@${vm.id}`}</code>
+        <code className="mono block overflow-x-auto border border-[var(--line)] p-3 text-xs">{`ssh -o 'ProxyCommand=bun /path/to/substrate/scripts/ssh-proxy.ts /path/to/${vm.id}-ssh.json' dev@${vm.id}`}</code>
       </div>}
     </details>
 
     <details>
-      <summary className="cursor-pointer py-2 font-medium text-red-700 dark:text-red-300">Delete workspace</summary>
+      <summary className="cursor-pointer py-2 font-medium text-[var(--bad)]">Delete workspace</summary>
       {!confirmDelete ? <button type="button" className="workspace-button secondary mt-3" disabled={!!busy} onClick={() => setConfirmDelete(true)}>Delete {vm.name}</button>
         : <div className="mt-3 space-y-3" role="alert"><p>Delete “{vm.name}”? Its disk, sessions, and checkpoints will be permanently removed.</p>
           <div className="flex flex-wrap gap-2"><button type="button" className="workspace-button" disabled={!!busy} onClick={() => perform('Deleting workspace…', async () => { await workspaceApi.remove(vm.id); onDeleted() })}>Delete permanently</button>

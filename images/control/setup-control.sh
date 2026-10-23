@@ -84,6 +84,26 @@ fi
 if preview_origin=$(aws ssm get-parameter --region "$AWS_REGION" --name /substrate/preview-origin --query Parameter.Value --output text 2>/dev/null); then
   (umask 077 && printf 'SUBSTRATE_PREVIEW_ORIGIN=%s\n' "$preview_origin" >>"$secrets")
 fi
+# Windows workspaces (M9): the subnet they start in. The control box reaches
+# them with ssh, under setsid for terminals.
+if windows_subnet=$(param /substrate/windows-subnet); then
+  (umask 077 && printf 'SUBSTRATE_WINDOWS_SUBNET=%s\n' "$windows_subnet" >>"$secrets")
+  command -v ssh >/dev/null && command -v setsid >/dev/null || dnf install -y -q openssh-clients util-linux
+fi
+
+# Phase 2: Postgres on RDS (IAM sign-in, so only where it is; RDS's CA to
+# check it), the KMS key for users' keys, the public URL, GitHub's OAuth app
+# and the admins (Clerk user IDs, comma-separated). Each is optional: without
+# the database the control box keeps SQLite.
+if db_host=$(param /substrate/database/host); then
+  curl -fsSL -o /etc/substrate/rds-ca.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+  (umask 077 && printf 'SUBSTRATE_DATABASE_HOST=%s\nSUBSTRATE_DATABASE_PORT=%s\nSUBSTRATE_DATABASE_NAME=%s\nSUBSTRATE_DATABASE_USER=%s\nSUBSTRATE_DATABASE_MASTER_SECRET=%s\nSUBSTRATE_DATABASE_CA=/etc/substrate/rds-ca.pem\n' \
+    "$db_host" "$(param /substrate/database/port)" "$(param /substrate/database/name)" "$(param /substrate/database/user)" "$(param /substrate/database/master-secret)" >>"$secrets")
+  log "data in Postgres at ${db_host}"
+fi
+for pair in kms-key:SUBSTRATE_KMS_KEY public-url:SUBSTRATE_PUBLIC_URL github-oauth/client-id:SUBSTRATE_GITHUB_CLIENT_ID github-oauth/client-secret:SUBSTRATE_GITHUB_CLIENT_SECRET admins:SUBSTRATE_ADMINS; do
+  if value=$(param "/substrate/${pair%%:*}"); then (umask 077 && printf '%s=%s\n' "${pair##*:}" "$value" >>"$secrets"); fi
+done
 
 systemctl restart substrate-control
 for _ in $(seq 1 30); do

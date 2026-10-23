@@ -48,7 +48,11 @@ export class WorkflowStore {
 
 const ACTIVE_SQL = `(coalesce(json_extract(payload, '$.dispatchUncertain'), 0) = 1 or (json_extract(payload, '$.error') is null and (json_extract(payload, '$.run.state') is null or json_extract(payload, '$.run.state') in ('queued', 'running'))))`
 
-type Options = { store: WorkflowStore; owners: Owners; jobs: Jobs; maxVmsPerUser: number; hostd: { url: string; token: string } }
+type Options = {
+  store: WorkflowStore; owners: Owners; jobs: Jobs; maxVmsPerUser: number; hostd: { url: string; readonly token: string }
+  // The user's VM limit when quotas are on (Phase 2); otherwise maxVmsPerUser.
+  maxVms?: (userId: string) => Promise<number>
+}
 const fail = (status: 400 | 404 | 409 | 502 | 503, message: string): never => { throw new HTTPException(status, { message }) }
 const activeTask = taskIsPending
 export const taskSummary = (task: Task): Task => ({ ...task, run: task.run ? { ...task.run,
@@ -64,7 +68,7 @@ export class Workflows {
   private refreshing = new Map<string, Promise<void>>()
   constructor(private options: Options) {}
   private get store() { return this.options.store }
-  private own(userId: string, vmId: string) { if (this.options.owners.owner(vmId) !== userId) fail(404, 'Workspace not found') }
+  private async own(userId: string, vmId: string) { if ((await this.options.owners.owner(vmId)) !== userId) fail(404, 'Workspace not found') }
   private async host(path: string, init: RequestInit = {}) {
     return fetch(`${this.options.hostd.url}${path}`, { ...init, headers: {
       Authorization: `Bearer ${this.options.hostd.token}`, 'content-type': 'application/json',
@@ -92,7 +96,7 @@ export class Workflows {
 
   async createTask(userId: string, vmId: string, spec: TaskSpec) {
     return this.options.jobs.exclusive(userId, async () => {
-      this.own(userId, vmId)
+      await this.own(userId, vmId)
       if (this.hasActiveTask(userId, vmId)) fail(409, 'A task is already running in this workspace. Wait or cancel it first.')
       const task = this.makeTask(vmId, spec)
       this.store.saveTask(userId, task)
@@ -108,7 +112,7 @@ export class Workflows {
   private async dispatch(userId: string, task: Task) {
     let response: Response | null = null
     try {
-      this.own(userId, task.vmId)
+      await this.own(userId, task.vmId)
       response = await this.host(`/vms/${task.vmId}/tasks`, this.post({ id: task.id, spec: task.spec }))
       const run = GuestTask.parse(await this.requireResponse(response, 'Could not start task'))
       if (run.id !== task.id) throw new Error('The workspace returned a different task ID')
@@ -134,21 +138,22 @@ export class Workflows {
 
   async createComparison(userId: string, input: CreateComparison) {
     return this.options.jobs.exclusive(userId, async () => {
-      this.own(userId, input.sourceVmId)
+      await this.own(userId, input.sourceVmId)
       if (this.hasActiveTask(userId, input.sourceVmId)) fail(409, 'Finish or cancel the source workspace task before comparing approaches')
       const all = Vm.array().parse(await this.requireResponse(await this.host('/vms'), 'Could not check workspace quota'))
       const source = all.find((vm) => vm.id === input.sourceVmId) ?? fail(404, 'Source workspace not found')
       if (!['running', 'paused'].includes(source.state)) fail(409, 'Start or pause the source workspace before comparing approaches')
-      const owned = new Set(this.options.owners.vmsOf(userId))
-      const used = new Set([...all.filter((vm) => owned.has(vm.id)).map((vm) => vm.id), ...this.options.jobs.pending(userId), ...this.pendingVms(userId)])
-      if (used.size + 2 > this.options.maxVmsPerUser) fail(409, 'A comparison needs two free workspace places. Delete unused workspaces or raise your VM quota first.')
+      const owned = new Set(await this.options.owners.vmsOf(userId))
+      const used = new Set([...all.filter((vm) => owned.has(vm.id)).map((vm) => vm.id), ...await this.options.jobs.pending(userId), ...this.pendingVms(userId)])
+      const maxVms = this.options.maxVms ? await this.options.maxVms(userId) : this.options.maxVmsPerUser
+      if (used.size + 2 > maxVms) fail(409, 'A comparison needs two free workspace places. Delete unused workspaces or raise your VM quota first.')
       const vmIds: [string, string] = [`vm-${randomBytes(8).toString('hex')}`, `vm-${randomBytes(8).toString('hex')}`]
       const id = randomUUID()
       const tasks = input.approaches.map((spec, index) => this.makeTask(vmIds[index]!, spec, id)) as [Task, Task]
       const comparison: Comparison = { id, sourceVmId: source.id, title: input.title, vmIds,
         taskIds: [tasks[0].id, tasks[1].id], createdAt: new Date().toISOString(), state: 'preparing',
         sourceCheckpointId: null, selectedTaskId: null, error: null }
-      for (const task of tasks) { this.options.owners.add(task.vmId, userId); this.store.saveTask(userId, task) }
+      for (const task of tasks) { await this.options.owners.add(task.vmId, userId); this.store.saveTask(userId, task) }
       this.store.saveComparison(userId, comparison)
       this.preparing.add(id)
       void this.prepare(userId, comparison, tasks).catch((error) => console.error('comparison persistence:', error)).finally(() => this.preparing.delete(id))
@@ -198,9 +203,10 @@ export class Workflows {
     await Promise.all(this.store.tasks(userId, true).map(async (task) => {
       if (this.dispatching.has(task.id) || (task.comparisonId && this.preparing.has(task.comparisonId))) return
       const vm = vms.find((vm) => vm.id === task.vmId)
-      if (!vm || this.options.owners.owner(task.vmId) !== userId || vm.state === 'stopped' || vm.state === 'failed') {
+      const owned = (await this.options.owners.owner(task.vmId)) === userId
+      if (!vm || !owned || vm.state === 'stopped' || vm.state === 'failed') {
         task.error = 'The workspace is unavailable or stopped. Inspect its saved output before starting a new task.'
-        if (!vm || this.options.owners.owner(task.vmId) !== userId) task.dispatchUncertain = false
+        if (!vm || !owned) task.dispatchUncertain = false
         if (task.run && taskIsActive(task.run.state) && !task.dispatchUncertain) {
           task.run = { ...task.run, state: 'interrupted', finishedAt: new Date().toISOString(), error: task.error }
           task.error = null
@@ -226,7 +232,7 @@ export class Workflows {
   }
   async cancel(userId: string, id: string) {
     const task = this.task(userId, id)
-    this.own(userId, task.vmId)
+    await this.own(userId, task.vmId)
     if (this.dispatching.has(id) || (task.comparisonId && this.preparing.has(task.comparisonId))) fail(409, 'The task is still preparing. Wait for its workspace to be ready before cancelling.')
     if (!activeTask(task)) return task
     task.run = GuestTask.parse(await this.requireResponse(await this.host(`/vms/${task.vmId}/tasks/${id}/cancel`, this.post({ spec: task.spec })), 'Could not cancel task'))
@@ -236,11 +242,11 @@ export class Workflows {
     this.store.saveTask(userId, task)
     return task
   }
-  select(userId: string, id: string, taskId: string) {
+  async select(userId: string, id: string, taskId: string) {
     const comparison = this.comparison(userId, id)
     if (comparison.state !== 'ready' || !comparison.taskIds.includes(taskId)) fail(400, 'Choose an approach belonging to this prepared comparison')
     const task = this.task(userId, taskId)
-    this.own(userId, task.vmId)
+    await this.own(userId, task.vmId)
     if (activeTask(task)) fail(409, 'Wait for this approach to finish before choosing it')
     comparison.selectedTaskId = taskId
     this.store.saveComparison(userId, comparison)

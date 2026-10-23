@@ -1,11 +1,11 @@
 // Compiled for the control box by check:m6. It registers only the test VM,
 // issues short-lived transport grants, and removes them afterwards. No Clerk
 // user is created or impersonated, and no credential is printed.
-import { Database } from 'bun:sqlite'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Capabilities } from '../../apps/control/src/capabilities.ts'
+import { openDatabase } from '../../apps/control/src/open-database.ts'
 import { Owners } from '../../apps/control/src/owners.ts'
 
 if (process.argv[2] === 'proxy') {
@@ -21,10 +21,13 @@ async function checkAccess() {
   const hostd = process.env.SUBSTRATE_HOSTD_URL, token = process.env.SUBSTRATE_HOSTD_TOKEN
   const preview = process.env.SUBSTRATE_PREVIEW_ORIGIN
   if (!hostd || !token || !preview) throw new Error('control configuration is incomplete')
-  const database = '/var/lib/substrate/control.db'
-  const owners = new Owners(database), caps = new Capabilities(database)
+  // The control box's own database, SQLite or Postgres (SUBSTRATE_DB and
+  // friends come from its environment).
+  process.env.SUBSTRATE_DB ??= '/var/lib/substrate/control.db'
+  const db = await openDatabase()
+  const owners = new Owners(db), caps = new Capabilities(db)
   const user = `m6-check-${crypto.randomUUID()}`
-  if (owners.owner(id)) throw new Error('refusing to replace ownership of an existing workspace')
+  if (await owners.owner(id)) throw new Error('refusing to replace ownership of an existing workspace')
   const directory = await mkdtemp(join(tmpdir(), 'substrate-m6-access-'))
   const internal = async (path: string, body?: unknown) => {
     const result = await fetch(hostd + `/vms/${id}` + path, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}), signal: AbortSignal.timeout(300_000) })
@@ -36,7 +39,7 @@ async function checkAccess() {
     if (response.status !== status) throw new Error(`expected HTTP ${status}, received ${response.status}`)
     return response
   }
-  owners.add(id, user)
+  await owners.add(id, user)
   try {
     await expectStatus(origin + '/api/vms', 401)
     await expectStatus(origin + `/api/vms/${id}/ssh`, 401)
@@ -48,7 +51,7 @@ async function checkAccess() {
     if (await generate.exited !== 0) throw new Error('test SSH key generation failed')
     await internal('/ssh/keys', { publicKey: (await readFile(key + '.pub', 'utf8')).trim() })
 
-    const previewGrant = caps.issue({ vmId: id, userId: user, kind: 'preview', port: 3000 }, 300_000)
+    const previewGrant = await caps.issue({ vmId: id, userId: user, kind: 'preview', port: 3000 }, 300_000)
     const cookie = `__Secure-substrate-preview-${id}-3000=${previewGrant.token}`
     await internal('/pause')
     const started = performance.now()
@@ -71,7 +74,7 @@ async function checkAccess() {
       }
     })
 
-    const sshGrant = caps.issue({ vmId: id, userId: user, kind: 'ssh', port: 22 }, 300_000)
+    const sshGrant = await caps.issue({ vmId: id, userId: user, kind: 'ssh', port: 22 }, 300_000)
     const url = new URL(`/api/vms/${id}/ssh`, origin)
     url.protocol = 'wss:'; url.searchParams.set('access', sshGrant.token)
     const connection = join(directory, 'connection.json')
@@ -82,15 +85,14 @@ async function checkAccess() {
     { stdout: 'pipe', stderr: 'pipe' })
     const output = await new Response(ssh.stdout).text()
     if (await ssh.exited !== 0 || output !== 'm6-ssh-ok') throw new Error('SSH through public WSS failed: ' + await new Response(ssh.stderr).text())
-    owners.remove(id)
+    await owners.remove(id)
     await expectStatus(url.href.replace(/^wss:/, 'https:'), 401)
     console.log(JSON.stringify({ previewWakeMs, previewWebSocket: true, sshThroughCloudFront: true, anonymousDenied: true, ownershipRevoked: true }))
   } finally {
-    if (owners.owner(id) === user) owners.remove(id)
-    caps.close()
-    const db = new Database(database)
-    db.query("delete from vm_capabilities where json_extract(value, '$.userId') = ?").run(user)
-    db.close()
+    if ((await owners.owner(id)) === user) await owners.remove(id)
+    // The test user's grants, by a match that works in SQLite and Postgres alike.
+    await db`delete from capabilities where value like ${`%"userId":"${user}"%`}`
+    await db.close()
     await rm(directory, { recursive: true, force: true })
   }
 }

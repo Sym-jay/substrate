@@ -67,7 +67,7 @@ Only me and a friend helping build it use it. Nothing here is production.
 |---|---|
 | Monorepo | Bun workspaces (Bun 1.4.4), TypeScript strict |
 | `apps/web` | Vite 8 + React 19 + Tailwind CSS 4 + `@xterm/xterm` 6. Mobile-first: on-screen key bar (Esc, Ctrl, Tab, arrows), installable as a PWA |
-| `apps/control` | Bun + Hono 4 on the control box. Serves the web build and a REST + WebSocket API, relays terminals and preview URLs to hostd, and starts/stops the host (M5). State in SQLite (`bun:sqlite`) |
+| `apps/control` | Bun + Hono 4 on the control box. Serves the web build and a REST + WebSocket API, relays terminals and preview URLs to hostd, and starts/stops the host (M5). State in SQLite (`bun:sqlite`); Postgres on RDS from Phase 2 |
 | `apps/hostd` | Bun + TS on the sandbox host. Talks to Firecracker's HTTP API over its Unix socket using a typed client generated from Firecracker's OpenAPI spec. Handles ZFS, TAP networking, snapshots and capacity checks |
 | `apps/guestd` | Bun + TS, built with `bun build --compile` into one binary inside the rootfs and run by systemd. Runs terminals with `Bun.spawn({ terminal })`, keeps sessions and their scrollback, reports agent activity |
 | `packages/protocol` | zod schemas and types shared by all of the above |
@@ -221,8 +221,8 @@ Done when: three idle default VMs together use under about 16 GB of host RAM.
 
 **M9 Windows workspaces:** a Windows workspace is its own EC2 instance, not a
 microVM.
-- Windows Server 2025 with the license included, on `m8i.xlarge` (4 vCPU / 16 GB,
-  about $0.41/h in ap-south-1). Windows 11 can't be used this way: AWS only allows
+- Windows Server 2025 with the license included, on `m8i.4xlarge` (16 vCPU / 64 GB,
+  about $1.63/h in ap-south-1), one on at a time. Windows 11 can't be used this way: AWS only allows
   it with your own license on dedicated hardware.
 - Created and started on demand from the same UI. It takes a few minutes to boot,
   and the UI shows progress.
@@ -235,6 +235,10 @@ microVM.
   than paused.
 Done when: I can create a Windows workspace from the UI, open its desktop in the
 browser on my phone, run Claude Code in PowerShell, and it stops itself when idle.
+
+See `docs/m9.md`. Built with VNC (TightVNC and noVNC) rather than DCV for the
+desktop, through the control box's WebSocket relay; DCV is the upgrade if VNC
+is too slow.
 
 **M10 macOS workspaces (optional):** a macOS workspace runs on an EC2 Mac
 dedicated host.
@@ -255,6 +259,10 @@ in the browser, run an agent, and release it.
 # Phase 2: Private beta
 
 Before anyone else uses Substrate. Phase 1 must be finished first.
+
+Data, Isolation between users and Secrets are built, along with connecting
+GitHub for repository workspaces: see [phase2.md](phase2.md) for how they work,
+how to deploy them (after M9) and what's still unverified.
 
 **Access**
 - A custom domain with HTTPS, so sign-in can move to Clerk's production

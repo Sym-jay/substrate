@@ -8,6 +8,12 @@ export const config = {
   version: typeof BUILD_VERSION === 'string' ? BUILD_VERSION : 'dev',
   pool: 'substrate',
   firecracker: '/usr/local/bin/firecracker',
+  jailer: '/usr/local/bin/jailer',
+  // New VMs, and every VM's next cold boot, run under the jailer in a network
+  // namespace of their own (see firecracker.ts). SUBSTRATE_ISOLATION=none
+  // turns that off: VMs go back to plain Firecracker on their next cold boot.
+  // Paused VMs always resume the way they were saved.
+  isolation: (process.env.SUBSTRATE_ISOLATION === 'none' ? 'none' : 'jail') as 'none' | 'jail',
   // ExecStop for VM units; installed by images/host/install-hostd.sh.
   vmStop: '/usr/local/lib/substrate/vm-stop',
   // Kept back from VMs for the host itself, ZFS and Firecracker overhead.
@@ -31,6 +37,7 @@ export const config = {
   paths: {
     root,
     token: `${root}/hostd-token`,
+    previousToken: `${root}/hostd-token.previous`,
     image: `${root}/images/current.json`,
     vms: `${root}/vms`,
     run: '/run/substrate',

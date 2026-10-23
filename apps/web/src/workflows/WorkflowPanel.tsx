@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { TaskSpec, taskIsPending, type Comparison, type Task, type TaskRunner, type Vm } from '@substrate/protocol'
+import { navigate, parse } from '../app/router.ts'
 import { workspaceApi } from '../workspaces/api.ts'
 import { workflowApi } from './api.ts'
 import '../workspaces/workspaces.css'
@@ -13,10 +14,10 @@ const needsReview = (task: Task) => !active(task) && !task.reviewedAt
 const message = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Try again.'
 const newSpec = (title = ''): TaskSpec => ({ title, runner: 'command', input: '', mode: 'ask', verificationCommand: '', timeoutSeconds: 3600 })
 type Selection = { kind: 'task' | 'comparison'; id: string } | null
+// The open task or comparison, from the route: #/inbox/task/<id>.
 function selection(): Selection {
-  const hash = new URLSearchParams(window.location.hash.slice(1))
-  return hash.get('comparison') ? { kind: 'comparison', id: hash.get('comparison')! }
-    : hash.get('task') ? { kind: 'task', id: hash.get('task')! } : null
+  const { page, params: [kind, id] } = parse(window.location.hash)
+  return page === 'inbox' && id && (kind === 'task' || kind === 'comparison') ? { kind, id } : null
 }
 
 export function WorkflowPanel({ onOpenWorkspace }: { onOpenWorkspace: (vmId: string) => void }) {
@@ -71,7 +72,7 @@ export function WorkflowPanel({ onOpenWorkspace }: { onOpenWorkspace: (vmId: str
 
   const open = (next: Selection) => {
     setSelected(next); setDetail(null); setComparison(null); setBranches([]); setForm(null)
-    window.location.hash = new URLSearchParams({ view: 'inbox', ...(next ? { [next.kind]: next.id } : {}) }).toString()
+    navigate('inbox', ...(next ? [next.kind, next.id] : []))
   }
   const changed = () => setRefresh((value) => value + 1)
   const visible = tasks.filter((task) => filter === 'review' ? needsReview(task) : filter === 'running' ? active(task) : true)

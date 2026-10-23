@@ -37,7 +37,7 @@ export function workflowRoutes(authenticate: Authenticate, workflows: Workflows)
   app.post('/comparisons/:id/select', async (c) => {
     const input = SelectApproach.safeParse(await c.req.json().catch(() => null))
     if (!input.success) return c.json({ error: 'Choose an approach' }, 400)
-    return c.json(workflows.select(c.var.user.id, c.req.param('id'), input.data.taskId))
+    return c.json(await workflows.select(c.var.user.id, c.req.param('id'), input.data.taskId))
   })
   app.onError((error, c) => {
     if (error instanceof HTTPException) return c.json({ error: error.message }, error.status)

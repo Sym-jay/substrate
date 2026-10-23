@@ -1,8 +1,13 @@
 @import 'tailwindcss';
+@import './app/theme.css' layer(components);
+
 
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Monospace throughout for now (see app/theme.css). */
+  --font-sans: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  /* Tailwind's border utilities draw hairlines too. */
+  --default-border-width: var(--hair);
 }
 
 html {
@@ -10,5 +15,5 @@ html {
 }
 
 body {
-  @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  @apply antialiased;
 }

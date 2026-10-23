@@ -4,6 +4,8 @@ import { serveStatic } from 'hono/bun'
 import { vmRoutes, type VmRoutesOptions } from './vms.ts'
 import type { previewRoutes } from './previews.ts'
 import { workflowRoutes } from './workflow-routes.ts'
+import type { accountRoutes } from './account.ts'
+import type { windowsRoutes } from './windows/routes.ts'
 
 type Options = {
   version: string
@@ -15,9 +17,13 @@ type Options = {
   // VM routes, or why there aren't any (no sandbox host, or no sign-in).
   vms: VmRoutesOptions | { unavailable: string }
   previews?: ReturnType<typeof previewRoutes>
+  // Agent keys, GitHub, usage, quota and activity (Phase 2).
+  account?: ReturnType<typeof accountRoutes>
+  // Windows workspaces (M9), when they're set up.
+  windows?: ReturnType<typeof windowsRoutes>
 }
 
-export function createApp({ version, region, webDir, readHost, clerkPublishableKey, vms, previews }: Options) {
+export function createApp({ version, region, webDir, readHost, clerkPublishableKey, vms, previews, account, windows }: Options) {
   const startedAt = new Date().toISOString()
   const app = new Hono()
 
@@ -47,6 +53,10 @@ export function createApp({ version, region, webDir, readHost, clerkPublishableK
     if (vms.workflows) app.route('/api', workflowRoutes(vms.authenticate, vms.workflows))
     app.route('/api', vmRoutes(vms))
   }
+
+  if (account) app.route('/api', account)
+  if (windows) app.route('/api', windows)
+  else app.on(['GET', 'POST', 'PATCH', 'DELETE'], ['/api/windows', '/api/windows/*'], (c) => c.json({ error: "Windows workspaces aren't set up on this server" }, 503))
 
   app.all('/api/*', (c) => c.json({ error: 'not found' }, 404))
 
