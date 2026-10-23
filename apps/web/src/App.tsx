@@ -1,5 +1,6 @@
 import type { HostStatus, InstanceState, Status } from '@substrate/protocol'
 import type { ReactNode } from 'react'
+import { AccountPanel } from './account/AccountPanel.tsx'
 import { useStatus } from './useStatus.ts'
 import { WorkspacePanel } from './workspaces/WorkspacePanel.tsx'
 
@@ -31,6 +32,7 @@ export function App({ account }: { account?: ReactNode }) {
       </header>
 
       <WorkspacePanel />
+      {account && <AccountPanel />}
 
       {state.kind === 'error' && (
         <p

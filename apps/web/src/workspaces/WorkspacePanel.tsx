@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { VmName, VmSizes, type Agent, type AgentMode, type UpdateVm, type Session, type Vm, type VmSizeName } from '@substrate/protocol'
+import { RepoPicker } from '../account/RepoPicker.tsx'
 import { workspaceApi, WorkspaceApiError } from './api.ts'
 import { TerminalView, type Asleep } from './TerminalView.tsx'
 import { WorkspaceTools } from './WorkspaceTools.tsx'
@@ -165,7 +166,7 @@ function CreateWorkspace({ onCreated }: { onCreated: (vm: Vm) => void }) {
         <label className="workspace-field">Start mode<select value={mode} onChange={(e) => setMode(e.target.value as StartMode)}>
           <option value="terminal">Terminal only</option><option value="blank">Blank workspace with an agent</option><option value="github">From GitHub</option>
         </select></label>
-        {mode === 'github' && <label className="workspace-field">GitHub repository<input name="repository" placeholder="owner/repository or GitHub URL" autoCapitalize="none" spellCheck={false} required /></label>}
+        {mode === 'github' && <RepoPicker />}
         {mode !== 'terminal' && <label className="workspace-field">Agent<select value={agent} onChange={(e) => setAgent(e.target.value as Agent)}>
           {Object.entries(agents).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
         </select></label>}
