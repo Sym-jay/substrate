@@ -108,6 +108,14 @@ test('another account cannot issue preview or SSH access, and internal ports are
   }
 })
 
+test('even an authenticated owner cannot serve guest app content on the control origin', async () => {
+  const before = wakes
+  const response = await fetch(`${base}/api/vms/${vmId}/preview/${dev.port}${prefix}/`, { headers: { 'x-test-user': 'alice' } })
+  expect(response.status).toBe(404)
+  expect(await response.json()).toEqual({ error: 'not found' })
+  expect(wakes).toBe(before)
+})
+
 test('capabilities expire and cannot be reused for a different VM, port or kind', () => {
   let now = 1000
   const caps = new Capabilities(':memory:', () => now)

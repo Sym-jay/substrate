@@ -2,10 +2,15 @@
 // restarts hostd, the EC2 host, or another user's workspace.
 import { ExecResult, RunCheckpoint, Session, Vm } from '@substrate/protocol'
 import { randomUUID } from 'node:crypto'
-import { run, stackOutputs } from './lib/aws.ts'
+import { $ } from 'bun'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { region, run, stackOutputs, upload } from './lib/aws.ts'
 import { errorMessage, hostd } from './lib/hostd.ts'
 
-const { HostInstanceId: host } = await stackOutputs()
+const { HostInstanceId: host, ControlInstanceId: control, ArtifactsBucket: bucket, Url: origin } = await stackOutputs()
 const marker = randomUUID()
 const owned = new Set<string>()
 const check = (label: string, ok: boolean) => { if (!ok) throw new Error(label); console.log(`✓ ${label}`) }
@@ -27,6 +32,25 @@ async function probe(id: string, session: Session, phase: 'seed' | 'verify') {
     `bun '${path}' '${id}' '${session.id}' '${phase}' '${marker}'`].join('\n'), 30)
   if (!result.ok) throw new Error(result.stderr || 'terminal probe failed')
   return JSON.parse(result.stdout) as { pid: number; memory: boolean; disk: boolean; scrollback: boolean }
+}
+
+async function publicAccess(id: string) {
+  const dir = await mkdtemp(join(tmpdir(), 'substrate-m6-probe-build-'))
+  const key = `control/checks/m6/${marker}/access-probe`
+  try {
+    await $`bun build --compile --minify --target=bun-linux-arm64 ${join(import.meta.dir, 'lib/m6-access-probe.ts')} --outfile ${join(dir, 'probe')}`.quiet()
+    await upload(bucket, key, await Bun.file(join(dir, 'probe')).bytes())
+    const remote = `/tmp/substrate-m6-probe-${marker}`
+    const result = await run(control, ['set -e', `install -d -m 755 '${remote}'`,
+      `trap 'rm -rf ${remote}' EXIT`, `aws s3 cp --quiet 's3://${bucket}/${key}' '${remote}/probe'`, `chmod 755 '${remote}/probe'`,
+      'set -a', 'source /etc/substrate/control-secrets.env', 'set +a',
+      `runuser --preserve-environment -u substrate -- '${remote}/probe' '${id}' '${origin}'`].join('\n'), 600)
+    if (!result.ok) throw new Error(result.stderr || result.stdout || 'public access probe failed')
+    console.log('Public access:', result.stdout.trim())
+  } finally {
+    await new S3Client({ region }).send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
+    await rm(dir, { recursive: true, force: true })
+  }
 }
 
 try {
@@ -61,13 +85,14 @@ try {
   check('offline resize applies CPU, memory and disk', resized.vcpus === 4 && resized.memMib === 8192 && resized.diskGib === 20)
   check('rollback removed later changes and ext4 grew', (await exec(child.id, 'test ! -e /home/dev/after-checkpoint.txt && test $(df --output=size -B1 / | tail -1) -gt 18000000000 && echo restored')) === 'restored')
 
-  const server = `require('node:http').createServer((req,res)=>{res.setHeader('content-type','application/json');res.end(JSON.stringify({marker:${JSON.stringify(marker)},path:req.url}))}).listen(3000,'0.0.0.0')`
+  const server = `Bun.serve({hostname:'0.0.0.0',port:3000,fetch(req,server){if(req.headers.get('upgrade')==='websocket'&&server.upgrade(req))return;return Response.json({marker:${JSON.stringify(marker)},path:new URL(req.url).pathname})},websocket:{message(ws,message){ws.send(message)}}})`
   const encoded = Buffer.from(server).toString('base64')
-  await exec(child.id, `nohup node -e 'eval(Buffer.from("${encoded}","base64").toString())' >/tmp/m6-preview.log 2>&1 </dev/null &`)
+  await exec(child.id, `nohup bun -e 'eval(Buffer.from("${encoded}","base64").toString())' >/tmp/m6-preview.log 2>&1 </dev/null &`)
   await call('POST', `/vms/${child.id}/pause`)
   const preview = await call('GET', `/vms/${child.id}/preview/3000/p/${child.id}/3000/`) as { marker?: string; path?: string }
   check('opening a preview wakes the paused VM and reaches its dev server', preview.marker === marker && preview.path === `/p/${child.id}/3000/`)
-  console.log('Host checks passed. Complete the signed-in preview, private GitHub push/PR, and VS Code checks in docs/m6.md.')
+  await publicAccess(child.id)
+  console.log('Host and public transport checks passed. Private GitHub push/PR and interactive VS Code checks need user credentials; see docs/m6.md.')
 } finally {
   for (const id of owned) {
     try {

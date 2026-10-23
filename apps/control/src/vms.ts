@@ -185,6 +185,17 @@ export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, 
   })
 
   app.on(['GET', 'POST', 'PATCH', 'DELETE'], ['/vms/:id', '/vms/:id/*'], async (c) => {
+    // Only management endpoints belong on the control origin. In particular,
+    // never expose guest app HTML through this authenticated catch-all: Clerk
+    // can authenticate navigation cookies as well as API bearer tokens.
+    const suffix = hostdPath(c).replace(/^\/vms\/[^/]+/, '')
+    const allowed: Record<string, RegExp> = {
+      GET: /^(?:|\/(?:sessions|checkpoints))$/,
+      POST: /^\/(?:start|stop|pause|resume|resize|disk|exec|sessions|ssh\/keys|checkpoints\/[a-f0-9-]{36}\/restore)$/,
+      PATCH: /^$/,
+      DELETE: /^$/,
+    }
+    if (!allowed[c.req.method]?.test(suffix)) return c.json({ error: 'not found' }, 404)
     const res = await callHostd(hostdPath(c), {
       method: c.req.method,
       body: c.req.method === 'POST' || c.req.method === 'PATCH' ? await c.req.text() : undefined,
