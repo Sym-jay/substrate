@@ -3,14 +3,14 @@ import { flushSync } from 'react-dom'
 
 // Pages live in the URL's hash (#/workspaces/vm-1/session-2), so links and
 // reloads work wherever the app is served from.
-export type Page = 'home' | 'workspaces' | 'windows' | 'jobs' | 'compute' | 'logs' | 'settings'
+export type Page = 'welcome' | 'workspaces' | 'windows' | 'snapshots' | 'jobs' | 'logs' | 'environment' | 'settings'
 export type Route = { page: Page; params: string[] }
 
-const pages: Page[] = ['home', 'workspaces', 'windows', 'jobs', 'compute', 'logs', 'settings']
+const pages: Page[] = ['welcome', 'workspaces', 'windows', 'snapshots', 'jobs', 'logs', 'environment', 'settings']
 
 export function parse(hash: string): Route {
   const [first = '', ...params] = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent)
-  const page = pages.includes(first as Page) ? (first as Page) : 'home'
+  const page = pages.includes(first as Page) ? (first as Page) : 'welcome'
   return { page, params: page === first ? params : [] }
 }
 

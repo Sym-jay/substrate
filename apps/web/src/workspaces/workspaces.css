@@ -12,24 +12,24 @@
 .workspace-heading h3 { font-weight: 600; overflow-wrap: anywhere; }
 .workspace-heading p, .workspace-hint { font-size: .875rem; color: var(--workspace-muted); }
 .workspace-heading p { margin-top: .25rem; }
-/* The older forms' buttons, in the chrome and steel of app/theme.css. */
-.workspace-button { min-height: 34px; padding: .4rem .8rem; border: 1px solid var(--accent); background: transparent; color: var(--ink); font-family: var(--font-mono); font-size: .6875rem; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; white-space: nowrap; }
+/* The older forms' buttons, outlined like app/theme.css's. */
+.workspace-button { min-height: 34px; padding: .4rem .8rem; border: var(--hair) solid var(--accent); background: transparent; color: var(--ink); font-family: var(--font-mono); font-size: .6875rem; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; white-space: nowrap; }
 .workspace-button:hover:enabled { background: var(--accent); color: var(--bg); }
 .workspace-button.secondary { border-color: var(--line-strong); color: var(--muted); }
 .workspace-button.secondary:hover:enabled { background: transparent; border-color: var(--accent); color: var(--ink); }
 .workspace-button:disabled, .terminal-keys button:disabled { opacity: .5; cursor: default; }
 .workspaces :is(button, input, select):focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
-.workspaces ::selection { color: #fff; background: #3f3f46; }
+.workspaces ::selection { color: var(--bg); background: var(--accent); }
 .workspace-empty { padding: 2rem 0; color: var(--workspace-muted); font-size: .875rem; }
 .workspace-empty h3 { color: var(--workspace-ink); font-weight: 500; margin-bottom: .375rem; }
 .workspace-empty p { max-width: 48ch; line-height: 1.6; }
 .workspace-empty button { margin-top: 1rem; }
 .workspace-error { margin-block: .75rem; font-size: .875rem; color: var(--bad); overflow-wrap: anywhere; }
 .workspace-error button { margin-top: .5rem; }
-.workspace-form { margin-top: 1.25rem; padding: 1.25rem; background: var(--workspace-surface); border: 1px solid var(--workspace-line); border-radius: .75rem; }
+.workspace-form { margin-top: 1.25rem; padding: 1.25rem; background: var(--workspace-surface); border: var(--hair) solid var(--workspace-line); border-radius: .75rem; }
 .workspace-form > fieldset { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; min-width: 0; }
 .workspace-field { width: 100%; display: flex; flex-direction: column; gap: .5rem; font-size: .875rem; font-weight: 500; }
-.workspace-field input, .workspace-field select { min-height: 44px; width: 100%; padding: .625rem .75rem; border: 1px solid var(--workspace-line); border-radius: .5rem; background: var(--workspace-surface); color: var(--workspace-ink); font-weight: 400; caret-color: var(--workspace-ink); }
+.workspace-field input, .workspace-field select { min-height: 44px; width: 100%; padding: .625rem .75rem; border: var(--hair) solid var(--workspace-line); border-radius: .5rem; background: var(--workspace-surface); color: var(--workspace-ink); font-weight: 400; caret-color: var(--workspace-ink); }
 .workspace-field input::placeholder { color: var(--workspace-muted); }
 .workspace-sizes { width: 100%; min-width: 0; display: flex; flex-wrap: wrap; gap: .75rem; }
 .workspace-sizes legend { font-size: .875rem; font-weight: 500; margin-bottom: .5rem; }
@@ -38,8 +38,8 @@
 .workspace-sizes input { accent-color: var(--workspace-ink); }
 .workspace-sizes strong { display: block; font-size: .875rem; font-weight: 500; }
 .workspace-sizes small { color: var(--workspace-muted); font-size: .75rem; white-space: nowrap; }
-.workspace-list { margin-top: 1.25rem; border-top: 1px solid var(--workspace-line); }
-.workspace-row { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 1rem; min-height: 72px; padding: .875rem .5rem; border-bottom: 1px solid var(--workspace-line); text-align: left; cursor: pointer; border-radius: 0; }
+.workspace-list { margin-top: 1.25rem; border-top: var(--hair) solid var(--workspace-line); }
+.workspace-row { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 1rem; min-height: 72px; padding: .875rem .5rem; border-bottom: var(--hair) solid var(--workspace-line); text-align: left; cursor: pointer; border-radius: 0; }
 .workspace-row:hover, .workspace-row.is-selected { background: var(--workspace-tint); }
 .workspace-row-title { display: flex; align-items: center; gap: .625rem; min-width: 0; }
 .workspace-row strong { font-size: .9375rem; font-weight: 500; overflow-wrap: anywhere; }
@@ -51,29 +51,28 @@
 .workspace-hint { margin-top: .75rem; line-height: 1.6; }
 .workspace-autopause { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; }
 .workspace-autopause label { display: inline-flex; align-items: center; gap: .5rem; margin-top: .5rem; font-size: .875rem; color: var(--workspace-muted); }
-.workspace-autopause select { min-height: 44px; padding: .5rem .625rem; border: 1px solid var(--workspace-line); border-radius: .5rem; background: var(--workspace-surface); color: var(--workspace-ink); }
+.workspace-autopause select { min-height: 44px; padding: .5rem .625rem; border: var(--hair) solid var(--workspace-line); border-radius: .5rem; background: var(--workspace-surface); color: var(--workspace-ink); }
 .session-picker { display: flex; gap: .25rem; overflow-x: auto; margin-top: .75rem; padding-block: .25rem; scrollbar-width: thin; scrollbar-color: var(--workspace-line) transparent; }
 .session-picker button { min-height: 44px; padding: .5rem .75rem; font-size: .875rem; color: var(--workspace-muted); white-space: nowrap; cursor: pointer; border-radius: .5rem; }
 .session-picker button[aria-pressed=true] { background: var(--workspace-tint); color: var(--workspace-ink); }
-.terminal-panel { margin-top: .75rem; background: #000; color: #ececec; border: 1px solid var(--line); border-radius: .9rem; overflow: hidden; }
+/* The terminal stays black on the light page; it keeps its own lines and ink. */
+.terminal-panel { --line: rgba(255, 255, 255, .14); --accent: #fff; --ink: #ececec; --muted: #8d8d8d; margin-top: .75rem; background: #000; color: #ececec; border: var(--hair) solid var(--line); border-radius: .9rem; overflow: hidden; }
 /* Filling the pane it's in, as on the Workspaces page. */
 .terminal-panel.is-fill { display: flex; flex-direction: column; height: 100%; margin-top: 0; }
+.terminal-panel.is-fill .terminal-body { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .terminal-panel.is-fill .terminal-screen { flex: 1; height: auto; min-height: 240px; }
-.terminal-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .5rem .9rem; border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: .6875rem; letter-spacing: .06em; text-transform: uppercase; color: #8d8d8d; }
-.terminal-heading h3 { font-weight: 500; }
-.terminal-status { display: inline-flex; align-items: center; gap: .5rem; color: #d4d4d8; font-size: .75rem; }
+.terminal-body { position: relative; }
+/* Status, floated over the terminal's corner rather than taking a row. */
+.terminal-notice { position: absolute; z-index: 2; right: .75rem; bottom: .75rem; display: flex; align-items: center; gap: .9rem; max-width: min(460px, calc(100% - 1.5rem)); padding: .6rem .7rem .6rem .85rem; background: #000; color: #ececec; border: var(--hair) solid rgba(255, 255, 255, .3); font: .75rem/1.45 var(--font-mono); animation: rise .25s var(--ease-out) both; }
+.terminal-notice.is-error { border-color: var(--bad); }
+.terminal-notice button { flex-shrink: 0; min-height: 28px; padding: .2rem .6rem; border: var(--hair) solid rgba(255, 255, 255, .45); color: #fff; font: .6875rem var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.terminal-notice button:hover { background: #fff; color: #000; }
 .terminal-screen { height: clamp(260px, 48dvh, 520px); padding: .75rem; overflow: hidden; }
 .terminal-screen .xterm { height: 100%; }
 .terminal-screen .xterm-viewport { scrollbar-color: #52525b #18181b; scrollbar-width: thin; }
-.terminal-keys { display: flex; gap: .25rem; padding: .5rem; border-top: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; scrollbar-color: #52525b #18181b; }
-.terminal-keys button { flex: 1 0 40px; min-height: 40px; padding: .4rem; border: 1px solid rgba(255,255,255,.16); font-family: var(--font-mono); font-size: .6875rem; color: #bdbdbd; cursor: pointer; touch-action: manipulation; }
+.terminal-keys { display: flex; gap: .25rem; padding: .5rem; border-top: var(--hair) solid var(--line); overflow-x: auto; scrollbar-width: thin; scrollbar-color: #52525b #18181b; }
+/* The extra keys only matter without a hardware keyboard. */
+@media (pointer: fine) { .terminal-keys { display: none; } }
+.terminal-keys button { flex: 1 0 40px; min-height: 40px; padding: .4rem; border: var(--hair) solid rgba(255,255,255,.16); font-family: var(--font-mono); font-size: .6875rem; color: #bdbdbd; cursor: pointer; touch-action: manipulation; }
 .terminal-keys button:hover:enabled, .terminal-keys button[aria-pressed=true] { border-color: #fff; color: #fff; }
-.terminal-note { padding: .5rem 1rem 1rem; font-size: .8125rem; color: #d4d4d8; }
-.terminal-retry { margin: 0 1rem 1rem; }
 @media (max-width: 380px) { .workspace-heading { align-items: flex-start; flex-wrap: wrap; } }
-
-.desktop-view { display: flex; flex-direction: column; gap: .5rem; margin-top: .75rem; }
-.desktop-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
-.desktop-state { font-size: .875rem; color: var(--workspace-muted); }
-.desktop-state.is-error { color: var(--bad); }
-.desktop-screen { width: 100%; aspect-ratio: 16 / 10; overflow: hidden; border: 1px solid var(--line); background: #000; }

@@ -1,12 +1,13 @@
 @import 'tailwindcss';
 @import './app/theme.css' layer(components);
 
-/* dark: follows the theme setting (app/settings.ts), not just the system's. */
-@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Monospace throughout for now (see app/theme.css). */
+  --font-sans: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  /* Tailwind's border utilities draw hairlines too. */
+  --default-border-width: var(--hair);
 }
 
 html {

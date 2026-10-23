@@ -1,6 +1,7 @@
 import { VmName, type Agent, type AgentMode, type VmSizeName } from '@substrate/protocol'
 import { Rocket, SquareTerminal } from 'lucide-react'
 import { createContext, useCallback, useContext, useState, type FormEvent, type ReactNode } from 'react'
+import { AgentIcon } from './AgentIcon.tsx'
 import { agentCatalog } from './agents.ts'
 import { useData } from './data.tsx'
 import { describeSize, launch, randomName, type LaunchConfig } from './launch.ts'
@@ -23,7 +24,7 @@ export function useLauncher() {
   return launcher
 }
 
-const fromSettings = (s: Settings): LaunchConfig => ({ size: s.size, diskGib: s.diskGib, agent: s.agent, mode: s.mode, autoPauseMinutes: s.autoPauseMinutes })
+const fromSettings = (s: Settings): LaunchConfig => ({ size: s.size, diskGib: s.diskGib, agent: s.agent, mode: s.mode, autoPauseMinutes: s.autoPauseMinutes, repository: s.repository || undefined })
 export const sizeLabels: Record<VmSizeName, string> = { small: 'Small', medium: 'Medium', large: 'Standard' }
 export const sizeOrder: VmSizeName[] = ['small', 'medium', 'large']
 
@@ -74,7 +75,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
 }
 
 const autoPauseChoices: { value: string; label: string }[] = [
-  { value: 'default', label: 'Host default' }, { value: 'off', label: 'Never' },
+  { value: 'default', label: 'Default' }, { value: 'off', label: 'Never' },
   { value: '10', label: 'After 10 min idle' }, { value: '30', label: 'After 30 min idle' },
   { value: '60', label: 'After 1 h idle' }, { value: '240', label: 'After 4 h idle' },
 ]
@@ -137,7 +138,7 @@ function LaunchForm({ initial, busy, onLaunch }: { initial: LaunchConfig; busy: 
           </button>
           {agentCatalog.map((a) => (
             <button key={a.id} type="button" aria-pressed={agent === a.id} onClick={() => setAgent(a.id)} className="option-card">
-              <span className="flex items-center gap-2 font-semibold"><span className="monogram is-sm">{a.monogram}</span>{a.name}</span>
+              <span className="flex items-center gap-2 font-semibold"><AgentIcon agent={a.id} className="size-3.5" />{a.name}</span>
               <span className="text-faint text-xs">{a.maker}</span>
             </button>
           ))}

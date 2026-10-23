@@ -6,7 +6,7 @@ import { ClerkApp } from './ClerkApp.tsx'
 import { applyAppearance } from './app/settings.ts'
 import './index.css'
 
-// The saved theme, before anything is drawn.
+// The saved motion setting, before anything is drawn.
 applyAppearance()
 
 // Sign-in is on when the control API has Clerk keys; /api/config says so and

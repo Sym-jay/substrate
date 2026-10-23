@@ -1,17 +1,19 @@
 import { X } from 'lucide-react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
-import { bar, buttonFrame, reducedMotion, scrambled } from './ascii.ts'
+import { bar, buttonFrame, reducedMotion, scrambled, shimmerFrame } from './ascii.ts'
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
   size?: 'sm' | 'md' | 'lg'
   icon?: ReactNode
+  // Primary only: its ASCII wave runs all the time, not just on hover.
+  live?: boolean
 }
 
-export function Button({ variant = 'secondary', size = 'md', icon, className = '', children, type = 'button', ...rest }: ButtonProps) {
+export function Button({ variant = 'secondary', size = 'md', icon, live = false, className = '', children, type = 'button', ...rest }: ButtonProps) {
   const sizing = size === 'sm' ? 'btn-sm' : size === 'lg' ? 'btn-lg' : ''
   const classes = `btn btn-${variant} ${sizing} ${children ? '' : 'btn-icon'} ${className}`
-  if (variant === 'primary') return <AsciiButton className={classes} icon={icon} type={type} {...rest}>{children}</AsciiButton>
+  if (variant === 'primary') return <AsciiButton className={classes} icon={icon} live={live} type={type} {...rest}>{children}</AsciiButton>
   return (
     <button type={type} className={classes} {...rest}>
       {icon}
@@ -21,38 +23,60 @@ export function Button({ variant = 'secondary', size = 'md', icon, className = '
 }
 
 // A primary button: just a border, until it's hovered, when an ASCII wave
-// loops inside it and its label scrambles into place.
-function AsciiButton({ children, icon, className, onPointerEnter, onPointerLeave, onFocus, onBlur, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { icon?: ReactNode }) {
+// loops inside it and its label scrambles into place. A live one keeps its
+// wave going while it's enabled, and hovering only scrambles the label.
+function AsciiButton({ children, icon, live, className, onPointerEnter, onPointerLeave, onFocus, onBlur, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { icon?: ReactNode; live: boolean }) {
+  const button = useRef<HTMLButtonElement>(null)
   const field = useRef<HTMLSpanElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // When the label began scrambling; 0 when it isn't.
+  const begun = useRef(0)
   const [label, setLabel] = useState<string | null>(null)
   const text = typeof children === 'string' ? children : null
 
-  const stop = () => {
+  const clear = () => {
     clearTimeout(timer.current)
     if (field.current) field.current.textContent = ''
-    setLabel(null)
   }
-  const start = (target: HTMLButtonElement) => {
-    if (reducedMotion() || target.disabled || !field.current) return
+  const run = (target: HTMLButtonElement) => {
+    clearTimeout(timer.current)
+    if (reducedMotion() || !field.current) return
     const cols = Math.ceil(target.clientWidth / 6) + 1
     const rows = Math.ceil(target.clientHeight / 10) + 1
-    const begun = performance.now()
     let t = 0
     const tick = () => {
       if (!field.current) return
-      field.current.textContent = buttonFrame(cols, rows, t++)
-      const progress = (performance.now() - begun) / 380
-      if (text) setLabel(progress < 1 ? scrambled(text, progress) : null)
+      if (!document.hidden) field.current.textContent = buttonFrame(cols, rows, t++)
+      if (text && begun.current) {
+        const progress = (performance.now() - begun.current) / 380
+        setLabel(progress < 1 ? scrambled(text, progress) : null)
+        if (progress >= 1) begun.current = 0
+      }
       timer.current = setTimeout(tick, 70)
     }
     tick()
   }
-  useEffect(() => () => clearTimeout(timer.current), [])
+  const start = (target: HTMLButtonElement) => {
+    if (target.disabled) return
+    begun.current = performance.now()
+    if (!live) run(target)
+  }
+  const stop = () => {
+    begun.current = 0
+    setLabel(null)
+    if (!live) clear()
+  }
+  useEffect(() => {
+    if (live && !rest.disabled && button.current) run(button.current)
+    else clear()
+    return () => clearTimeout(timer.current)
+    // run reads the button's size as it is now; re-run when it's re-enabled.
+  }, [live, rest.disabled])
 
   return (
     <button
-      className={className}
+      ref={button}
+      className={live ? `${className} btn-live` : className}
       onPointerEnter={(e) => { start(e.currentTarget); onPointerEnter?.(e) }}
       onPointerLeave={(e) => { stop(); onPointerLeave?.(e) }}
       onFocus={(e) => { if (e.currentTarget.matches(':focus-visible')) start(e.currentTarget); onFocus?.(e) }}
@@ -68,7 +92,7 @@ function AsciiButton({ children, icon, className, onPointerEnter, onPointerLeave
   )
 }
 
-// A bar in characters, e.g. host memory: [######====..........].
+// A bar in characters, e.g. memory in use: [######====..........].
 export function AsciiBar({ parts, total, width = 28, label }: { parts: { value: number; char: string }[]; total: number; width?: number; label?: string }) {
   const inner = bar(parts, total, width).slice(1, -1)
   const filled = inner.replace(/\.+$/, '')
@@ -101,13 +125,15 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
   )
 }
 
-export function Stat({ label, value, detail, children }: { label: string; value: ReactNode; detail?: ReactNode; icon?: ReactNode; children?: ReactNode }) {
+// A setting: its name and a hint on the left, the control on the right.
+export function FieldRow({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
   return (
-    <div className="card card-pad flex flex-col gap-1">
-      <div className="label">{label}</div>
-      <div className="stat-value">{value}</div>
-      {detail && <div className="text-faint text-xs">{detail}</div>}
-      {children}
+    <div className="settings-row">
+      <div className="min-w-0">
+        <p className="font-medium">{label}</p>
+        {hint && <p className="text-faint text-xs leading-relaxed">{hint}</p>}
+      </div>
+      <div className="min-w-0">{children}</div>
     </div>
   )
 }
@@ -116,6 +142,50 @@ const tones: Record<string, string> = {
   running: 'is-ok', ready: 'is-ok', done: 'is-ok',
   paused: 'is-warn', pausing: 'is-busy', resuming: 'is-busy', starting: 'is-busy', creating: 'is-busy', stopping: 'is-busy', waiting: 'is-busy', deleting: 'is-busy',
   failed: 'is-bad', exited: '', stopped: '',
+}
+
+// Something running: a band of ASCII sweeping across it, behind its content.
+// Put it first inside an element with the is-running class. Every shimmer on
+// the page shares one timer, so they sweep in step.
+export function Shimmer() {
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || reducedMotion()) return
+    return watchShimmer(el)
+  }, [])
+  return <span ref={ref} className="shimmer" aria-hidden />
+}
+
+// Its glyphs: 10px monospace, so 6px wide and 10px tall.
+const SHIMMER_CHAR = { w: 6, h: 10 }
+const shimmers = new Map<HTMLElement, { cols: number; rows: number }>()
+let shimmerSizes: ResizeObserver | undefined
+let shimmerTimer: ReturnType<typeof setInterval> | undefined
+
+function watchShimmer(el: HTMLElement) {
+  shimmerSizes ??= new ResizeObserver((entries) => {
+    for (const { target, contentRect } of entries) {
+      const size = shimmers.get(target as HTMLElement)
+      if (size) Object.assign(size, { cols: Math.ceil(contentRect.width / SHIMMER_CHAR.w), rows: Math.ceil(contentRect.height / SHIMMER_CHAR.h) })
+    }
+  })
+  shimmers.set(el, { cols: 0, rows: 0 })
+  shimmerSizes.observe(el)
+  shimmerTimer ??= setInterval(() => {
+    if (document.hidden) return
+    // A 2.2s sweep, then a second's rest.
+    const phase = Math.min(1, ((performance.now() / 1000) % 3.2) / 2.2)
+    for (const [target, { cols, rows }] of shimmers) target.textContent = shimmerFrame(cols, rows, phase)
+  }, 70)
+  return () => {
+    shimmers.delete(el)
+    shimmerSizes?.unobserve(el)
+    if (!shimmers.size) {
+      clearInterval(shimmerTimer)
+      shimmerTimer = undefined
+    }
+  }
 }
 
 export function StateBadge({ state, label }: { state: string; label?: string }) {
@@ -127,9 +197,27 @@ export function StateBadge({ state, label }: { state: string; label?: string }) 
   )
 }
 
-export function Empty({ icon, title, children }: { icon?: ReactNode; title: string; children?: ReactNode }) {
+// Substrate's mark (public/favicon.svg) drawn in dots, for empty states.
+const MARK = [
+  '::::::::::::::',
+  '::::::::::::::',
+  '::          ::',
+  '::::::::::::::',
+  '::          ::',
+  '::::::::::::::',
+  '::          ::',
+  '::::::::::::::',
+  '::::::::::::::',
+].join('\n')
+
+export function AsciiMark({ className = '' }: { className?: string }) {
+  return <pre className={`ascii-mark ${className}`} aria-hidden>{MARK}</pre>
+}
+
+export function Empty({ icon, art, title, children }: { icon?: ReactNode; art?: boolean; title: string; children?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+      {art && <AsciiMark />}
       {icon && <div className="text-faint mb-1 [&>svg]:size-7">{icon}</div>}
       <p className="font-medium">{title}</p>
       {children && <div className="text-muted max-w-sm text-sm leading-relaxed">{children}</div>}
@@ -176,19 +264,42 @@ export function Sheet({ open, title, onClose, children }: { open: boolean; title
 // A small menu that opens under its button and closes on a choice or outside click.
 export function Menu({ button, children, align = 'start' }: { button: (props: { open: boolean; toggle: () => void }) => ReactNode; children: (close: () => void) => ReactNode; align?: 'start' | 'end' }) {
   const [open, setOpen] = useState(false)
+  const [place, setPlace] = useState<React.CSSProperties>({})
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
     const onDown = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false) }
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    const close = () => setOpen(false)
     document.addEventListener('pointerdown', onDown)
     document.addEventListener('keydown', onKey)
-    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey) }
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', close, true)
+    }
   }, [open])
+  // Fixed to the window, so a scrolling container can't clip it; above the
+  // button when there isn't room below.
+  const toggle = () => {
+    const r = root.current?.getBoundingClientRect()
+    if (r) {
+      const below = window.innerHeight - r.bottom > 320 || r.top < 320
+      setPlace({
+        position: 'fixed',
+        ...(below ? { top: r.bottom + 4 } : { bottom: window.innerHeight - r.top + 4 }),
+        ...(align === 'end' ? { right: window.innerWidth - r.right } : { left: r.left }),
+      })
+    }
+    setOpen((v) => !v)
+  }
   return (
     <div ref={root} className="relative">
-      {button({ open, toggle: () => setOpen((v) => !v) })}
-      {open && <div className={`menu card ${align === 'end' ? 'right-0' : 'left-0'}`} role="menu">{children(() => setOpen(false))}</div>}
+      {button({ open, toggle })}
+      {open && <div className="menu card" style={place} role="menu">{children(() => setOpen(false))}</div>}
     </div>
   )
 }

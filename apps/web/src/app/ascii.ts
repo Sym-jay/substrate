@@ -1,5 +1,5 @@
-// The ASCII look: a character ramp from empty to dense, ordered dithering so
-// tones blend between its steps, and smooth noise for things to move with.
+// The ASCII look: a character ramp from empty to dense, and ordered
+// dithering so tones blend between its steps.
 
 // Dot-like glyphs only: '-' and '=' line up into horizontal streaks.
 export const RAMP = ' .:+*#%@'
@@ -16,43 +16,6 @@ export function glyph(v: number, x: number, y: number, ramp = RAMP) {
   return ramp[Math.min(i, steps)]!
 }
 
-// Smooth 3D value noise (x, y, and time), in [0, 1].
-const perm = new Uint8Array(512)
-{
-  const p = Array.from({ length: 256 }, (_, i) => i)
-  let seed = 1337
-  for (let i = 255; i > 0; i--) {
-    seed = (seed * 16807) % 2147483647
-    const j = seed % (i + 1)
-    ;[p[i], p[j]] = [p[j]!, p[i]!]
-  }
-  for (let i = 0; i < 512; i++) perm[i] = p[i & 255]!
-}
-const fade = (t: number) => t * t * (3 - 2 * t)
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t
-const hash = (x: number, y: number, z: number) => perm[(perm[(perm[x & 255]! + y) & 255]! + z) & 255]! / 255
-
-export function noise(x: number, y: number, z: number) {
-  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z)
-  const u = fade(x - xi), v = fade(y - yi), w = fade(z - zi)
-  return lerp(
-    lerp(lerp(hash(xi, yi, zi), hash(xi + 1, yi, zi), u), lerp(hash(xi, yi + 1, zi), hash(xi + 1, yi + 1, zi), u), v),
-    lerp(lerp(hash(xi, yi, zi + 1), hash(xi + 1, yi, zi + 1), u), lerp(hash(xi, yi + 1, zi + 1), hash(xi + 1, yi + 1, zi + 1), u), v),
-    w,
-  )
-}
-
-export function fbm(x: number, y: number, z: number, octaves = 4) {
-  let sum = 0, amp = 0.5, freq = 1, norm = 0
-  for (let i = 0; i < octaves; i++) {
-    sum += amp * noise(x * freq, y * freq, z * freq)
-    norm += amp
-    amp *= 0.5
-    freq *= 2.03
-  }
-  return sum / norm
-}
-
 export const reducedMotion = () =>
   document.documentElement.dataset.motion === 'reduced' || (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
 
@@ -66,6 +29,23 @@ export function buttonFrame(cols: number, rows: number, t: number) {
       line += glyph(v * 0.85, x, y)
     }
     lines.push(line)
+  }
+  return lines.join('\n')
+}
+
+// A frame of the shimmer that sweeps across something running: a slanted
+// band of glyphs, `phase` (0 to 1) of the way across.
+export function shimmerFrame(cols: number, rows: number, phase: number) {
+  const band = Math.max(5, cols * 0.06)
+  const pos = -band * 3 + phase * (cols + band * 6)
+  const lines: string[] = []
+  for (let y = 0; y < rows; y++) {
+    let line = ''
+    for (let x = 0; x < cols; x++) {
+      const d = (x - pos + (y - rows / 2) * 1.5) / band
+      line += Math.abs(d) > 2.5 ? ' ' : glyph(Math.exp(-d * d * 1.4) * 0.62, x, y)
+    }
+    lines.push(line.trimEnd())
   }
   return lines.join('\n')
 }

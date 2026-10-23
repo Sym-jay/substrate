@@ -153,16 +153,30 @@ export function TerminalView({ path, title, fill, asleep, onWake }: Props) {
     }
   }, [path, retry, asleep])
 
+  // What's going on, floated over the terminal while it isn't simply connected.
+  const notice: { text: string; retry?: boolean; error?: boolean } | null =
+    asleep === 'paused' ? { text: 'Paused, with everything saved. Type anything here to wake it.' }
+      : asleep === 'pausing' ? { text: 'Saving this workspace so it can pause. Typing wakes it once that’s done.' }
+      : asleep === 'waking' ? { text: asleepLabels.waking }
+      : state === 'connecting' ? { text: labels.connecting }
+      : state === 'reconnecting' ? { text: 'Reattaching to your session. The process keeps running.', retry: true }
+      : state === 'disconnected' ? { text: labels.disconnected, retry: true }
+      : state === 'exited' ? { text: 'This process has ended. Start a new session to continue.' }
+      : state === 'error' ? { text: detail || labels.error, retry: true, error: true }
+      : null
+
   return (
     <section aria-label={`${title} terminal`} className={`terminal-panel ${fill ? 'is-fill' : ''}`}>
-      <div className="terminal-heading">
-        <h3>{title}</h3>
-        <span role="status" className="terminal-status">
-          <span className={`status-dot ${!asleep && state === 'connected' ? 'is-running' : ''}`} />
-          {asleep ? asleepLabels[asleep] : labels[state]}
-        </span>
+      <div className="terminal-body">
+        <div ref={container} className="terminal-screen" />
+        {notice ? (
+          <div className={`terminal-notice ${notice.error ? 'is-error' : ''}`} role={notice.error ? 'alert' : 'status'}>
+            <span className="min-w-0 flex-1">{notice.text}</span>
+            {notice.retry && <button type="button" onClick={() => setRetry((n) => n + 1)}>Reconnect</button>}
+          </div>
+        ) : <span role="status" className="sr-only">{labels.connected}</span>}
       </div>
-      <div ref={container} className="terminal-screen" />
+      {/* On touch screens, the keys a phone keyboard doesn't have. */}
       <div className="terminal-keys" aria-label="Terminal keyboard shortcuts">
         <button
           type="button" aria-pressed={controlHeld} disabled={!!asleep || state !== 'connected'}
@@ -177,14 +191,6 @@ export function TerminalView({ path, title, fill, asleep, onWake }: Props) {
           >{label}</button>
         ))}
       </div>
-      {asleep === 'paused' && <p className="terminal-note" role="status">This workspace is paused, with everything saved. Type anything here to wake it.</p>}
-      {asleep === 'pausing' && <p className="terminal-note" role="status">Saving this workspace so it can pause. Typing here wakes it once that’s done.</p>}
-      {!asleep && state === 'reconnecting' && <p className="terminal-note" role="status">Reattaching to your session. The process keeps running.</p>}
-      {!asleep && state === 'exited' && <p className="terminal-note">This process has ended. Start a new session to continue.</p>}
-      {!asleep && state === 'error' && <p className="terminal-note" role="alert">{detail}</p>}
-      {!asleep && (state === 'error' || state === 'reconnecting') && (
-        <button type="button" className="workspace-button secondary terminal-retry" onClick={() => setRetry((n) => n + 1)}>Reconnect now</button>
-      )}
     </section>
   )
 }

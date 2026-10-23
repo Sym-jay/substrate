@@ -2,29 +2,32 @@ import RFB from '@novnc/novnc'
 import { useEffect, useRef, useState } from 'react'
 import { windowsApi } from './api.ts'
 
-type State = 'connecting' | 'connected' | 'disconnected' | 'error'
-const labels: Record<State, string> = {
+export type DesktopState = 'connecting' | 'connected' | 'disconnected' | 'error'
+const labels: Record<DesktopState, string> = {
   connecting: 'Connecting…', connected: 'Connected', disconnected: 'Disconnected', error: 'Couldn’t connect',
 }
 
-// A Windows workspace's desktop, through noVNC. It scales to fit, and works
-// with touch (tap to click, drag to move the pointer).
-export function DesktopView({ workspaceId }: { workspaceId: string }) {
-  const container = useRef<HTMLDivElement>(null)
+// A Windows workspace's desktop, through noVNC, drawn into `screen` while
+// `enabled`. It scales to fit, and works with touch (tap to click, drag to
+// move the pointer). The page around it shows the status and the controls.
+export function useDesktop(workspaceId: string, enabled: boolean) {
+  const screen = useRef<HTMLDivElement>(null)
   const rfb = useRef<RFB | null>(null)
-  const [state, setState] = useState<State>('connecting')
+  const [state, setState] = useState<DesktopState>('connecting')
   const [detail, setDetail] = useState('')
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
+    if (!enabled) return
     let cancelled = false
     setState('connecting')
     setDetail('')
     void windowsApi.desktop(workspaceId).then(({ url, password }) => {
-      if (cancelled || !container.current) return
-      const client = new RFB(container.current, url, { credentials: { password }, wsProtocols: [] })
+      if (cancelled || !screen.current) return
+      const client = new RFB(screen.current, url, { credentials: { password }, wsProtocols: [] })
       client.scaleViewport = true
       client.focusOnClick = true
+      client.background = '#000'
       client.addEventListener('connect', () => setState('connected'))
       client.addEventListener('disconnect', (event) => {
         const clean = (event as CustomEvent<{ clean: boolean }>).detail?.clean
@@ -42,18 +45,13 @@ export function DesktopView({ workspaceId }: { workspaceId: string }) {
       rfb.current?.disconnect()
       rfb.current = null
     }
-  }, [workspaceId, attempt])
+  }, [workspaceId, attempt, enabled])
 
-  return (
-    <div className="desktop-view">
-      <div className="desktop-toolbar">
-        <span className={`desktop-state is-${state}`} role="status">{labels[state]}{detail ? `: ${detail}` : ''}</span>
-        <div className="flex gap-2">
-          <button type="button" className="workspace-button secondary" disabled={state !== 'connected'} onClick={() => rfb.current?.sendCtrlAltDel()}>Ctrl+Alt+Del</button>
-          {(state === 'disconnected' || state === 'error') && <button type="button" className="workspace-button secondary" onClick={() => setAttempt((n) => n + 1)}>Reconnect</button>}
-        </div>
-      </div>
-      <div ref={container} className="desktop-screen" aria-label="Windows desktop" />
-    </div>
-  )
+  return {
+    screen,
+    state,
+    status: `${labels[state]}${detail ? `: ${detail}` : ''}`,
+    ctrlAltDel: () => rfb.current?.sendCtrlAltDel(),
+    reconnect: () => setAttempt((n) => n + 1),
+  }
 }

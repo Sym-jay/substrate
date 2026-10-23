@@ -1,57 +1,92 @@
-import { Activity, AppWindow, Cpu, House, Rocket, ScrollText, Settings, SquareTerminal } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Activity, AppWindow, Camera, Layers, PanelLeftClose, PanelLeftOpen, Rocket, ScrollText, Search, Settings, SquareTerminal } from 'lucide-react'
+import { useSyncExternalStore, type ReactNode } from 'react'
+import { openPalette, paletteShortcut } from './CommandPalette.tsx'
 import { useData } from './data.tsx'
 import { useLauncher } from './launcher.tsx'
 import { href, useRoute, type Page } from './router.ts'
+import { updateSettings, useSettings } from './settings.ts'
+import { WorkspaceSidebar } from './WorkspaceSidebar.tsx'
 import { Button } from './ui.tsx'
 
 type Item = { page: Page; label: string; icon: ReactNode; badge?: number }
 
-// The page frame: a floating sidebar (a floating tab bar on phones) and the
-// page itself, which cross-fades when it changes.
+// Between phones and wide screens there's only room for the icons.
+const narrowQuery = '(min-width: 768px) and (max-width: 1180px)'
+const subscribeNarrow = (listener: () => void) => {
+  const query = window.matchMedia?.(narrowQuery)
+  query?.addEventListener('change', listener)
+  return () => query?.removeEventListener('change', listener)
+}
+const isNarrow = () => window.matchMedia?.(narrowQuery).matches ?? false
+
+// The page frame: a floating sidebar, which folds down to its icons (a
+// floating tab bar on phones), and the page itself, which cross-fades when it
+// changes.
 export function Shell({ account, children }: { account?: ReactNode; children: ReactNode }) {
-  const { page } = useRoute()
-  const { windows, sessions, status } = useData()
-  const { launching, quickLaunch } = useLauncher()
+  const { page, params } = useRoute()
+  const { windows, sessions } = useData()
+  const { launching, configure } = useLauncher()
   const agentsWorking = Object.values(sessions).flat().filter((s) => s.agent && s.state === 'running').length
-  const items: Item[] = [
-    { page: 'home', label: 'Home', icon: <House /> },
-    { page: 'workspaces', label: 'Workspaces', icon: <SquareTerminal /> },
-    ...(windows ? [{ page: 'windows' as const, label: 'Windows', icon: <AppWindow /> }] : []),
-    { page: 'jobs', label: 'Jobs', icon: <Activity />, badge: agentsWorking || undefined },
-    { page: 'compute', label: 'Compute', icon: <Cpu /> },
-    { page: 'logs', label: 'Logs', icon: <ScrollText /> },
-    { page: 'settings', label: 'Settings', icon: <Settings /> },
-  ]
-  const host = status?.host.configured ? status.host : null
+  const workspaces: Item = { page: 'workspaces', label: 'Workspaces', icon: <SquareTerminal /> }
+  const windowsItem: Item[] = windows ? [{ page: 'windows', label: 'Windows', icon: <AppWindow /> }] : []
+  const jobs: Item = { page: 'jobs', label: 'Jobs', icon: <Activity />, badge: agentsWorking || undefined }
+  const settings: Item = { page: 'settings', label: 'Settings', icon: <Settings /> }
+  const main: Item[] = [workspaces, ...windowsItem, { page: 'snapshots', label: 'Snapshots', icon: <Camera /> }, jobs, { page: 'logs', label: 'Logs', icon: <ScrollText /> }]
+  const setup: Item[] = [{ page: 'environment', label: 'Environment', icon: <Layers /> }, settings]
+  const { sidebar } = useSettings()
+  const narrow = useSyncExternalStore(subscribeNarrow, isNarrow)
+  const collapsed = narrow || sidebar === 'collapsed'
+  // With a workspace open, the sidebar slides over to that workspace's panel.
+  const nested = page === 'workspaces' && !!params[0]
 
   return (
-    <div className="shell">
+    <div className={`shell ${collapsed ? 'is-collapsed' : ''}`}>
       <aside className="sidebar card" aria-label="Main">
-        <a href={href('home')} className="sidebar-brand">
-          <img src="/favicon.svg" alt="" className="size-8 shrink-0" />
-          <span className="sidebar-text">
-            <span className="heading block text-[15px] font-semibold tracking-tight">Substrate</span>
-            <span className="text-faint block text-[11px]">Sandboxes for coding agents</span>
-          </span>
-        </a>
-        <Button variant="primary" className="sidebar-launch" icon={<Rocket />} disabled={launching} onClick={() => quickLaunch()} title="Quick launch">
-          <span className="sidebar-text">{launching ? 'Launching…' : 'Quick launch'}</span>
-        </Button>
-        <FlowNav items={items} active={page} orientation="vertical" />
-        <div className="sidebar-foot">
-          {host && (
-            <a href={href('compute')} className="sidebar-host" title={`Host ${host.state}`}>
-              <span className={`dot ${host.state === 'running' ? 'is-ok' : host.state === 'stopped' ? '' : 'is-busy'}`} />
-              <span className="sidebar-text truncate">Host {host.state} · {host.instanceType}</span>
-            </a>
+        <div className={`sidebar-track ${nested ? 'is-nested' : ''}`}>
+        <div className="sidebar-panel" inert={nested}>
+        <div className="sidebar-top">
+          <a href={href('welcome')} className="sidebar-brand">
+            <img src="/favicon.svg" alt="" className="size-8 shrink-0" />
+            <span className="sidebar-text heading text-[15px] font-semibold tracking-tight">Substrate</span>
+          </a>
+          {/* Top right; folded, it slides over the logo and shows on hover. */}
+          {!narrow && (
+            <Button
+              variant="ghost"
+              className="sidebar-toggle"
+              icon={collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? 'Expand the sidebar' : 'Collapse the sidebar'}
+              title={collapsed ? 'Expand the sidebar' : 'Collapse the sidebar'}
+              onClick={() => updateSettings({ sidebar: collapsed ? 'expanded' : 'collapsed' })}
+            />
           )}
+        </div>
+        <button type="button" className="nav-item sidebar-search" onClick={openPalette} title={`Search (${paletteShortcut})`}>
+          <Search /><span className="nav-label">Search</span><kbd>{paletteShortcut}</kbd>
+        </button>
+        <div>
+          <Nav items={main} active={page} orientation="vertical" />
+          <div className="nav-rule" />
+          <Nav items={setup} active={page} orientation="vertical" />
+        </div>
+        </div>
+        <div className="sidebar-panel" inert={!nested}>
+          <WorkspaceSidebar vmId={nested ? params[0] : undefined} collapsed={collapsed} narrow={narrow} />
+        </div>
+        </div>
+        <div className="sidebar-foot">
+          <Button variant="primary" className="sidebar-launch" icon={<Rocket />} live disabled={launching} onClick={() => configure()} title="Launch a VM">
+            <span className="sidebar-text">{launching ? 'Launching…' : 'Launch VM'}</span>
+          </Button>
           {account && <div className="sidebar-account">{account}</div>}
         </div>
       </aside>
 
       <nav className="tabbar card" aria-label="Main">
-        <FlowNav items={items} active={page} orientation="horizontal" />
+        <Nav items={[workspaces, ...windowsItem, jobs, settings]} active={page} orientation="horizontal">
+          <li><button type="button" className="nav-item w-full" onClick={openPalette} aria-label="Search" title="Search"><Search /></button></li>
+        </Nav>
       </nav>
 
       <main className="page" style={{ viewTransitionName: 'page' }}>{children}</main>
@@ -59,61 +94,20 @@ export function Shell({ account, children }: { account?: ReactNode; children: Re
   )
 }
 
-// The nav list, with a polished-silver pill behind the current page. Moving
-// to another page, the pill's leading edge goes first and the trailing edge
-// follows, so it stretches and settles like something poured.
-function FlowNav({ items, active, orientation }: { items: Item[]; active: Page; orientation: 'vertical' | 'horizontal' }) {
-  const list = useRef<HTMLUListElement>(null)
-  const [pill, setPill] = useState<{ start: number; end: number; forward: boolean; moving: boolean } | null>(null)
-  const vertical = orientation === 'vertical'
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      const el = list.current?.querySelector<HTMLElement>(`[data-page="${active}"]`)
-      if (!el || !list.current) return
-      const size = vertical ? list.current.clientHeight : list.current.clientWidth
-      if (!size) return
-      const start = vertical ? el.offsetTop : el.offsetLeft
-      const end = size - start - (vertical ? el.offsetHeight : el.offsetWidth)
-      setPill((prev) => (prev && prev.start === start && prev.end === end ? prev : { start, end, forward: !prev || start >= prev.start, moving: !!prev && prev.start !== start }))
-    }
-    measure()
-    const observer = new ResizeObserver(measure)
-    if (list.current) observer.observe(list.current)
-    return () => observer.disconnect()
-  }, [active, items.length, vertical])
-
-  useEffect(() => {
-    if (!pill?.moving) return
-    const timer = setTimeout(() => setPill((p) => (p ? { ...p, moving: false } : p)), 650)
-    return () => clearTimeout(timer)
-  }, [pill?.moving, pill?.start])
-
-  const [a, b] = vertical ? ['top', 'bottom'] : ['left', 'right']
-  const lead = pill?.forward ? b : a
-  const trail = pill?.forward ? a : b
+// The nav list; the current page is outlined.
+function Nav({ items, active, orientation, children }: { items: Item[]; active: Page; orientation: 'vertical' | 'horizontal'; children?: ReactNode }) {
   return (
-    <ul ref={list} className={`flow-nav is-${orientation}`}>
-      {pill && (
-        <span
-          aria-hidden
-          className={`flow-pill ${pill.moving ? 'is-moving' : ''}`}
-          style={{
-            [a]: pill.start,
-            [b]: pill.end,
-            transition: `${lead} 0.34s var(--ease-lead), ${trail} 0.6s var(--ease-flow) 0.05s`,
-          }}
-        />
-      )}
+    <ul className={`nav-list is-${orientation}`}>
       {items.map((item) => (
         <li key={item.page}>
-          <a href={href(item.page)} data-page={item.page} className="flow-item" aria-current={item.page === active ? 'page' : undefined} title={item.label}>
+          <a href={href(item.page)} className="nav-item" aria-current={item.page === active ? 'page' : undefined} title={item.label}>
             {item.icon}
-            <span className="flow-label">{item.label}</span>
-            {item.badge !== undefined && <span className="flow-badge">{item.badge}</span>}
+            <span className="nav-label">{item.label}</span>
+            {item.badge !== undefined && <span className="nav-badge">{item.badge}</span>}
           </a>
         </li>
       ))}
+      {children}
     </ul>
   )
 }

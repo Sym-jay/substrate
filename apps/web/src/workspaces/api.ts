@@ -1,4 +1,4 @@
-import { Capacity, Session, Vm, VmLogs, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
+import { Session, Vm, VmLogs, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
 import { authHeaders } from '../auth.ts'
 
 export class WorkspaceApiError extends Error {
@@ -122,7 +122,6 @@ export const windowsApi = {
 export type Job = { id: string; vmId: string; state: 'running' | 'done' | 'failed'; error: string | null; kind: 'create' | 'fork' | null; createdAt: string | null }
 export const dashboardApi = {
   async jobs(signal?: AbortSignal) { return (await request('/api/jobs', { signal })) as Job[] },
-  async capacity(signal?: AbortSignal) { return Capacity.parse(await request('/api/capacity', { signal })) },
   async logs(vmId: string, lines: number, signal?: AbortSignal) {
     return VmLogs.parse(await request(`${vmPath(vmId)}/logs?lines=${lines}`, { signal }))
   },
