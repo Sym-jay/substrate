@@ -53,19 +53,21 @@ export function createApp({ token, version, image, pool, vms }: Options) {
   })
   app.get('/vms/:id/ssh', upgradeWebSocket(async (c) => {
     const vm = await vms.start(c.req.param('id')!)
-    return tcpRelay(vm.guestIp, 22)
+    return tcpRelay(vm.guestIp, 22, activityFor(vms, vm.id))
   }))
   app.all('/vms/:id/preview/:port/*', async (c) => {
     const port = Number(c.req.param('port'))
     if (!Number.isInteger(port) || port < 1024 || port > 65535 || port === 7000) return c.json({ error: 'invalid preview port' }, 400)
     const vm = await vms.start(c.req.param('id'))
+    const touch = activityFor(vms, vm.id)
+    touch()
     const original = new URL(c.req.url)
     const prefix = `/vms/${encodeURIComponent(vm.id)}/preview/${port}`
     const target = new URL(`http://${vm.guestIp}:${port}${original.pathname.slice(prefix.length) || '/'}${original.search}`)
     if (c.req.header('upgrade')?.toLowerCase() === 'websocket') {
-      return upgradeWebSocket(() => relayTo(target.href.replace(/^http/, 'ws'), Object.fromEntries(appHeaders(c.req.raw.headers))))(c, async () => {})
+      return upgradeWebSocket(() => relayTo(target.href.replace(/^http/, 'ws'), Object.fromEntries(appHeaders(c.req.raw.headers)), touch))(c, async () => {})
     }
-    try { return await proxyHttp(c.req.raw, target) }
+    try { return await proxyHttp(c.req.raw, target, '', touch) }
     catch { return c.json({ error: 'The dev server is not listening on this port' }, 502) }
   })
   app.post('/vms/:id/disk', async (c) => c.json(await vms.growDisk(c.req.param('id'), await body(c, GrowDisk))))
@@ -97,6 +99,14 @@ export function createApp({ token, version, image, pool, vms }: Options) {
   })
 
   return app
+}
+
+function activityFor(vms: VmService, id: string) {
+  let last = -Infinity
+  return () => {
+    const now = performance.now()
+    if (now - last >= 5000) { last = now; vms.touch?.(id) }
+  }
 }
 
 async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer<T>> {

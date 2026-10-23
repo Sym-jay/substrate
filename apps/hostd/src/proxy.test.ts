@@ -11,7 +11,8 @@ test('OpenSSH proxy transports arbitrary bytes over WebSocket to TCP', async () 
   const echo = createServer((socket) => socket.pipe(socket))
   await new Promise<void>((resolve) => echo.listen(0, '127.0.0.1', resolve))
   const port = (echo.address() as { port: number }).port
-  const app = new Hono().get('/ssh', upgradeWebSocket(() => tcpRelay('127.0.0.1', port)))
+  let activity = 0
+  const app = new Hono().get('/ssh', upgradeWebSocket(() => tcpRelay('127.0.0.1', port, () => { activity++ })))
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, websocket, fetch: app.fetch })
   const directory = await mkdtemp(join(tmpdir(), 'substrate-ssh-test-'))
   const config = join(directory, 'connection.json')
@@ -30,6 +31,7 @@ test('OpenSSH proxy transports arbitrary bytes over WebSocket to TCP', async () 
       output.push(item.value); size += item.value.length
     }
     expect(Buffer.concat(output)).toEqual(Buffer.from(bytes))
+    expect(activity).toBeGreaterThan(1)
     child.stdin.end()
     expect(await child.exited).toBe(0)
   } finally {

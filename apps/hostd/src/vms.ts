@@ -30,6 +30,7 @@ import { logOnly, type Notify } from './notify.ts'
 import { listRecords, readRecord, vmDir, writeRecord, type VmRecord } from './state.ts'
 import { Snapshots } from './snapshots.ts'
 import { Checkpoints } from './checkpoints.ts'
+import { ExternalActivity } from './activity.ts'
 import { importRepository } from './repositories.ts'
 import * as zfs from './zfs.ts'
 
@@ -53,6 +54,7 @@ export interface VmService {
   exec(id: string, req: ExecRequest): Promise<ExecResult>
   guest(id: string): Promise<GuestClient>
   capacity(): Promise<Capacity>
+  touch?(id: string): void
 }
 
 export { HttpError }
@@ -71,6 +73,9 @@ export class VmManager implements VmService {
   private transitions = new Map<string, 'starting' | 'stopping' | 'pausing' | 'resuming' | 'forking' | 'checkpointing' | 'resizing'>()
   private snapshots = new Snapshots()
   private runCheckpoints = new Checkpoints()
+  private activity = new ExternalActivity()
+
+  touch(id: string) { this.activity.touch(id) }
 
   constructor(private readonly notify: Notify = logOnly) {}
 
@@ -331,6 +336,7 @@ export class VmManager implements VmService {
       const record = await this.record(id)
       await firecracker.kill(id)
       await this.cleanUp(record)
+      this.activity.forget(id)
     })
   }
 
@@ -454,7 +460,8 @@ export class VmManager implements VmService {
     if (record.paused || !(await firecracker.isRunning(id)) || this.transitions.has(id)) {
       throw new HttpError(409, `${record.name} isn't running`)
     }
-    return guestClient(slotAddresses(record.slot).guestIp, record.token)
+    const client = guestClient(slotAddresses(record.slot).guestIp, record.token)
+    return { ...client, activity: async () => this.activity.report(id, await client.activity()) }
   }
 
   async capacity() {

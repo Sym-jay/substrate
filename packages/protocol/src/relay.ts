@@ -7,7 +7,7 @@ type Peer = { send(data: Frame): void; close(code?: number, reason?: string): vo
 // Codes that only describe a close and can't be sent in one.
 const unsendable = new Set([1005, 1006, 1015])
 
-export function relayTo(url: string, headers: Record<string, string>) {
+export function relayTo(url: string, headers: Record<string, string>, onActivity?: () => void) {
   let upstream: WebSocket | undefined
   // Frames from the client before the upstream is open.
   const pending: Frame[] = []
@@ -18,6 +18,7 @@ export function relayTo(url: string, headers: Record<string, string>) {
 
   return {
     onOpen(_event: Event, client: Peer) {
+      onActivity?.()
       const ws = new WebSocket(url, { headers })
       ws.binaryType = 'arraybuffer'
       upstream = ws
@@ -26,12 +27,13 @@ export function relayTo(url: string, headers: Record<string, string>) {
         for (const data of pending.splice(0)) ws.send(data)
         pendingBytes = 0
       }
-      ws.onmessage = (event) => client.send(event.data as Frame)
+      ws.onmessage = (event) => { onActivity?.(); client.send(event.data as Frame) }
       ws.onclose = (event) => client.close(unsendable.has(event.code) ? 1011 : event.code, event.reason)
       ws.onerror = () => client.close(1011, 'upstream connection failed')
     },
     onMessage(event: MessageEvent, client: Peer) {
       const data = event.data as Frame
+      onActivity?.()
       if (closed) return
       if (pendingBytes + (upstream?.bufferedAmount ?? 0) + bytes(data) > limit) {
         closed = true

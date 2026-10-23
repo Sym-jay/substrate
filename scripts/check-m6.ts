@@ -61,6 +61,9 @@ try {
     (await exec(vm.id, 'test -d /home/dev/workspace/.git && echo cloned')) === 'cloned')
   const session = Session.parse(await call('POST', `/vms/${vm.id}/sessions`, {}))
   const original = await probe(vm.id, session, 'seed')
+  const grown = Vm.parse(await call('POST', `/vms/${vm.id}/disk`, { diskGib: 18 }))
+  check('M7 online disk growth still works before a running-state fork', grown.diskGib === 18 &&
+    (await exec(vm.id, 'test $(df --output=size -B1 / | tail -1) -gt 18000000000 && echo grown')) === 'grown')
   const childId = `vm-${randomUUID().replaceAll('-', '').slice(0, 16)}`
   owned.add(childId)
   const child = Vm.parse(await call('POST', `/vms/${vm.id}/fork`, { targetId: childId, name: `m6-fork-${marker.slice(0, 8)}` }))
@@ -83,7 +86,7 @@ try {
   await call('POST', `/vms/${child.id}/resize`, { size: 'medium', diskGib: 20 })
   const resized = Vm.parse(await call('POST', `/vms/${child.id}/start`))
   check('offline resize applies CPU, memory and disk', resized.vcpus === 4 && resized.memMib === 8192 && resized.diskGib === 20)
-  check('rollback removed later changes and ext4 grew', (await exec(child.id, 'test ! -e /home/dev/after-checkpoint.txt && test $(df --output=size -B1 / | tail -1) -gt 18000000000 && echo restored')) === 'restored')
+  check('rollback removed later changes and ext4 grew', (await exec(child.id, 'test ! -e /home/dev/after-checkpoint.txt && test $(df --output=size -B1 / | tail -1) -gt 20000000000 && echo restored')) === 'restored')
 
   const server = `Bun.serve({hostname:'0.0.0.0',port:3000,fetch(req,server){if(req.headers.get('upgrade')==='websocket'&&server.upgrade(req))return;return Response.json({marker:${JSON.stringify(marker)},path:new URL(req.url).pathname})},websocket:{message(ws,message){ws.send(message)}}})`
   const encoded = Buffer.from(server).toString('base64')

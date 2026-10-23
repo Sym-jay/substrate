@@ -8,7 +8,7 @@ export function appHeaders(input: Headers) {
   return headers
 }
 
-export async function proxyHttp(request: Request, target: URL, prefix = '') {
+export async function proxyHttp(request: Request, target: URL, prefix = '', onActivity?: () => void) {
   const response = await fetch(target, {
     method: request.method, headers: appHeaders(request.headers),
     body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
@@ -18,16 +18,21 @@ export async function proxyHttp(request: Request, target: URL, prefix = '') {
   const location = headers.get('location')
   if (prefix && location?.startsWith('/') && !location.startsWith('//') && !location.startsWith(prefix)) headers.set('location', prefix + location)
   headers.set('cache-control', 'private, no-store')
-  return new Response(response.body, { status: response.status, headers })
+  const body = onActivity && response.body ? response.body.pipeThrough(new TransformStream({ transform(chunk, controller) {
+    onActivity(); controller.enqueue(chunk)
+  } })) : response.body
+  return new Response(body, { status: response.status, headers })
 }
 
 // A WebSocket carrying raw SSH bytes. No public port is opened on either box.
-export function tcpRelay(host: string, port: number): WSEvents {
+export function tcpRelay(host: string, port: number, onActivity?: () => void): WSEvents {
   let socket: Socket | undefined
   return {
     onOpen(_event, peer) {
+      onActivity?.()
       socket = connect({ host, port })
       socket.on('data', (data) => {
+        onActivity?.()
         if (peer.raw && (peer.raw as { getBufferedAmount?: () => number }).getBufferedAmount?.()! > 1_048_576) {
           peer.close(1013, 'client is too slow'); socket?.destroy(); return
         }
@@ -37,6 +42,7 @@ export function tcpRelay(host: string, port: number): WSEvents {
       socket.on('end', () => peer.close(1000))
     },
     onMessage(event, peer) {
+      onActivity?.()
       if (!socket || socket.writableLength > 1_048_576) { peer.close(1013, 'connection is too slow'); return }
       const data = event.data
       socket.write(typeof data === 'string' ? Buffer.from(data) : Buffer.from(data as ArrayBuffer))

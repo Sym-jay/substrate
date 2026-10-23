@@ -26,12 +26,14 @@ app.get('/*', async (c, next) => {
 })
 const dev = serve(app)
 let wakes = 0
+let touches = 0
 const unused = async (): Promise<never> => { throw new Error('unused') }
 const vms: VmService = {
   list: unused, get: unused, create: unused, stop: unused, pause: unused, resume: unused, update: unused, growDisk: unused,
   resize: unused, fork: unused, checkpoints: unused, rollback: unused, createSession: unused,
   remove: unused, exec: unused, guest: unused, capacity: unused,
   start: async (id) => { wakes++; return { id, guestIp: '127.0.0.1' } as never },
+  touch: () => { touches++ },
 }
 const host = serve(createHostd({ token: 'host-secret', version: 'test', image: async () => null, vms }))
 const hostd = { url: `http://127.0.0.1:${host.port}`, token: 'host-secret' }
@@ -70,9 +72,11 @@ test('preview access is scoped, one-time bootstrap removes the ticket, and the a
   const { cookie, url } = await openPreview()
   expect((await fetch(base + new URL(url).pathname + new URL(url).search, { headers: previewHeaders })).status).toBe(401)
   const before = wakes
+  const activityBefore = touches
   const result = await fetch(`${base}${prefix}/assets/main.js?value=42`, { headers: { ...previewHeaders, cookie: `${cookie}; app=ok` } })
   expect(await result.json()).toEqual({ path: prefix + '/assets/main.js', query: '42', authorization: null, cookie: 'app=ok' })
   expect(wakes).toBeGreaterThan(before)
+  expect(touches).toBeGreaterThan(activityBefore)
   expect(result.headers.get('cache-control')).toBe('private, no-store')
   expect(result.headers.get('set-cookie')).toContain(`Path=${prefix}/`)
   expect(result.headers.get('set-cookie')).not.toContain('Domain=')
@@ -83,6 +87,7 @@ test('preview access is scoped, one-time bootstrap removes the ticket, and the a
 })
 
 test('previews relay text and binary WebSocket frames through both proxies', async () => {
+  const activityBefore = touches
   const { cookie } = await openPreview()
   const ws = new WebSocket(`${base.replace('http', 'ws')}${prefix}/hmr`, { protocols: ['vite-hmr'], headers: { ...previewHeaders, cookie } })
   ws.binaryType = 'arraybuffer'
@@ -96,6 +101,7 @@ test('previews relay text and binary WebSocket frames through both proxies', asy
   for (let i = 0; messages.length < 2; i++) { if (i > 100) throw new Error('relay timed out'); await Bun.sleep(10) }
   expect(messages[0]).toBe('vite-update')
   expect(new Uint8Array(messages[1] as ArrayBuffer)).toEqual(bytes)
+  expect(touches).toBeGreaterThan(activityBefore)
   ws.close()
 })
 
