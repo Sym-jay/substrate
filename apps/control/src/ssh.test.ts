@@ -1,16 +1,19 @@
 import type { Vm } from '@substrate/protocol'
-import { afterAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { Hono } from 'hono'
 import { upgradeWebSocket, websocket } from 'hono/bun'
 import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createApp } from './app.ts'
+import { testDatabase } from './db.ts'
 import { Owners } from './owners.ts'
 import { fingerprint, SshAccess } from './ssh-access.ts'
 import { Tickets } from './tickets.ts'
 
 const KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOxzQ7Hk1lJpVv2Kq3Yc8mJmFv1u3pZ6Wn7m2b0rWb8s ann@laptop'
+
+const ownersDb = await testDatabase()
 
 describe('SSH access store', () => {
   test("fingerprints match ssh-keygen's", async () => {
@@ -69,9 +72,11 @@ describe('SSH and desktop routes, end to end', () => {
   fakeHostd.get('/vms/:id/gui/vnc', echo())
   const hostd = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: fakeHostd.fetch, websocket })
 
-  const owners = new Owners(':memory:')
-  owners.add('vm-aaaaaaaaaaaaaaaa', 'ann')
-  owners.add('vm-bbbbbbbbbbbbbbbb', 'bob')
+  const owners = new Owners(ownersDb)
+  beforeAll(async () => {
+    await owners.add('vm-aaaaaaaaaaaaaaaa', 'ann')
+    await owners.add('vm-bbbbbbbbbbbbbbbb', 'bob')
+  })
   const access = new SshAccess(':memory:')
   const app = createApp({
     version: 'test', region: 'ap-south-1', webDir: 'nowhere', readHost: async () => ({ configured: false }), clerkPublishableKey: null,
