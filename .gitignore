@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# Local data, e.g. the control API's SQLite database in development.
+.data/
 cdk.out/
 # CDK lookups record the AWS account ID, which must stay out of this public repo.
 cdk.context.json

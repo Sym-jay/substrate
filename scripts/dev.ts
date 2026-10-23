@@ -3,8 +3,10 @@
 //
 // `bun run dev --host` also opens an SSM tunnel to hostd on the real sandbox
 // host, so the local UI can create VMs and open terminals without anything
-// being public. It needs AWS credentials and the Session Manager plugin.
-import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm'
+// being public. It uses the Clerk keys from Parameter Store when they exist
+// (sign in as on the real site), and otherwise runs without sign-in. It needs
+// AWS credentials and the Session Manager plugin.
+import { GetParametersCommand, SSMClient } from '@aws-sdk/client-ssm'
 import { join } from 'node:path'
 import { region, stackOutputs } from './lib/aws.ts'
 
@@ -15,9 +17,20 @@ const env: Record<string, string | undefined> = { ...process.env, PORT: '8080' }
 
 if (process.argv.includes('--host')) {
   const out = await stackOutputs()
-  const param = await new SSMClient({ region }).send(
-    new GetParameterCommand({ Name: '/substrate/hostd-token', WithDecryption: true }),
+  const { Parameters = [] } = await new SSMClient({ region }).send(
+    new GetParametersCommand({
+      Names: ['/substrate/hostd-token', '/substrate/clerk-publishable-key', '/substrate/clerk-secret-key'],
+      WithDecryption: true,
+    }),
   )
+  const param = (name: string) => Parameters.find((p) => p.Name === `/substrate/${name}`)?.Value
+  const hostdToken = param('hostd-token')
+  if (!hostdToken) {
+    console.error('no /substrate/hostd-token in Parameter Store: run `bun run secrets`, then `bun run deploy:host`')
+    process.exit(1)
+  }
+  const clerk = param('clerk-publishable-key') && param('clerk-secret-key')
+  if (!clerk) console.log('no Clerk keys in Parameter Store: running without sign-in (`bun run secrets --clerk` adds them)')
   procs.push(
     Bun.spawn(
       [
@@ -31,9 +44,12 @@ if (process.argv.includes('--host')) {
   Object.assign(env, {
     SUBSTRATE_HOST_INSTANCE_ID: out.HostInstanceId,
     SUBSTRATE_HOSTD_URL: `http://127.0.0.1:${TUNNEL_PORT}`,
-    SUBSTRATE_HOSTD_TOKEN: param.Parameter?.Value,
-    // This control API only listens on localhost, so VMs without a login are fine.
-    SUBSTRATE_VMS_WITHOUT_LOGIN: '1',
+    SUBSTRATE_HOSTD_TOKEN: hostdToken,
+    CLERK_PUBLISHABLE_KEY: param('clerk-publishable-key'),
+    CLERK_SECRET_KEY: param('clerk-secret-key'),
+    // Without Clerk keys: this control API only listens on localhost, so VMs
+    // without sign-in are fine here.
+    SUBSTRATE_VMS_WITHOUT_LOGIN: clerk ? undefined : '1',
   })
 }
 

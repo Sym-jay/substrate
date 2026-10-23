@@ -3,14 +3,15 @@ import { describe, expect, test } from 'bun:test'
 import { createApp } from './app.ts'
 import { toHostStatus } from './host.ts'
 
-const app = createApp({
+const options = {
   version: 'test',
   region: 'ap-south-1',
   webDir: 'does-not-exist',
-  readHost: async () => ({ configured: false }),
-  hostd: null,
-  vmsWithoutLogin: false,
-})
+  readHost: async () => ({ configured: false as const }),
+  clerkPublishableKey: null,
+  vms: { unavailable: 'no sandbox host configured' },
+}
+const app = createApp(options)
 
 describe('control API', () => {
   test('health reports the version', async () => {
@@ -26,44 +27,34 @@ describe('control API', () => {
     expect(status.control.region).toBe('ap-south-1')
   })
 
+  test('config tells the web app whether sign-in is on', async () => {
+    expect(await (await app.request('/api/config')).json()).toEqual({ clerkPublishableKey: null })
+    const withClerk = createApp({ ...options, clerkPublishableKey: 'pk_test_abc' })
+    expect(await (await withClerk.request('/api/config')).json()).toEqual({ clerkPublishableKey: 'pk_test_abc' })
+  })
+
   test('unknown API paths are JSON 404s, not the web app', async () => {
     const res = await app.request('/api/nope')
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ error: 'not found' })
   })
 
-  test('VMs need a sandbox host', async () => {
-    expect((await app.request('/api/vms')).status).toBe(503)
-    expect((await app.request('/api/vms/vm-abc/sessions')).status).toBe(503)
-  })
-
-  test('VMs stay off without a login, even with a sandbox host', async () => {
-    const deployed = createApp({
-      version: 'test',
-      region: 'ap-south-1',
-      webDir: 'does-not-exist',
-      readHost: async () => ({ configured: false }),
-      hostd: { url: 'http://127.0.0.1:1', token: 'h'.repeat(64) },
-      vmsWithoutLogin: false,
-    })
+  test('without a host or sign-in, every VM route is off', async () => {
+    const off = createApp({ ...options, vms: { unavailable: "sign-in isn't set up" } })
     for (const path of ['/api/vms', '/api/vms/vm-abc/sessions', '/api/vms/vm-abc/sessions/s/terminal']) {
-      const res = await deployed.request(path)
+      const res = await off.request(path)
       expect(res.status).toBe(503)
-      expect(((await res.json()) as { error: string }).error).toContain('login')
+      expect(await res.json()).toEqual({ error: "sign-in isn't set up" })
     }
-    expect((await deployed.request('/api/vms', { method: 'POST', body: '{}' })).status).toBe(503)
+    expect((await off.request('/api/vms', { method: 'POST', body: '{}' })).status).toBe(503)
   })
 
   test('host errors become a 500', async () => {
     const failing = createApp({
-      version: 'test',
-      region: 'ap-south-1',
-      webDir: 'does-not-exist',
+      ...options,
       readHost: async () => {
         throw new Error('ec2 down')
       },
-      hostd: null,
-      vmsWithoutLogin: false,
     })
     const res = await failing.request('/api/status')
     expect(res.status).toBe(500)

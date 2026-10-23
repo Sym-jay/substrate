@@ -1,4 +1,5 @@
 import { Session, Vm, type CreateSession, type CreateVm } from '@substrate/protocol'
+import { authHeaders } from '../auth.ts'
 
 export class WorkspaceApiError extends Error {
   constructor(readonly status: number, message: string) {
@@ -7,7 +8,7 @@ export class WorkspaceApiError extends Error {
 }
 
 async function request(path: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(path, init)
+  const response = await fetch(path, { ...init, headers: { ...(init?.headers as Record<string, string>), ...(await authHeaders()) } })
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     const message = body && typeof body.error === 'string' ? body.error : `Request failed (${response.status})`
@@ -41,5 +42,14 @@ export const workspaceApi = {
   },
   terminalPath(vmId: string, sessionId: string) {
     return `${vmPath(vmId)}/sessions/${encodeURIComponent(sessionId)}/terminal`
+  },
+  // A WebSocket URL for a terminal. Browsers can't add a sign-in header to a
+  // WebSocket, so it carries a one-time ticket instead.
+  async terminalUrl(path: string) {
+    const { ticket } = (await request(`${path}/ticket`, post({}))) as { ticket: string }
+    const url = new URL(path, window.location.href)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    url.searchParams.set('ticket', ticket)
+    return url.href
   },
 }
