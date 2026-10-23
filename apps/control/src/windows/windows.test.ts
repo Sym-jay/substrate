@@ -131,6 +131,15 @@ describe('Windows workspaces', () => {
     expect((await s.workspaces.start('ann', first.id).catch((e) => e)).message).toContain('already on')
   })
 
+  test("running out of the account's vCPUs says so plainly", async () => {
+    const s = setup()
+    s.cloud.launch = async () => { throw Object.assign(new Error('You have requested more vCPU capacity than your current vCPU limit'), { name: 'VcpuLimitExceeded' }) }
+    const err = await s.workspaces.create('ann', { name: 'one' }).catch((e) => e)
+    expect(err.status).toBe(409)
+    expect(err.message).toContain('may still be shutting down')
+    expect(s.workspaces.list('ann')).toEqual([])
+  })
+
   test('a stopped one starts again', async () => {
     const s = setup()
     const w = await running(s)

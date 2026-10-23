@@ -39,6 +39,15 @@ const BUSY_CPU_PERCENT = 5
 // States in which a workspace's instance is using the account's vCPUs.
 const ON: WindowsWorkspaceState[] = ['creating', 'starting', 'running', 'stopping']
 
+// The account's vCPUs are all taken, often by an instance still shutting
+// down (it counts until it's gone): say so, rather than EC2's wording.
+function launchError(err: Error) {
+  if (/VcpuLimitExceeded/.test(`${err.name} ${err.message}`)) {
+    return new WindowsError(409, 'The account has no vCPUs free right now. If you just stopped or deleted a workspace, it may still be shutting down: try again in a minute or two.')
+  }
+  return new WindowsError(502, `couldn't start it: ${err.message}`)
+}
+
 const ALPHANUMERIC = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
 const randomText = (length: number) => Array.from({ length }, () => ALPHANUMERIC[randomInt(ALPHANUMERIC.length)]).join('')
 // Windows wants upper and lower case letters and digits.
@@ -111,7 +120,7 @@ export class WindowsWorkspaces {
         this.o.log(`windows: created ${name} (${row.id}) as ${instanceId}`)
       } catch (err) {
         store.remove(row.id)
-        throw new WindowsError(502, `couldn't start it: ${(err as Error).message}`)
+        throw launchError(err as Error)
       }
       return toWorkspace(store.get(row.id)!)
     })
@@ -122,7 +131,7 @@ export class WindowsWorkspaces {
       const row = this.own(owner, id)
       if (row.state !== 'stopped') throw new WindowsError(409, `it's ${row.state}`)
       this.ensureRoom()
-      await this.o.cloud.start(row.instanceId!)
+      await this.o.cloud.start(row.instanceId!).catch((err: Error) => { throw launchError(err) })
       this.o.store.update(id, { state: 'starting', error: null })
       return toWorkspace(this.o.store.get(id)!)
     })
