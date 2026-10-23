@@ -1,5 +1,5 @@
 import type { AgentMode, Session, Vm } from '@substrate/protocol'
-import { ChevronLeft, Pause, Play, Plus, ScrollText, SlidersHorizontal, Square, SquareTerminal, Wrench } from 'lucide-react'
+import { ChevronLeft, Monitor, Pause, Play, Plus, ScrollText, SlidersHorizontal, Square, SquareTerminal, Wrench } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { AgentIcon } from '../app/AgentIcon.tsx'
 import { agentCatalog, agentName } from '../app/agents.ts'
@@ -10,6 +10,7 @@ import { Button, Empty, Menu, MenuItem, Segmented, Sheet, useToast } from '../ap
 import { workspaceApi } from '../workspaces/api.ts'
 import { PauseSettings } from '../workspaces/PauseSettings.tsx'
 import { TerminalView, type Asleep } from '../workspaces/TerminalView.tsx'
+import { VmDesktop, useVmGui } from '../workspaces/VmDesktop.tsx'
 import { WorkspaceInfo } from '../workspaces/WorkspaceInfo.tsx'
 import { WorkspaceTools } from '../workspaces/WorkspaceTools.tsx'
 import { WorkspacesTable } from './WorkspacesTable.tsx'
@@ -44,6 +45,9 @@ function WorkspaceDetail({ vm, sessionId }: { vm: Vm; sessionId?: string }) {
   const generation = useRef(0)
   const running = vm.state === 'running'
   const active = sessions.find((s) => s.id === sessionId)
+  // The Desktop tab is a route of its own, beside the sessions.
+  const onDesktop = sessionId === 'desktop'
+  const gui = useVmGui(vm)
 
   // This workspace's sessions, more often than the dashboard's poll.
   useEffect(() => {
@@ -92,13 +96,13 @@ function WorkspaceDetail({ vm, sessionId }: { vm: Vm; sessionId?: string }) {
     vm.state === 'pausing' ? 'pausing'
       : vm.state === 'resuming' || (vm.state === 'paused' && operation === 'resume') ? 'waking'
       : vm.state === 'paused' ? 'paused' : undefined
-  const terminalFor = active ?? (asleep && sessionId ? { id: sessionId, agent: null } : null)
+  const terminalFor = onDesktop ? null : active ?? (asleep && sessionId ? { id: sessionId, agent: null } : null)
 
   return (
     <div className="ws-pane card">
       <div className="ws-tabs">
         <a href={href('workspaces')} className="btn btn-ghost btn-sm btn-icon shrink-0 md:hidden" aria-label="All workspaces"><ChevronLeft /></a>
-        <div className="ws-tab-list" role="tablist" aria-label="Sessions">
+        <div className="ws-tab-list" role="tablist" aria-label="Sessions and desktop">
         {sessions.map((s, i) => (
           <a key={s.id} role="tab" href={href('workspaces', vm.id, s.id)} aria-selected={s.id === sessionId} className={`ws-tab ${s.state === 'exited' ? 'is-ended' : ''}`}>
             {s.agent ? <AgentIcon agent={s.agent} className="size-3.5" /> : <SquareTerminal className="size-3.5" />}
@@ -106,6 +110,11 @@ function WorkspaceDetail({ vm, sessionId }: { vm: Vm; sessionId?: string }) {
             {s.agent && s.mode === 'auto' && <span className="text-faint text-[10px] uppercase">auto</span>}
           </a>
         ))}
+        {(running || onDesktop) && (
+          <a role="tab" href={href('workspaces', vm.id, 'desktop')} aria-selected={onDesktop} className="ws-tab" title={gui.available ? 'Its desktop, in the browser' : 'Set up a desktop for this workspace'}>
+            <Monitor className="size-3.5" />Desktop{gui.state === 'setting-up' && <span className="text-faint text-[10px] uppercase">setting up</span>}
+          </a>
+        )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <Menu align="end" button={({ toggle }) => (
@@ -134,7 +143,8 @@ function WorkspaceDetail({ vm, sessionId }: { vm: Vm; sessionId?: string }) {
       </div>
 
       <div className="ws-terminal">
-        {terminalFor && (running || asleep)
+        {onDesktop ? <VmDesktop vm={vm} gui={gui} />
+          : terminalFor && (running || asleep)
           ? <TerminalView key={terminalFor.id} fill path={workspaceApi.terminalPath(vm.id, terminalFor.id)} title={active ? `${agentName(active.agent)} ${sessions.indexOf(active) + 1}` : 'Session'} asleep={asleep} onWake={() => void act('resume')} />
           : (
             <div className="flex h-full items-center justify-center">

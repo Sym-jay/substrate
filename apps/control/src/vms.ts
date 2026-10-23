@@ -9,6 +9,8 @@ import type { Tickets } from './tickets.ts'
 import type { Capabilities } from './capabilities.ts'
 import type { Jobs } from './jobs.ts'
 import { previewPort, previewPrefix } from './previews.ts'
+import type { SshAccess } from './ssh-access.ts'
+import { sshRoutes } from './ssh.ts'
 
 export type VmRoutesOptions = {
   hostd: { url: string; token: string }
@@ -20,14 +22,17 @@ export type VmRoutesOptions = {
   jobs?: Jobs
   previewOrigin?: string | null
   githubToken?: (userId: string) => Promise<string | undefined>
+  // Account SSH keys and tokens; SSH with your own keys is off without it.
+  sshAccess?: SshAccess
 }
 
 type Env = { Variables: { user: User } }
 
 // VMs and their terminals, passed through to hostd with its token. Every
 // route needs a signed-in user, and each user only sees their own VMs.
-export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, capabilities, jobs, previewOrigin, githubToken }: VmRoutesOptions) {
+export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, capabilities, jobs, previewOrigin, githubToken, sshAccess }: VmRoutesOptions) {
   const app = new Hono<Env>()
+  if (sshAccess) app.route('/', sshRoutes({ hostd, authenticate, owners, access: sshAccess }))
   const auth = { Authorization: `Bearer ${hostd.token}` }
   const hostdPath = (c: Context) => c.req.path.replace(/^\/api/, '')
   const callHostd = (path: string, init: RequestInit = {}) =>
@@ -52,6 +57,18 @@ export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, 
       const id = c.req.param('id')
       const user = tickets.redeem(c.req.query('ticket') ?? '', id, c.req.param('session'))
       if (!user || owners.owner(id) !== user) return c.json({ error: 'missing or expired terminal ticket' }, 401)
+      await next()
+    },
+    upgradeWebSocket((c) => relayTo(`${hostd.url.replace(/^http/, 'ws')}${hostdPath(c)}`, auth)),
+  )
+
+  // The desktop (VNC), for noVNC: a one-time ticket, like terminals.
+  app.get(
+    '/vms/:id/gui/vnc',
+    async (c, next) => {
+      const id = c.req.param('id')
+      const user = tickets.redeem(c.req.query('ticket') ?? '', id, 'gui')
+      if (!user || owners.owner(id) !== user) return c.json({ error: 'missing or expired desktop ticket' }, 401)
       await next()
     },
     upgradeWebSocket((c) => relayTo(`${hostd.url.replace(/^http/, 'ws')}${hostdPath(c)}`, auth)),
@@ -147,6 +164,10 @@ export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, 
     }),
   )
 
+  app.post('/vms/:id/gui/ticket', (c) =>
+    c.json({ ticket: tickets.issue({ userId: c.var.user.id, vmId: c.req.param('id'), sessionId: 'gui' }) }),
+  )
+
   app.post('/vms/:id/fork', (c) => exclusive(c.var.user.id, async () => {
     if (!jobs) return c.json({ error: 'Fork jobs are not configured' }, 503)
     const input = ForkVm.safeParse(await c.req.json().catch(() => null))
@@ -198,8 +219,8 @@ export function vmRoutes({ hostd, authenticate, owners, tickets, maxVmsPerUser, 
     // can authenticate navigation cookies as well as API bearer tokens.
     const suffix = hostdPath(c).replace(/^\/vms\/[^/]+/, '')
     const allowed: Record<string, RegExp> = {
-      GET: /^(?:|\/(?:sessions|checkpoints))$/,
-      POST: /^\/(?:start|stop|pause|resume|resize|disk|exec|sessions|ssh\/keys|checkpoints\/[a-f0-9-]{36}\/restore)$/,
+      GET: /^(?:|\/(?:sessions|checkpoints|gui))$/,
+      POST: /^\/(?:start|stop|pause|resume|resize|disk|exec|sessions|ssh\/keys|gui\/setup|checkpoints\/[a-f0-9-]{36}\/restore)$/,
       PATCH: /^$/,
       DELETE: /^$/,
     }

@@ -1,4 +1,4 @@
-import { Session, Vm, VmLogs, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
+import { AccountSshKey, Session, SshToken, Vm, VmGui, VmLogs, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
 import { authHeaders } from '../auth.ts'
 
 export class WorkspaceApiError extends Error {
@@ -68,6 +68,20 @@ export const workspaceApi = {
   async sessions(vmId: string, signal?: AbortSignal) {
     return Session.array().parse(await request(`${vmPath(vmId)}/sessions`, { signal }))
   },
+  // The VM's desktop: whether it has one, setting one up, and VNC to it.
+  async gui(vmId: string, signal?: AbortSignal) {
+    return VmGui.parse(await request(`${vmPath(vmId)}/gui`, { signal }))
+  },
+  async setupGui(vmId: string) {
+    return VmGui.parse(await request(`${vmPath(vmId)}/gui/setup`, post({})))
+  },
+  async guiConnection(vmId: string) {
+    const { ticket } = (await request(`${vmPath(vmId)}/gui/ticket`, post({}))) as { ticket: string }
+    const url = new URL(`${vmPath(vmId)}/gui/vnc`, window.location.href)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    url.searchParams.set('ticket', ticket)
+    return { url: url.href }
+  },
   async createSession(vmId: string, input: CreateSession = {}) {
     return Session.parse(await request(`${vmPath(vmId)}/sessions`, post(input)))
   },
@@ -125,4 +139,14 @@ export const dashboardApi = {
   async logs(vmId: string, lines: number, signal?: AbortSignal) {
     return VmLogs.parse(await request(`${vmPath(vmId)}/logs?lines=${lines}`, { signal }))
   },
+}
+
+// SSH with your own keys: keys on your account, and tokens for ssh-proxy.mjs.
+export const sshApi = {
+  async keys() { return AccountSshKey.array().parse(await request('/api/ssh/keys')) },
+  async addKey(publicKey: string, name?: string) { return AccountSshKey.parse(await request('/api/ssh/keys', post({ publicKey, name: name || undefined }))) },
+  async removeKey(id: string) { await request(`/api/ssh/keys/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
+  async tokens() { return SshToken.array().parse(await request('/api/ssh/tokens')) },
+  async createToken(name: string) { return (await request('/api/ssh/tokens', post({ name }))) as SshToken & { token: string } },
+  async revokeToken(id: string) { await request(`/api/ssh/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
 }

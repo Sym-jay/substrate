@@ -1,4 +1,4 @@
-import { CreateSession, CreateVm, ResizeVm, ForkVm, SshKey, ExecRequest, GrowDisk, UpdateVm, type PoolStatus, type HostdHealth } from '@substrate/protocol'
+import { CreateSession, CreateVm, ResizeVm, ForkVm, SshKey, SyncSshKeys, ExecRequest, GrowDisk, UpdateVm, type PoolStatus, type HostdHealth, type VmGui } from '@substrate/protocol'
 import { relayTo } from '@substrate/protocol/relay'
 import { Hono, type Context } from 'hono'
 import { bearerAuth } from 'hono/bearer-auth'
@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { HttpError, type VmService } from './vms.ts'
 import { appHeaders, proxyHttp, tcpRelay } from './proxy.ts'
 import { vmLogs } from './logs.ts'
+import { VNC_PORT, desktopSetupCommand, desktopStateCommand, parseDesktopState, probe as probePort, sshSyncCommand } from './desktop.ts'
 
 type Options = {
   token: string
@@ -16,9 +17,11 @@ type Options = {
   pool?: () => Promise<PoolStatus>
   vms: VmService
   logs?: typeof vmLogs
+  // Whether something answers on a guest's port (tests substitute one).
+  probe?: (host: string, port: number) => Promise<boolean>
 }
 
-export function createApp({ token, version, image, pool, vms, logs = vmLogs }: Options) {
+export function createApp({ token, version, image, pool, vms, logs = vmLogs, probe = probePort }: Options) {
   const app = new Hono()
 
   app.use('*', bearerAuth({ token }))
@@ -53,6 +56,38 @@ export function createApp({ token, version, image, pool, vms, logs = vmLogs }: O
     await (await vms.guest(c.req.param('id'))).authorizeSsh(input.publicKey)
     return c.json({ ok: true })
   })
+  // The owner's account keys, kept in their own block of authorized_keys.
+  app.put('/vms/:id/ssh/keys', async (c) => {
+    const { publicKeys, start } = await body(c, SyncSshKeys)
+    const id = c.req.param('id')
+    if (start) await vms.start(id)
+    const result = await vms.exec(id, { command: sshSyncCommand(publicKeys), user: 'root', timeoutMs: 20_000 })
+    if (result.exitCode !== 0) return c.json({ error: `couldn't update its SSH keys: ${result.stderr.trim() || 'unknown error'}` }, 502)
+    return c.json({ ok: true })
+  })
+
+  // The VM's desktop, for the web app: whether there is one, setting one up,
+  // and VNC to it.
+  app.get('/vms/:id/gui', async (c) => {
+    const vm = await vms.get(c.req.param('id'))
+    if (vm.state !== 'running') return c.json({ state: 'unavailable', available: false } satisfies VmGui)
+    if (await probe(vm.guestIp, VNC_PORT)) return c.json({ state: 'ready', available: true } satisfies VmGui)
+    const result = await vms.exec(vm.id, { command: desktopStateCommand, user: 'root', timeoutMs: 10_000 })
+    return c.json({ state: parseDesktopState(result.stdout), available: false } satisfies VmGui)
+  })
+  app.post('/vms/:id/gui/setup', async (c) => {
+    const vm = await vms.get(c.req.param('id'))
+    if (vm.state !== 'running') return c.json({ error: `${vm.name} isn't running` }, 409)
+    if (await probe(vm.guestIp, VNC_PORT)) return c.json({ state: 'ready', available: true } satisfies VmGui)
+    const result = await vms.exec(vm.id, { command: desktopSetupCommand(), user: 'root', timeoutMs: 30_000 })
+    if (result.exitCode !== 0) return c.json({ error: `couldn't start setting up a desktop: ${result.stderr.trim() || 'unknown error'}` }, 502)
+    return c.json({ state: 'setting-up', available: false } satisfies VmGui)
+  })
+  app.get('/vms/:id/gui/vnc', upgradeWebSocket(async (c) => {
+    const vm = await vms.get(c.req.param('id')!)
+    return tcpRelay(vm.guestIp, VNC_PORT, activityFor(vms, vm.id), 'this workspace has no desktop running')
+  }))
+
   app.get('/vms/:id/ssh', upgradeWebSocket(async (c) => {
     const vm = await vms.start(c.req.param('id')!)
     return tcpRelay(vm.guestIp, 22, activityFor(vms, vm.id))

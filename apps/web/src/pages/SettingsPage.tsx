@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useData } from '../app/data.tsx'
 import { resetSettings, updateSettings, useSettings } from '../app/settings.ts'
 import { Button, Card, FieldRow, PageHeader, Segmented } from '../app/ui.tsx'
+import { SshAccessPanel } from '../workspaces/SshAccessPanel.tsx'
 
 export function SettingsPage({ account, userName }: { account?: ReactNode; userName?: string | null }) {
   const settings = useSettings()
@@ -20,6 +21,13 @@ export function SettingsPage({ account, userName }: { account?: ReactNode; userN
       <Card title="Account" className="rise" style={{ '--i': 1 } as React.CSSProperties}>
         <FieldRow label={userName ?? 'Signed in'} hint={account ? 'Manage your account, or sign out.' : 'Sign-in is off on this server (local development).'}>{account}</FieldRow>
       </Card>
+
+      {/* Keys and tokens belong to a signed-in account. */}
+      {account && (
+        <Card title="SSH access" className="rise" style={{ '--i': 2 } as React.CSSProperties}>
+          <div className="workspaces"><SshAccessPanel /></div>
+        </Card>
+      )}
 
       <Card title="About" className="rise" style={{ '--i': 2 } as React.CSSProperties}>
         <FieldRow label="Version">

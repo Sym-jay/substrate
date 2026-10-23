@@ -118,7 +118,9 @@ export function WorkspaceTools({ vm, onChange, onFork, onDeleted }: {
 
     <details>
       <summary className="cursor-pointer py-2 font-medium">SSH and VS Code</summary>
-      <p className="workspace-hint">Add your public SSH key, then download a connection file. Your private key stays on your device.</p>
+      <p className="workspace-hint">With your key under <a className="underline underline-offset-2" href="#ssh-access">SSH access</a>, connect from your terminal or VS Code Remote-SSH:</p>
+      <code className="mt-2 block rounded-lg bg-zinc-100 p-3 text-xs dark:bg-zinc-900">ssh {vm.name}.substrate</code>
+      <p className="workspace-hint">Or, for this workspace only, add a public key here and download a short-lived connection file. Your private key stays on your device.</p>
       <form className="mt-3 space-y-3" onSubmit={(event) => submit(event, async (data) => {
         await workspaceApi.authorizeSsh(vm.id, String(data.get('key') ?? '').trim())
         setSsh(await workspaceApi.sshAccess(vm.id))
