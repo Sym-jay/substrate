@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite'
 import type { WindowsWorkspace, WindowsWorkspaceState } from '@substrate/protocol'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { sizeOf } from './sizes.ts'
 
 export type WindowsRow = {
   id: string
@@ -21,7 +22,7 @@ export type WindowsRow = {
 }
 
 export const toWorkspace = ({ id, name, state, instanceType, createdAt, idleStopMinutes, error }: WindowsRow): WindowsWorkspace =>
-  ({ id, name, state, instanceType, createdAt, idleStopMinutes, error })
+  ({ id, name, state, instanceType, size: sizeOf(instanceType), createdAt, idleStopMinutes, error })
 
 // Windows workspaces, in the control box's SQLite database. Their passwords
 // are here too: the database is the control box's alone.

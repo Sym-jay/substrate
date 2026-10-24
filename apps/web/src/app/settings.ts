@@ -11,8 +11,6 @@ export type Settings = {
   diskGib: number
   // For new workspaces; 'default' leaves hostd's.
   autoPauseMinutes: number | null | 'default'
-  // A GitHub repository new workspaces clone; empty for none.
-  repository: string
   motion: 'system' | 'reduced'
   sidebar: 'expanded' | 'collapsed'
 }
@@ -23,7 +21,6 @@ export const defaultSettings: Settings = {
   ...VmSizes[DEFAULT_VM_SIZE],
   diskGib: 32,
   autoPauseMinutes: 'default',
-  repository: '',
   motion: 'system',
   sidebar: 'expanded',
 }

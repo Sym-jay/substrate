@@ -99,6 +99,8 @@ export function createApp({ vmId, token, version, run, sessions, activity, tasks
     return c.json(session.info, 201)
   })
 
+  app.delete('/sessions/:id', (c) => sessions.close(c.req.param('id')) ? c.body(null, 204) : c.json({ error: 'no such session' }, 404))
+
   app.get(
     '/sessions/:id/terminal',
     async (c, next) => {

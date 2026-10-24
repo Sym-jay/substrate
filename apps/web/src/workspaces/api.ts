@@ -1,4 +1,4 @@
-import { AccountSshKey, QuotaStatus, Session, UsageReport, SshToken, Vm, VmGui, VmLogs, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
+import { AccountSshKey, Session, SshToken, Vm, VmGui, VmLogs, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
 import { authHeaders } from '../auth.ts'
 
 export class WorkspaceApiError extends Error {
@@ -68,12 +68,17 @@ export const workspaceApi = {
   async sessions(vmId: string, signal?: AbortSignal) {
     return Session.array().parse(await request(`${vmPath(vmId)}/sessions`, { signal }))
   },
+  // Ends a session (closing its tab). A workspace from before this answers 404.
+  async closeSession(vmId: string, sessionId: string) { await request(`${vmPath(vmId)}/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' }) },
   // The VM's desktop: whether it has one, setting one up, and VNC to it.
   async gui(vmId: string, signal?: AbortSignal) {
     return VmGui.parse(await request(`${vmPath(vmId)}/gui`, { signal }))
   },
   async setupGui(vmId: string) {
     return VmGui.parse(await request(`${vmPath(vmId)}/gui/setup`, post({})))
+  },
+  async closeGui(vmId: string) {
+    return VmGui.parse(await request(`${vmPath(vmId)}/gui`, { method: 'DELETE' }))
   },
   async guiConnection(vmId: string) {
     const { ticket } = (await request(`${vmPath(vmId)}/gui/ticket`, post({}))) as { ticket: string }
@@ -149,11 +154,4 @@ export const sshApi = {
   async tokens() { return SshToken.array().parse(await request('/api/ssh/tokens')) },
   async createToken(name: string) { return (await request('/api/ssh/tokens', post({ name }))) as SshToken & { token: string } },
   async revokeToken(id: string) { await request(`/api/ssh/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
-}
-
-// The signed-in user's quota and this month's metered use. A server without
-// them answers 404.
-export const accountApi = {
-  async quota(signal?: AbortSignal) { return QuotaStatus.parse(await request('/api/quota', { signal })) },
-  async usage(signal?: AbortSignal) { return UsageReport.parse(await request('/api/usage', { signal })) },
 }

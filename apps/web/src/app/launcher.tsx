@@ -1,12 +1,16 @@
-import { VmName, sizeCeiling, type Agent, type AgentMode, type Quota } from '@substrate/protocol'
-import { AppWindow, ArrowLeft, ArrowRight, SquareTerminal } from 'lucide-react'
+import { DEFAULT_WINDOWS_SIZE, VmName, WindowsSizes, sizeCeiling, type Agent, type AgentMode, type Quota, type WindowsSizeName } from '@substrate/protocol'
+import { ArrowLeft, ArrowRight, SquareTerminal } from 'lucide-react'
 import { createContext, useCallback, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { accountApi, windowsApi } from '../workspaces/api.ts'
+import { accountApi } from '../account/api.ts'
+import { takeGitHubReturn } from '../account/githubReturn.ts'
+import { RepoPicker } from '../account/RepoPicker.tsx'
+import { windowsApi } from '../workspaces/api.ts'
 import { AgentIcon } from './AgentIcon.tsx'
+import { OsArt, OsIcon } from './OsIcon.tsx'
 import { Slider } from './Slider.tsx'
 import { agentCatalog } from './agents.ts'
 import { useData } from './data.tsx'
-import { diskGibStops, gibLabel, launch, memGibStops, randomName, vcpuStops, windowsSize, type LaunchConfig } from './launch.ts'
+import { diskGibStops, gibLabel, launch, memGibStops, randomName, vcpuStops, type LaunchConfig } from './launch.ts'
 import { navigate } from './router.ts'
 import { updateSettings, useSettings, type Settings } from './settings.ts'
 import { Button, Modal, Segmented, useToast } from './ui.tsx'
@@ -14,7 +18,9 @@ import { Button, Modal, Segmented, useToast } from './ui.tsx'
 type Os = 'linux' | 'windows'
 // Where Launch starts: a Linux workspace from the saved defaults, changed by
 // these, or a Windows one.
-export type LaunchPreset = Partial<LaunchConfig> & { os?: Os }
+export type LaunchPreset = Partial<LaunchConfig> & { os?: Os; source?: 'blank' | 'github' }
+
+
 
 type Launcher = {
   launching: boolean
@@ -31,7 +37,7 @@ export function useLauncher() {
   return launcher
 }
 
-const fromSettings = (s: Settings): LaunchConfig => ({ vcpus: s.vcpus, memMib: s.memMib, diskGib: s.diskGib, agent: s.agent, mode: s.mode, autoPauseMinutes: s.autoPauseMinutes, repository: s.repository || undefined })
+const fromSettings = (s: Settings): LaunchConfig => ({ vcpus: s.vcpus, memMib: s.memMib, diskGib: s.diskGib, agent: s.agent, mode: s.mode, autoPauseMinutes: s.autoPauseMinutes })
 
 export function LauncherProvider({ children }: { children: ReactNode }) {
   const settings = useSettings()
@@ -58,11 +64,11 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
     }
   }, [putVm, refresh, toast])
 
-  const runWindows = useCallback(async (name: string) => {
+  const runWindows = useCallback(async (name: string, size: WindowsSizeName) => {
     setLaunching(true)
     toast(`Creating ${name}. Its first start takes 5 to 10 minutes.`)
     try {
-      const created = await windowsApi.create({ name })
+      const created = await windowsApi.create({ name, size })
       putWindows(created)
       refresh()
       navigate('windows', created.id)
@@ -77,6 +83,20 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
   const configure = useCallback((p: LaunchPreset = {}) => setPreset(p), [])
   const close = useCallback(() => setPreset(null), [])
 
+  // GitHub's OAuth redirect comes back to /?github=connected (or failed): say
+  // how it went, and go back to where connecting started (Launch, Settings).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const result = params.get('github')
+    if (!result) return
+    params.delete('github')
+    history.replaceState(null, '', `${window.location.pathname}${params.size ? `?${params}` : ''}${window.location.hash}`)
+    toast(result === 'connected' ? 'GitHub is connected.' : 'GitHub wasn’t connected. Try again.', result === 'connected' ? 'info' : 'error')
+    const where = takeGitHubReturn()
+    if (where === 'launch') setPreset({ source: 'github' })
+    if (where === 'settings') navigate('settings')
+  }, [toast])
+
   return (
     <LauncherContext.Provider value={{ launching, quickLaunch, configure }}>
       {children}
@@ -85,6 +105,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
           <LaunchForm
             initial={{ ...fromSettings(settings), ...preset }}
             os={preset.os ?? 'linux'}
+            source={preset.source}
             windowsOffered={windows !== null}
             busy={launching}
             onLaunch={(config, remember) => {
@@ -92,7 +113,7 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
               close()
               void run(config)
             }}
-            onLaunchWindows={(name) => { close(); void runWindows(name) }}
+            onLaunchWindows={(name, size) => { close(); void runWindows(name, size) }}
           />
         )}
       </Modal>
@@ -119,13 +140,14 @@ const stepLabels: Record<Step, string> = { basics: 'Basics', size: 'Size', agent
 
 // Launch, a step at a time: what and where from, how big, what opens in it,
 // then a last look. Windows has no agent step.
-function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, onLaunchWindows }: {
+function LaunchForm({ initial, os: initialOs, source: initialSource, windowsOffered, busy, onLaunch, onLaunchWindows }: {
   initial: LaunchConfig
   os: Os
+  source?: 'blank' | 'github'
   windowsOffered: boolean
   busy: boolean
   onLaunch: (config: LaunchConfig, remember: boolean) => void
-  onLaunchWindows: (name: string) => void
+  onLaunchWindows: (name: string, size: WindowsSizeName) => void
 }) {
   const [os, setOs] = useState<Os>(windowsOffered ? initialOs : 'linux')
   const [step, setStep] = useState<Step>('basics')
@@ -133,7 +155,7 @@ function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, on
   const [reached, setReached] = useState(0)
   const [name, setName] = useState(initial.name ?? '')
   const [placeholder] = useState(randomName)
-  const [source, setSource] = useState<'blank' | 'github'>(initial.repository ? 'github' : 'blank')
+  const [source, setSource] = useState<'blank' | 'github'>(initialSource ?? (initial.repository ? 'github' : 'blank'))
   const [repository, setRepository] = useState(initial.repository ?? '')
   const [vcpus, setVcpus] = useState(initial.vcpus)
   const [memGib, setMemGib] = useState(initial.memMib / 1024)
@@ -160,6 +182,12 @@ function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, on
   const disk = nearestStop(diskChoices, diskGib)
   const capped = !!most && (vcpuChoices.length < vcpuStops.length || memChoices.length < memGibStops.length || diskChoices.length < diskGibStops.length)
   const windows = os === 'windows'
+  // Windows comes in three sizes; vCPUs pick one, and memory follows.
+  const [winSize, setWinSize] = useState<WindowsSizeName>(DEFAULT_WINDOWS_SIZE)
+  const win = WindowsSizes[winSize]
+  const winVcpuStops = Object.values(WindowsSizes).map((s) => s.vcpus)
+  const winMemStops = Object.values(WindowsSizes).map((s) => s.memGib)
+  const pickWinSize = (vcpus: number) => setWinSize((Object.entries(WindowsSizes) as [WindowsSizeName, { vcpus: number }][]).find(([, s]) => s.vcpus === vcpus)?.[0] ?? DEFAULT_WINDOWS_SIZE)
   const steps: Step[] = windows ? ['basics', 'size', 'review'] : ['basics', 'size', 'agent', 'review']
   const at = steps.indexOf(step)
   const agentName = agent ? agentCatalog.find((a) => a.id === agent)?.name ?? agent : 'Shell'
@@ -167,7 +195,7 @@ function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, on
   // What's wrong with the basics, if anything.
   const basicsError = () => {
     if (name && !VmName.safeParse(name).success) return 'Names use lowercase letters, digits and dashes, starting with a letter or digit.'
-    if (!windows && source === 'github' && !repository.trim()) return 'Which repository? owner/name or a GitHub URL.'
+    if (!windows && source === 'github' && !repository) return 'Pick a repository, or start blank.'
     return ''
   }
   const go = (to: number) => {
@@ -187,16 +215,16 @@ function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, on
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (at < steps.length - 1) return go(at + 1)
-    if (windows) return onLaunchWindows(name || placeholder)
+    if (windows) return onLaunchWindows(name || placeholder, winSize)
     onLaunch({
       name: name || placeholder, vcpus: cpu, memMib: mem * 1024, diskGib: disk, agent, mode,
-      repository: source === 'github' ? repository.trim() : undefined,
+      repository: source === 'github' ? repository : undefined,
       autoPauseMinutes: autoPause === 'default' ? 'default' : autoPause === 'off' ? null : Number(autoPause),
     }, remember)
   }
 
   const summary = windows
-    ? `Windows · ${windowsSize.vcpus} vCPU · ${windowsSize.memGib} GB`
+    ? `Windows · ${win.vcpus} vCPU · ${win.memGib} GB`
     : `${cpu} vCPU · ${gibLabel(mem)} · ${gibLabel(disk)} disk`
 
   return (
@@ -215,13 +243,15 @@ function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, on
         {step === 'basics' && <>
           {windowsOffered && (
             <div className="field">System
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" aria-pressed={!windows} onClick={() => chooseOs('linux')} className="option-card">
-                  <span className="flex items-center gap-2 font-semibold"><SquareTerminal className="size-4" />Linux</span>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button type="button" aria-pressed={!windows} onClick={() => chooseOs('linux')} className="option-card os-card">
+                  <OsArt os="linux" className="os-art" />
+                  <span className="flex items-center gap-2 font-semibold"><OsIcon os="linux" className="os-mark" />Linux</span>
                   <span className="text-faint text-xs">Agents, terminals, Docker</span>
                 </button>
-                <button type="button" aria-pressed={windows} onClick={() => chooseOs('windows')} className="option-card">
-                  <span className="flex items-center gap-2 font-semibold"><AppWindow className="size-4" />Windows</span>
+                <button type="button" aria-pressed={windows} onClick={() => chooseOs('windows')} className="option-card os-card">
+                  <OsArt os="windows" className="os-art" />
+                  <span className="flex items-center gap-2 font-semibold"><OsIcon os="windows" className="os-mark" />Windows</span>
                   <span className="text-faint text-xs">A desktop in the browser</span>
                 </button>
               </div>
@@ -233,17 +263,22 @@ function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, on
           {!windows && (
             <div className="field">Start from
               <Segmented label="Start from" value={source} onChange={setSource} options={[{ value: 'blank', label: 'Blank' }, { value: 'github', label: 'GitHub repository' }]} />
-              {source === 'github' && <input className="input mt-1" value={repository} onChange={(e) => setRepository(e.target.value)} placeholder="owner/repository or https://github.com/…" autoCapitalize="none" spellCheck={false} />}
+              {source === 'github' && <div className="mt-1 font-normal normal-case tracking-normal"><RepoPicker value={repository} onChange={(r) => { setRepository(r); setError('') }} /></div>}
             </div>
           )}
         </>}
 
         {step === 'size' && <>
-          <Slider label="vCPU" stops={windows ? vcpuStops : vcpuChoices} value={windows ? windowsSize.vcpus : cpu} onChange={setVcpus} format={(n) => `${n} vCPU`} tick={String} disabled={windows} />
-          <Slider label="Memory" stops={windows ? memGibStops : memChoices} value={windows ? windowsSize.memGib : mem} onChange={setMemGib} format={gibLabel} tick={String} disabled={windows} />
+          {windows ? <>
+            <Slider label="vCPU" stops={winVcpuStops} value={win.vcpus} onChange={pickWinSize} format={(n) => `${n} vCPU`} tick={String} />
+            <Slider label="Memory" stops={winMemStops} value={win.memGib} onChange={() => {}} format={gibLabel} tick={String} disabled />
+          </> : <>
+            <Slider label="vCPU" stops={vcpuChoices} value={cpu} onChange={setVcpus} format={(n) => `${n} vCPU`} tick={String} />
+            <Slider label="Memory" stops={memChoices} value={mem} onChange={setMemGib} format={gibLabel} tick={String} />
+          </>}
           {windows ? (
             <p className="text-muted text-sm leading-relaxed">
-              Every Windows workspace is this size: Windows Server 2025 with Git, Node.js, PowerShell 7, WSL, Claude Code and Codex. Its first start takes 5 to 10 minutes; one can be on at a time, and it stops itself when idle.
+              Memory follows the vCPUs. Windows Server 2025 with Git, Node.js, PowerShell 7, WSL, Claude Code and Codex. Its first start takes 5 to 10 minutes; one can be on at a time, and it stops itself when idle.
             </p>
           ) : (
             <>
@@ -283,7 +318,7 @@ function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, on
           <dl className="launch-review">
             <dt>System</dt><dd>{windows ? 'Windows' : 'Linux'}</dd>
             <dt>Name</dt><dd>{name || placeholder}</dd>
-            {!windows && <><dt>Start from</dt><dd>{source === 'github' ? repository.trim() : 'Blank'}</dd></>}
+            {!windows && <><dt>Start from</dt><dd>{source === 'github' ? repository : 'Blank'}</dd></>}
             <dt>Size</dt><dd>{summary.replace(/^Windows · /, '')}</dd>
             {!windows && <><dt>Opens with</dt><dd>{agentName}{agent ? ` · ${mode === 'auto' ? 'full auto' : 'asks first'}` : ''}</dd></>}
             {!windows && <><dt>Auto-pause</dt><dd>{autoPauseChoices.find((c) => c.value === autoPause)?.label}</dd></>}

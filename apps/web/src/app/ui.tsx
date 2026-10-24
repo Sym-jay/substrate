@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { bar, buttonFrame, reducedMotion, scrambled, shimmerFrame } from './ascii.ts'
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -22,23 +23,16 @@ export function Button({ variant = 'secondary', size = 'md', icon, live = false,
   )
 }
 
-// A primary button: just a border, until it's hovered, when an ASCII wave
-// loops inside it and its label scrambles into place. A live one keeps its
-// wave going while it's enabled, and hovering only scrambles the label.
-function AsciiButton({ children, icon, live, className, onPointerEnter, onPointerLeave, onFocus, onBlur, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { icon?: ReactNode; live: boolean }) {
-  const button = useRef<HTMLButtonElement>(null)
+// The ASCII wave: drawn into `field`, sized to fill `target`, until it's
+// stopped. `onFrame` runs with each frame.
+export function useAsciiWave() {
   const field = useRef<HTMLSpanElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  // When the label began scrambling; 0 when it isn't.
-  const begun = useRef(0)
-  const [label, setLabel] = useState<string | null>(null)
-  const text = typeof children === 'string' ? children : null
-
-  const clear = () => {
+  const stop = useCallback(() => {
     clearTimeout(timer.current)
     if (field.current) field.current.textContent = ''
-  }
-  const run = (target: HTMLButtonElement) => {
+  }, [])
+  const start = useCallback((target: HTMLElement, onFrame?: () => void) => {
     clearTimeout(timer.current)
     if (reducedMotion() || !field.current) return
     const cols = Math.ceil(target.clientWidth / 6) + 1
@@ -47,15 +41,49 @@ function AsciiButton({ children, icon, live, className, onPointerEnter, onPointe
     const tick = () => {
       if (!field.current) return
       if (!document.hidden) field.current.textContent = buttonFrame(cols, rows, t++)
-      if (text && begun.current) {
-        const progress = (performance.now() - begun.current) / 380
-        setLabel(progress < 1 ? scrambled(text, progress) : null)
-        if (progress >= 1) begun.current = 0
-      }
+      onFrame?.()
       timer.current = setTimeout(tick, 70)
     }
     tick()
+  }, [])
+  useEffect(() => () => clearTimeout(timer.current), [])
+  return { field, start, stop }
+}
+
+// The wave while something's hovered (or focused from the keyboard). Spread
+// `handlers` on it, and put a <span ref={field}> inside.
+export function useHoverWave() {
+  const { field, start, stop } = useAsciiWave()
+  return {
+    field,
+    handlers: {
+      onPointerEnter: (e: React.PointerEvent<HTMLElement>) => start(e.currentTarget),
+      onPointerLeave: stop,
+      onFocus: (e: React.FocusEvent<HTMLElement>) => { if (e.currentTarget.matches(':focus-visible')) start(e.currentTarget) },
+      onBlur: stop,
+    },
   }
+}
+
+// A primary button, with an ASCII wave looping inside it while it's
+// hovered, and its label scrambling into place. A live one keeps its wave
+// going while it's enabled, and hovering only scrambles the label.
+function AsciiButton({ children, icon, live, className, onPointerEnter, onPointerLeave, onFocus, onBlur, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { icon?: ReactNode; live: boolean }) {
+  const button = useRef<HTMLButtonElement>(null)
+  const wave = useAsciiWave()
+  // When the label began scrambling; 0 when it isn't.
+  const begun = useRef(0)
+  const [label, setLabel] = useState<string | null>(null)
+  const text = useRef<string | null>(null)
+  text.current = typeof children === 'string' ? children : null
+
+  const clear = wave.stop
+  const run = (target: HTMLButtonElement) => wave.start(target, () => {
+    if (!text.current || !begun.current) return
+    const progress = (performance.now() - begun.current) / 380
+    setLabel(progress < 1 ? scrambled(text.current, progress) : null)
+    if (progress >= 1) begun.current = 0
+  })
   const start = (target: HTMLButtonElement) => {
     if (target.disabled) return
     begun.current = performance.now()
@@ -69,7 +97,7 @@ function AsciiButton({ children, icon, live, className, onPointerEnter, onPointe
   useEffect(() => {
     if (live && !rest.disabled && button.current) run(button.current)
     else clear()
-    return () => clearTimeout(timer.current)
+    return clear
     // run reads the button's size as it is now; re-run when it's re-enabled.
   }, [live, rest.disabled])
 
@@ -83,7 +111,7 @@ function AsciiButton({ children, icon, live, className, onPointerEnter, onPointe
       onBlur={(e) => { stop(); onBlur?.(e) }}
       {...rest}
     >
-      <span ref={field} className="btn-ascii" aria-hidden />
+      <span ref={wave.field} className="btn-ascii" aria-hidden />
       {icon}
       {children !== undefined && children !== null && children !== false && (
         <span className="btn-label">{label ?? children}</span>
@@ -218,7 +246,7 @@ export function StateBadge({ state, label }: { state: string; label?: string }) 
   )
 }
 
-// Substrate's mark (public/favicon.svg) drawn in dots, for empty states.
+// Stacked layers drawn in dots, for empty states.
 const MARK = [
   '::::::::::::::',
   '::::::::::::::',
@@ -316,9 +344,13 @@ export function Menu({ button, children, align = 'start' }: { button: (props: { 
   const [open, setOpen] = useState(false)
   const [place, setPlace] = useState<React.CSSProperties>({})
   const root = useRef<HTMLDivElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
-    const onDown = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false) }
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node
+      if (!root.current?.contains(target) && !menu.current?.contains(target)) setOpen(false)
+    }
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
     const close = () => setOpen(false)
     document.addEventListener('pointerdown', onDown)
@@ -333,7 +365,9 @@ export function Menu({ button, children, align = 'start' }: { button: (props: { 
     }
   }, [open])
   // Fixed to the window, so a scrolling container can't clip it; above the
-  // button when there isn't room below.
+  // button when there isn't room below. It's drawn in <body>: inside, an
+  // ancestor with a transform or a container query would make "fixed" mean
+  // fixed to that ancestor instead.
   const toggle = () => {
     const r = root.current?.getBoundingClientRect()
     if (r) {
@@ -349,7 +383,7 @@ export function Menu({ button, children, align = 'start' }: { button: (props: { 
   return (
     <div ref={root} className="relative">
       {button({ open, toggle })}
-      {open && <div className="menu card" style={place} role="menu">{children(() => setOpen(false))}</div>}
+      {open && createPortal(<div ref={menu} className="menu card" style={place} role="menu">{children(() => setOpen(false))}</div>, document.body)}
     </div>
   )
 }

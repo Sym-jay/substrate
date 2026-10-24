@@ -12,6 +12,7 @@ import { LogsPage } from './pages/LogsPage.tsx'
 import { ProfilePage, type Profile } from './pages/ProfilePage.tsx'
 import { SettingsPage } from './pages/SettingsPage.tsx'
 import { SnapshotsPage } from './pages/SnapshotsPage.tsx'
+import { TemplatesPage } from './pages/TemplatesPage.tsx'
 import { WindowsPage } from './pages/WindowsPage.tsx'
 import { WelcomePage } from './pages/WelcomePage.tsx'
 import { WorkspacesPage } from './pages/WorkspacesPage.tsx'
@@ -24,7 +25,7 @@ export function App({ account, userName, profile }: { account?: ReactNode; userN
     <Toasts>
       <DataProvider>
         <LauncherProvider>
-          <Shell account={account}>
+          <Shell profile={profile}>
             <Page account={account} userName={userName} profile={profile} />
           </Shell>
           <CommandPalette />
@@ -46,6 +47,7 @@ function Page({ account, userName, profile }: { account?: ReactNode; userName?: 
     case 'settings': return <SettingsPage account={account} userName={userName} />
     case 'workspaces': return <WorkspacesPage params={params} />
     case 'profile': return <ProfilePage profile={profile} />
+    case 'templates': return <TemplatesPage />
     default: return <WelcomePage />
   }
 }

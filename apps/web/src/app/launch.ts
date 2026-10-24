@@ -1,4 +1,4 @@
-import type { Agent, AgentMode } from '@substrate/protocol'
+import { DEFAULT_WINDOWS_SIZE, WindowsSizes, type Agent, type AgentMode, type WindowsSizeName } from '@substrate/protocol'
 import { workspaceApi } from '../workspaces/api.ts'
 
 export type LaunchConfig = {
@@ -23,8 +23,8 @@ export const randomName = () => `${pick(adjectives)}-${pick(nouns)}-${Math.floor
 export const vcpuStops = [1, 2, 3, 4, 6, 8, 12, 16]
 export const memGibStops = [2, 4, 6, 8, 12, 16, 24, 32, 48, 64]
 export const diskGibStops = [8, 16, 32, 64, 128, 256, 512, 1024]
-// Every Windows workspace is this size.
-export const windowsSize = { vcpus: 16, memGib: 64 }
+// A Windows workspace's vCPUs and memory: the large size for one from before sizes.
+export const windowsSizeOf = (w: { size?: WindowsSizeName | null }) => WindowsSizes[w.size ?? DEFAULT_WINDOWS_SIZE]
 export const gibLabel = (gib: number) => (gib >= 1024 ? `${gib / 1024} TB` : `${gib} GB`)
 
 // Creates a workspace and opens its first session: the agent, or a shell.

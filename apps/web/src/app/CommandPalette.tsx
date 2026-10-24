@@ -1,4 +1,4 @@
-import { Activity, AppWindow, Camera, CornerDownLeft, Inbox, Layers, PanelLeft, Plus, Rocket, ScrollText, Search, Settings, SlidersHorizontal, SquareTerminal, UserRound } from 'lucide-react'
+import { AppWindow, Camera, CornerDownLeft, Inbox, Layers, LayoutTemplate, ListChecks, PanelLeft, Rocket, ScrollText, Search, Settings, SlidersHorizontal, SquareTerminal, UserRound } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { AgentIcon } from './AgentIcon.tsx'
@@ -33,8 +33,9 @@ function match(text: string, query: string) {
 const pages: { page: Page; label: string; icon: ReactNode }[] = [
   { page: 'workspaces', label: 'Workspaces', icon: <SquareTerminal /> },
   { page: 'inbox', label: 'Inbox', icon: <Inbox /> },
+  { page: 'templates', label: 'Templates', icon: <LayoutTemplate /> },
   { page: 'snapshots', label: 'Snapshots', icon: <Camera /> },
-  { page: 'jobs', label: 'Jobs', icon: <Activity /> },
+  { page: 'jobs', label: 'Jobs', icon: <ListChecks /> },
   { page: 'logs', label: 'Logs', icon: <ScrollText /> },
   { page: 'environment', label: 'Environment', icon: <Layers /> },
   { page: 'settings', label: 'Settings', icon: <Settings /> },
@@ -81,7 +82,6 @@ export function CommandPalette() {
     const all: Item[] = [
       { id: 'quick', group: 'Actions', label: 'Quick launch', hint: 'with your defaults', keywords: 'new workspace vm', icon: <Rocket />, run: close(() => void quickLaunch()) },
       { id: 'configure', group: 'Actions', label: 'Launch…', hint: 'size, agent, system', keywords: 'new workspace vm configure windows linux', icon: <SlidersHorizontal />, run: close(() => configure()) },
-      ...(windows ? [{ id: 'new-windows', group: 'Actions', label: 'New Windows workspace', icon: <Plus />, run: close(() => configure({ os: 'windows' })) }] : []),
       { id: 'sidebar', group: 'Actions', label: settings.sidebar === 'collapsed' ? 'Expand the sidebar' : 'Collapse the sidebar', icon: <PanelLeft />, run: close(() => updateSettings({ sidebar: settings.sidebar === 'collapsed' ? 'expanded' : 'collapsed' })) },
       ...Object.entries(sessions).flatMap(([vmId, list]) => list.filter((s) => s.agent && s.state === 'running').map((s) => {
         const vm = vms?.find((v) => v.id === vmId)

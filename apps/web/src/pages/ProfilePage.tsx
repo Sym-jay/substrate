@@ -1,14 +1,15 @@
 import { UserRound } from 'lucide-react'
-import type { QuotaStatus, UsageReport } from '@substrate/protocol'
+import type { UsageReport } from '@substrate/protocol'
 import { useEffect, useState, type CSSProperties } from 'react'
 import { useData } from '../app/data.tsx'
-import { gibLabel, windowsSize } from '../app/launch.ts'
+import { gibLabel, windowsSizeOf } from '../app/launch.ts'
 import { Button, Card, PageHeader } from '../app/ui.tsx'
-import { accountApi } from '../workspaces/api.ts'
+import { accountApi } from '../account/api.ts'
+import { DitherMeter } from '../app/DitherMeter.tsx'
 
 // Who's signed in, from the sign-in provider (ClerkApp.tsx). Absent when
 // sign-in is off.
-export type Profile = { name: string | null; email: string | null; imageUrl: string | null; since: Date | null; manage: () => void }
+export type Profile = { name: string | null; email: string | null; imageUrl: string | null; since: Date | null; manage: () => void; signOut: () => void }
 
 const hours = (n: number) => `${Math.round(n * 10) / 10}`
 const nextMonth = () => {
@@ -19,14 +20,11 @@ const nextMonth = () => {
 // The account: who you are, your credits (running hours left this month, out
 // of your quota), and what you're using.
 export function ProfilePage({ profile }: { profile?: Profile }) {
-  const { vms, windows } = useData()
-  // undefined while loading; null when this server has no quotas.
-  const [quota, setQuota] = useState<QuotaStatus | null | undefined>(undefined)
+  const { vms, windows, quota } = useData()
   const [usage, setUsage] = useState<UsageReport | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
-    accountApi.quota(controller.signal).then(setQuota, () => { if (!controller.signal.aborted) setQuota(null) })
     accountApi.usage(controller.signal).then(setUsage, () => {})
     return () => controller.abort()
   }, [])
@@ -35,8 +33,8 @@ export function ProfilePage({ profile }: { profile?: Profile }) {
   const win = windows ?? []
   const up = linux.filter((vm) => vm.state === 'running')
   const winUp = win.filter((w) => w.state === 'running')
-  const vcpus = up.reduce((n, vm) => n + vm.vcpus, 0) + winUp.length * windowsSize.vcpus
-  const memGib = up.reduce((n, vm) => n + vm.memMib, 0) / 1024 + winUp.length * windowsSize.memGib
+  const vcpus = up.reduce((n, vm) => n + vm.vcpus, 0) + winUp.reduce((n, w) => n + windowsSizeOf(w).vcpus, 0)
+  const memGib = up.reduce((n, vm) => n + vm.memMib, 0) / 1024 + winUp.reduce((n, w) => n + windowsSizeOf(w).memGib, 0)
   const diskGib = linux.reduce((n, vm) => n + vm.diskGib, 0)
 
   const total = quota?.limits.maxRunningHours ?? 0
@@ -65,9 +63,7 @@ export function ProfilePage({ profile }: { profile?: Profile }) {
               <span className="profile-big">{hours(left)}</span>
               <span className="text-muted text-sm">of {hours(total)} hours left this month</span>
             </p>
-            <div className="meter" role="meter" aria-label="Hours left this month" aria-valuemin={0} aria-valuemax={total} aria-valuenow={left}>
-              <span style={{ width: `${total ? (left / total) * 100 : 0}%` }} />
-            </div>
+            <DitherMeter share={total ? left / total : 0} label="Hours left this month" now={left} max={total} rows={6} />
             <p className="text-faint text-xs">
               Running time across all your workspaces. Renews {nextMonth().toLocaleDateString(undefined, { day: 'numeric', month: 'long', timeZone: 'UTC' })}.
             </p>

@@ -1,10 +1,13 @@
 import { ArrowRight, BookOpen } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { AgentLogo } from '../app/AgentIcon.tsx'
+import { agentCatalog } from '../app/agents.ts'
 import { IsoHost } from '../app/IsoHost.tsx'
 import { useData } from '../app/data.tsx'
 import { useLauncher } from '../app/launcher.tsx'
+import { Wordmark } from '../app/Logo.tsx'
 import { href } from '../app/router.ts'
-import { Button, Reveal, useToast } from '../app/ui.tsx'
+import { Button, useToast } from '../app/ui.tsx'
 
 // Where you land: what Substrate is, the two ways in, and a host with its
 // microVMs beside them.
@@ -37,8 +40,15 @@ export function WelcomeHero({ launch, more }: { launch: ReactNode; more?: ReactN
   return (
     <div className="welcome">
       <div className="welcome-text">
-        <h1 className="welcome-title"><Reveal text="Substrate" /></h1>
+        <h1 className="welcome-title"><Wordmark className="welcome-wordmark" /></h1>
         <p className="welcome-desc">Persistent sandboxes for coding agents.</p>
+        {/* The agents every workspace comes with: their logos in colour, named on hover. */}
+        <div className="welcome-agents">
+          <span className="welcome-agents-label" id="supported-agents">Supported agents</span>
+          <ul aria-labelledby="supported-agents">
+            {agentCatalog.map((a) => <li key={a.id} title={a.name}><AgentLogo agent={a.id} /><span className="sr-only">{a.name}</span></li>)}
+          </ul>
+        </div>
         <div className="welcome-actions">
           {launch}
           {/* No docs yet: the button stays, and says so. */}

@@ -30,6 +30,10 @@ export const parseDesktopState = (stdout: string): VmGuiState => {
   return state === 'setting-up' || state === 'failed' ? state : 'off'
 }
 
+// Run in the guest as root: stops the desktop desktop-setup.sh made and keeps
+// it from starting with the VM. Setting one up again brings it back.
+export const desktopStopCommand = 'systemctl disable --now substrate-desktop.service 2>/dev/null || true'
+
 // Starts desktop-setup.sh in the background, so it outlives the request.
 export function desktopSetupCommand() {
   const encoded = Buffer.from(setupScript).toString('base64')

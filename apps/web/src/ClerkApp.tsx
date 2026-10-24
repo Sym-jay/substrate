@@ -8,7 +8,7 @@ import { setTokenSource } from './auth.ts'
 export function ClerkApp() {
   const { getToken } = useAuth()
   const { user } = useUser()
-  const { openUserProfile } = useClerk()
+  const { openUserProfile, signOut } = useClerk()
   // Set while rendering, not in an effect: children's effects (which load
   // VMs) run before their parent's, and need the token already.
   setTokenSource(() => getToken())
@@ -25,6 +25,7 @@ export function ClerkApp() {
             imageUrl: user.imageUrl || null,
             since: user.createdAt ?? null,
             manage: () => openUserProfile(),
+            signOut: () => void signOut(),
           } : undefined}
         />
       </Show>

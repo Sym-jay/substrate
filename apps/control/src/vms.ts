@@ -318,7 +318,8 @@ export function vmRoutes(o: VmRoutesOptions) {
       GET: /^(?:|\/(?:sessions|checkpoints|logs|gui))$/,
       POST: /^\/(?:start|stop|pause|resume|resize|disk|exec|sessions|ssh\/keys|gui\/setup|checkpoints\/[a-f0-9-]{36}\/restore)$/,
       PATCH: /^$/,
-      DELETE: /^$/,
+      // The VM itself, its desktop, or one of its sessions (closing a tab).
+      DELETE: /^(?:|\/gui|\/sessions\/[a-f0-9-]{36})$/,
     }
     if (!allowed[c.req.method]?.test(suffix)) return c.json({ error: 'not found' }, 404)
     const res = await callHostd(hostdPath(c), {
@@ -328,9 +329,11 @@ export function vmRoutes(o: VmRoutesOptions) {
     if (!res) return unreachable(c)
     const id = c.req.param('id') ?? ''
     if (res.ok && c.req.method !== 'GET') {
-      if (c.req.method === 'DELETE') {
+      if (c.req.method === 'DELETE' && suffix === '') {
         await owners.remove(id)
         await record(c.var.user.id, 'vm.deleted', id)
+      } else if (c.req.method === 'DELETE') {
+        await record(c.var.user.id, suffix === '/gui' ? 'desktop.closed' : 'session.closed', id)
       } else if (suffix === '/sessions' && res.status === 201) {
         const session = Session.safeParse(await res.clone().json().catch(() => null))
         if (session.success) {

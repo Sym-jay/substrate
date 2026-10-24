@@ -1,12 +1,16 @@
-import { Activity, Camera, Inbox, Layers, PanelLeftClose, PanelLeftOpen, Rocket, ScrollText, Search, Settings, SquareTerminal, UserRound } from 'lucide-react'
+import { Camera, Layers, LayoutTemplate, ListChecks, PanelLeftClose, PanelLeftOpen, ScrollText, Search, Settings, SquarePlus, SquareTerminal } from 'lucide-react'
 import { useSyncExternalStore, type ReactNode } from 'react'
+import type { Profile } from '../pages/ProfilePage.tsx'
+import { AccountCorner } from './AccountCorner.tsx'
+import { ActionCenter } from './ActionCenter.tsx'
 import { openPalette, paletteShortcut } from './CommandPalette.tsx'
 import { useData } from './data.tsx'
 import { useLauncher } from './launcher.tsx'
+import { Wordmark } from './Logo.tsx'
 import { href, useRoute, type Page } from './router.ts'
 import { updateSettings, useSettings } from './settings.ts'
 import { WorkspaceSidebar } from './WorkspaceSidebar.tsx'
-import { Button } from './ui.tsx'
+import { Button, useHoverWave } from './ui.tsx'
 
 type Item = { page: Page; label: string; icon: ReactNode; badge?: number }
 
@@ -20,23 +24,24 @@ const subscribeNarrow = (listener: () => void) => {
 const isNarrow = () => window.matchMedia?.(narrowQuery).matches ?? false
 
 // The page frame: a floating sidebar, which folds down to its icons (a
-// floating tab bar on phones), and the page itself, which cross-fades when it
-// changes.
-export function Shell({ account, children }: { account?: ReactNode; children: ReactNode }) {
+// floating tab bar on phones), the page itself, which cross-fades when it
+// changes, and the inbox and account in the page's top right corner.
+export function Shell({ profile, children }: { profile?: Profile; children: ReactNode }) {
   const { page, params } = useRoute()
   const { sessions } = useData()
   const { launching, configure } = useLauncher()
   const agentsWorking = Object.values(sessions).flat().filter((s) => s.agent && s.state === 'running').length
   const workspaces: Item = { page: 'workspaces', label: 'Workspaces', icon: <SquareTerminal /> }
-  const jobs: Item = { page: 'jobs', label: 'Jobs', icon: <Activity />, badge: agentsWorking || undefined }
+  const jobs: Item = { page: 'jobs', label: 'Jobs', icon: <ListChecks />, badge: agentsWorking || undefined }
   const settings: Item = { page: 'settings', label: 'Settings', icon: <Settings /> }
-  const main: Item[] = [{ page: 'inbox', label: 'Inbox', icon: <Inbox /> }, workspaces, { page: 'snapshots', label: 'Snapshots', icon: <Camera /> }, jobs, { page: 'logs', label: 'Logs', icon: <ScrollText /> }]
-  const setup: Item[] = [{ page: 'environment', label: 'Environment', icon: <Layers /> }, settings, { page: 'profile', label: 'Profile', icon: <UserRound /> }]
+  const main: Item[] = [workspaces, { page: 'templates', label: 'Templates', icon: <LayoutTemplate /> }, { page: 'snapshots', label: 'Snapshots', icon: <Camera /> }, jobs, { page: 'logs', label: 'Logs', icon: <ScrollText /> }]
+  const setup: Item[] = [{ page: 'environment', label: 'Environment', icon: <Layers /> }, settings]
   const { sidebar } = useSettings()
   const narrow = useSyncExternalStore(subscribeNarrow, isNarrow)
   const collapsed = narrow || sidebar === 'collapsed'
   // With a workspace open, the sidebar slides over to that workspace's panel.
   const nested = page === 'workspaces' && !!params[0]
+  const searchWave = useHoverWave()
 
   return (
     <div className={`shell ${collapsed ? 'is-collapsed' : ''}`}>
@@ -44,9 +49,10 @@ export function Shell({ account, children }: { account?: ReactNode; children: Re
         <div className={`sidebar-track ${nested ? 'is-nested' : ''}`}>
         <div className="sidebar-panel" inert={nested}>
         <div className="sidebar-top">
-          <a href={href('welcome')} className="sidebar-brand">
-            <img src="/favicon.svg" alt="" className="size-8 shrink-0" />
-            <span className="sidebar-text heading text-[15px] font-semibold tracking-tight">Substrate</span>
+          {/* The wordmark; folded, its first letter stands in. */}
+          <a href={href('welcome')} className="sidebar-brand" aria-label="Substrate">
+            <span className="brand-mark"><Wordmark short /></span>
+            <span className="sidebar-text"><Wordmark /></span>
           </a>
           {/* Top right; folded, it slides over the logo and shows on hover. */}
           {!narrow && (
@@ -61,7 +67,8 @@ export function Shell({ account, children }: { account?: ReactNode; children: Re
             />
           )}
         </div>
-        <button type="button" className="nav-item sidebar-search" onClick={openPalette} title={`Search (${paletteShortcut})`}>
+        <button type="button" className="nav-item sidebar-search" onClick={openPalette} title={`Search (${paletteShortcut})`} {...searchWave.handlers}>
+          <span ref={searchWave.field} className="nav-flow" aria-hidden />
           <Search /><span className="nav-label">Search</span><kbd>{paletteShortcut}</kbd>
         </button>
         <div>
@@ -75,14 +82,11 @@ export function Shell({ account, children }: { account?: ReactNode; children: Re
         </div>
         </div>
         {/* In a workspace's panel there's no launching; the panel is that workspace's. */}
-        {(!nested || account) && (
+        {!nested && (
           <div className="sidebar-foot">
-            {!nested && (
-              <Button variant="primary" className="sidebar-launch" icon={<Rocket />} live disabled={launching} onClick={() => configure()} title="Launch a VM">
-                <span className="sidebar-text">{launching ? 'Launching…' : 'Launch VM'}</span>
-              </Button>
-            )}
-            {account && <div className="sidebar-account">{account}</div>}
+            <Button variant="primary" className="sidebar-launch" icon={<SquarePlus />} live disabled={launching} onClick={() => configure()} title="Launch a VM">
+              <span className="sidebar-text">{launching ? 'Launching…' : 'Launch VM'}</span>
+            </Button>
           </div>
         )}
       </aside>
@@ -93,25 +97,40 @@ export function Shell({ account, children }: { account?: ReactNode; children: Re
         </Nav>
       </nav>
 
-      <main className="page" style={{ viewTransitionName: 'page' }}>{children}</main>
+      <main className="page" style={{ viewTransitionName: 'page' }}>
+        {/* Not inside a workspace: that view is the workspace's own. */}
+        {!nested && (
+          <div className="page-corner">
+            <ActionCenter />
+            <AccountCorner profile={profile} />
+          </div>
+        )}
+        {children}
+      </main>
     </div>
   )
 }
 
-// The nav list; the current page is outlined.
+// The nav list; the current page is filled in blue.
 function Nav({ items, active, orientation, children }: { items: Item[]; active: Page; orientation: 'vertical' | 'horizontal'; children?: ReactNode }) {
   return (
     <ul className={`nav-list is-${orientation}`}>
-      {items.map((item) => (
-        <li key={item.page}>
-          <a href={href(item.page)} className="nav-item" aria-current={item.page === active ? 'page' : undefined} title={item.label}>
-            {item.icon}
-            <span className="nav-label">{item.label}</span>
-            {item.badge !== undefined && <span className="nav-badge">{item.badge}</span>}
-          </a>
-        </li>
-      ))}
+      {items.map((item) => <li key={item.page}><NavLink item={item} current={item.page === active} /></li>)}
       {children}
     </ul>
+  )
+}
+
+// One page in the nav. Hovered, the ASCII wave runs inside it, as in a
+// primary button.
+function NavLink({ item, current }: { item: Item; current: boolean }) {
+  const wave = useHoverWave()
+  return (
+    <a href={href(item.page)} className="nav-item" aria-current={current ? 'page' : undefined} title={item.label} {...wave.handlers}>
+      <span ref={wave.field} className="nav-flow" aria-hidden />
+      {item.icon}
+      <span className="nav-label">{item.label}</span>
+      {item.badge !== undefined && <span className="nav-badge">{item.badge}</span>}
+    </a>
   )
 }

@@ -223,6 +223,13 @@ describe('hostd API', () => {
       expect(check.exitCode).toBe(0)
     })
 
+    test('closing a desktop stops it and keeps it from starting with the VM', async () => {
+      commands.length = 0
+      const res = await req('/vms/vm-abc/gui', { method: 'DELETE' })
+      expect(await res.json()).toEqual({ state: 'off', available: false })
+      expect(commands[0]).toContain('systemctl disable --now substrate-desktop.service')
+    })
+
     test('account keys are validated, and can start the VM first', async () => {
       commands.length = 0
       const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOxzQ7 me@laptop'
@@ -302,6 +309,7 @@ describe('hostd API', () => {
     const res = await call('/vms/vm-abc/sessions')
     expect(res.status).toBe(409)
     expect(await res.json()).toEqual({ error: "demo isn't running" })
+    expect((await call('/vms/vm-abc/sessions/s-1', { method: 'DELETE' })).status).toBe(409)
   })
 
   test('pause and resume return the updated lifecycle state', async () => {
