@@ -84,7 +84,9 @@ never reruns or cancels the agent task, and its saved result remains in the inbo
 
 ## Configure the dedicated bot
 
-Create a dedicated Substrate bot with [BotFather](https://t.me/BotFather).
+The operator creates **one shared Substrate bot** with
+[BotFather](https://t.me/BotFather). Individual users do not create bots; each
+connects their private chat to this one bot in Settings.
 Use an AWS identity authorized for `ssm:GetParameter` and `ssm:PutParameter` on
 `/substrate/telegram/*` and to read `/substrate/public-url`. From this branch:
 
@@ -94,7 +96,9 @@ bun run deploy:control
 bun run telegram:setup
 ```
 
-The first command reads the bot token privately, validates it with `getMe`, and
+The first command reads `TELEGRAM_BOT_TOKEN` from the environment (including Bun's
+root `.env` support), or prompts privately when it is unset. `.env` and `.env.*`
+are already excluded from Git. It validates the token with `getMe` and
 stores these parameters:
 
 - `/substrate/telegram/bot-token` — SecureString.

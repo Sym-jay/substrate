@@ -116,7 +116,7 @@ if (process.argv.includes('--github-oauth')) {
 
 if (process.argv.includes('--telegram')) {
   console.log('Create a dedicated bot with @BotFather in Telegram. Its token is entered privately below.')
-  const token = await readSecret('Telegram bot token')
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim() || await readSecret('Telegram bot token')
   if (!/^\d{5,20}:[A-Za-z0-9_-]{30,100}$/.test(token)) throw new Error('That does not look like a Telegram bot token.')
   const bot = await new Telegram(token).call<{ is_bot: boolean; username: string }>('getMe', {})
   if (!bot.is_bot || !/^[A-Za-z0-9_]{5,32}$/.test(bot.username)) throw new Error('Telegram did not return a bot username.')
