@@ -10,6 +10,7 @@ import { WorkflowStore } from '../../apps/control/src/workflow-store.ts'
 import { WindowsStore, toWorkspace } from '../../apps/control/src/windows/store.ts'
 import { kmsCipher, UserSecrets } from '../../apps/control/src/secrets.ts'
 import { TaskSpec, type Task } from '@substrate/protocol'
+import { Database } from 'bun:sqlite'
 
 if (!config.database) throw new Error('Postgres is not configured')
 const db = await openRds(config.database, config.region)
@@ -39,6 +40,21 @@ try {
   } else {
     check('all shared database migrations applied', (await db`select version from schema_migrations order by version`).some((r: { version: number }) => r.version === 2))
     check('legacy SQLite import committed', (await db`select id from database_imports where id = 'legacy-sqlite-v2'`).length === 1)
+    const legacy = new Database(config.db, { readonly: true })
+    try {
+      const tables = new Set((legacy.query("select name from sqlite_master where type='table'").all() as { name: string }[]).map(row => row.name))
+      if (tables.has('cli_credentials')) {
+        const rows = legacy.query('select id, hash, user_id, expires from cli_credentials where expires > ?').all(Date.now()) as { id: string; hash: string; user_id: string; expires: number }[]
+        for (const row of rows) {
+          const [retained] = await db`select id from cli_auth_credentials where id = ${row.id} and hash = ${row.hash} and user_id = ${row.user_id} and expires = ${row.expires}`
+          check('preexisting CLI credential hash, owner and expiry retained', !!retained)
+        }
+      }
+      if (tables.has('agent_tasks')) {
+        const rows = legacy.query('select id, user_id from agent_tasks').all() as { id: string; user_id: string }[]
+        for (const row of rows) check('legacy task history remains owner-scoped', !!await new WorkflowStore(db).task(row.user_id, row.id))
+      }
+    } finally { legacy.close() }
     const owner = `phase2-check-${randomUUID()}`, at = new Date().toISOString()
     const cli = new CliCredentials(db), ssh = new SshAccess(db), workflows = new WorkflowStore(db), windows = new WindowsStore(db)
     try {

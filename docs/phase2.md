@@ -127,13 +127,10 @@ Verified:
   routes (fake KMS and GitHub).
 - `cdk diff` against the live stack: no replacements.
 
-Not yet (needs the deploy):
-- x86_64 on the real host, and hostd's full snapshot flow under the jailer with
-  ZFS.
-- RDS IAM sign-in and the first-start bootstrap.
-- KMS encryption and decryption.
-- The rotation Lambda.
-- GitHub OAuth against GitHub itself.
+Current live results are in [the integration deployment record](deployments/2026-10-24-phase2.md):
+RDS IAM/TLS and bootstrap evidence, KMS, x86 jailed boots, ZFS snapshots,
+pause/resume and running-state forks passed. Real Lambda invocation/token
+handoff and GitHub OAuth consent still require external access/configuration.
 
 ## Integrated data stores
 

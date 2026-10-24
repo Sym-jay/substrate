@@ -256,3 +256,16 @@ bun run --filter @substrate/web build
 bun run cli:build
 bun run cli:build bun-linux-x64
 ```
+
+
+### Current-main integration
+
+PR #16 now targets current `main` and preserves its dashboard, Windows and Phase 2
+account features. CLI approval/credentials and the other remaining stores share
+Postgres in production; existing credential hashes and expiry migrate without
+relogin. The deployed control release is `e96dc54`. See the
+[Phase 2 deployment record](deployments/2026-10-24-phase2.md) and
+[database migration guide](database-migration.md) for verification and rollback
+limits. The initial 156-test report above describes the original CLI release;
+the integrated suite passes 204 tests, with one macOS PTY skip, and the
+control/CLI suite passes 87 tests on local Postgres.
