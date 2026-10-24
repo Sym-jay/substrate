@@ -45,6 +45,7 @@ Wants=network-online.target
 [Service]
 User=substrate
 EnvironmentFile=/etc/substrate/control.env
+EnvironmentFile=-/etc/substrate/telegram.env
 EnvironmentFile=-/etc/substrate/control-secrets.env
 Environment=HOME=/var/lib/substrate
 Environment=SUBSTRATE_DB=/var/lib/substrate/control.db
@@ -101,9 +102,14 @@ if db_host=$(param /substrate/database/host); then
     "$db_host" "$(param /substrate/database/port)" "$(param /substrate/database/name)" "$(param /substrate/database/user)" "$(param /substrate/database/master-secret)" >>"$secrets")
   log "data in Postgres at ${db_host}"
 fi
-for pair in kms-key:SUBSTRATE_KMS_KEY public-url:SUBSTRATE_PUBLIC_URL github-oauth/client-id:SUBSTRATE_GITHUB_CLIENT_ID github-oauth/client-secret:SUBSTRATE_GITHUB_CLIENT_SECRET admins:SUBSTRATE_ADMINS telegram/bot-token:SUBSTRATE_TELEGRAM_BOT_TOKEN telegram/bot-username:SUBSTRATE_TELEGRAM_BOT_USERNAME telegram/webhook-secret:SUBSTRATE_TELEGRAM_WEBHOOK_SECRET; do
+for pair in kms-key:SUBSTRATE_KMS_KEY public-url:SUBSTRATE_PUBLIC_URL github-oauth/client-id:SUBSTRATE_GITHUB_CLIENT_ID github-oauth/client-secret:SUBSTRATE_GITHUB_CLIENT_SECRET admins:SUBSTRATE_ADMINS; do
   if value=$(param "/substrate/${pair%%:*}"); then (umask 077 && printf '%s=%s\n' "${pair##*:}" "$value" >>"$secrets"); fi
 done
+# Override the protected Telegram fallback only when the complete managed
+# configuration is available, never mix credentials from different bots.
+if telegram_token=$(param /substrate/telegram/bot-token) && telegram_username=$(param /substrate/telegram/bot-username) && telegram_secret=$(param /substrate/telegram/webhook-secret); then
+  (umask 077 && printf 'SUBSTRATE_TELEGRAM_BOT_TOKEN=%s\nSUBSTRATE_TELEGRAM_BOT_USERNAME=%s\nSUBSTRATE_TELEGRAM_WEBHOOK_SECRET=%s\n' "$telegram_token" "$telegram_username" "$telegram_secret" >>"$secrets")
+fi
 
 systemctl restart substrate-control
 for _ in $(seq 1 30); do

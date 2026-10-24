@@ -48,12 +48,25 @@ destination generation so old deliveries cannot be redirected to a newly linked
 chat. Preference changes are checked again at delivery. A request already sent
 to Telegram cannot be recalled by disconnecting.
 
-The bot token and webhook secret live in Parameter Store SecureStrings and the
-control service's protected environment. They never go to a browser, command
-arguments or notification payload. Errors omit Telegram's token-bearing API URLs
-and provider response text. Only chat labels, preferences and a sanitized delivery
-status are returned by the account API. The chat ID is stored in the encrypted
-RDS volume; it is not an agent API key and is not delivered to guests.
+The preferred configuration stores the bot token and webhook secret in Parameter
+Store SecureStrings. Where the deployment identity cannot create parameters,
+`telegram:install` provides an operator fallback: it generates a one-use RSA key
+on control, transfers only an RSA-OAEP-encrypted payload through the existing S3
+artifact bucket, and writes `/etc/substrate/telegram.env` as root with mode 0600.
+The private key and temporary plaintext are removed. Ciphertext is deleted from
+S3 when allowed, otherwise normal artifact retention removes it; its decryption
+key no longer exists. Tokens never enter SSM command text or command arguments.
+
+The fallback survives app deployments and reboots, but must be reinstalled on a
+replacement control instance. It is read before Parameter Store's generated
+environment, so managed configuration takes precedence when available. It does
+not change any IAM policy or other service credential. Parameter Store remains
+the preferred durable configuration once the operator can write that prefix.
+
+Secrets never go to the browser or notification payload. Errors omit Telegram's
+token-bearing API URLs and provider response text. Only chat labels, preferences
+and sanitized delivery status are returned by the account API. The chat ID is
+stored in encrypted RDS storage and is not delivered to guests.
 
 ## Delivery and persistence
 
@@ -111,6 +124,22 @@ or host deployment is needed. The control bootstrap maps the parameters to
 `SUBSTRATE_TELEGRAM_WEBHOOK_SECRET`. `SUBSTRATE_PUBLIC_URL` must be HTTPS.
 Without that configuration, the Settings section explains that Telegram is
 unavailable, and task execution/inbox behavior continues normally.
+
+When the supplied AWS identity has deployment/SSM access but cannot create the
+new Parameter Store prefix, use the same shared bot through the protected
+control-file fallback instead:
+
+```sh
+bun run telegram:install
+bun run deploy:control
+bun run telegram:setup --control
+```
+
+Bun loads `TELEGRAM_BOT_TOKEN` from the root `.env`; `--env-file=/path/to/.env`
+can select another file without copying it into this worktree. The installer
+also supports a private prompt. `--control` registers the webhook from the
+running control service's effective environment, without returning its secrets
+to the deployment caller.
 
 The final setup command checks the deployed secret-authenticated endpoint, then
 registers `/api/telegram/webhook` with Telegram. It retains pending updates and
