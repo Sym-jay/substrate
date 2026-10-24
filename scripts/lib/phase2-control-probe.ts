@@ -39,7 +39,8 @@ try {
     console.log('RDS backup saved on control box', file)
     process.exitCode = 0
   } else {
-    check('all shared database migrations applied', (await db`select version from schema_migrations order by version`).some((r: { version: number }) => r.version === 2))
+    const migrations = (await db`select version from schema_migrations order by version`).map((row: { version: number }) => Number(row.version))
+    check('all shared database migrations applied', [1, 2, 3].every(version => migrations.includes(version)))
     if (existsSync(config.db)) {
       check('legacy SQLite import committed', (await db`select id from database_imports where id = 'legacy-sqlite-v2'`).length === 1)
       const legacy = new Database(config.db, { readonly: true })

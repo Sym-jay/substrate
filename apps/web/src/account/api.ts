@@ -1,4 +1,4 @@
-import { AgentKeyInfo, GitHubRepoInfo, GitHubStatus, QuotaStatus, UsageReport, type AgentKeyName } from '@substrate/protocol'
+import { AgentKeyInfo, GitHubRepoInfo, GitHubStatus, QuotaStatus, UsageReport, NotificationStatus, TelegramConnect, type NotificationPreferences, type AgentKeyName } from '@substrate/protocol'
 import { authHeaders } from '../auth.ts'
 
 // The signed-in user's own things (Phase 2): agent keys, GitHub, quota and use.
@@ -25,6 +25,12 @@ const send = (method: string, body: unknown): RequestInit => ({
 })
 
 export const accountApi = {
+  async notifications(signal?: AbortSignal) { return NotificationStatus.parse(await request('/api/notifications', { signal })) },
+  async notificationPreferences(value: NotificationPreferences) { return NotificationStatus.parse(await request('/api/notifications', send('PUT', value))) },
+  async connectTelegram() { return TelegramConnect.parse(await request('/api/notifications/telegram/connect', send('POST', {}))) },
+  async confirmTelegram() { return NotificationStatus.parse(await request('/api/notifications/telegram/confirm', send('POST', {}))) },
+  async disconnectTelegram() { return NotificationStatus.parse(await request('/api/notifications/telegram', { method: 'DELETE' })) },
+  async testNotification() { return NotificationStatus.parse(await request('/api/notifications/test', send('POST', {}))) },
   async keys() { return AgentKeyInfo.array().parse(await request('/api/keys')) },
   // The key goes to the control box once; it never comes back.
   async setKey(name: AgentKeyName, value: string) { await request(`/api/keys/${name}`, send('PUT', { value })) },

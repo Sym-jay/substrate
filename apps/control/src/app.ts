@@ -7,6 +7,7 @@ import { workflowRoutes } from './workflow-routes.ts'
 import type { cliRoutes } from './cli-routes.ts'
 import type { accountRoutes } from './account.ts'
 import type { windowsRoutes } from './windows/routes.ts'
+import type { notificationRoutes } from './notification-routes.ts'
 
 type Options = {
   version: string
@@ -21,11 +22,12 @@ type Options = {
   // Agent keys, GitHub, usage, quota and activity (Phase 2).
   cli?: ReturnType<typeof cliRoutes>
   account?: ReturnType<typeof accountRoutes>
+  notifications?: ReturnType<typeof notificationRoutes>
   // Windows workspaces (M9), when they're set up.
   windows?: ReturnType<typeof windowsRoutes>
 }
 
-export function createApp({ version, region, webDir, readHost, clerkPublishableKey, vms, previews, account, windows, cli }: Options) {
+export function createApp({ version, region, webDir, readHost, clerkPublishableKey, vms, previews, account, windows, cli, notifications }: Options) {
   const startedAt = new Date().toISOString()
   const app = new Hono()
 
@@ -58,6 +60,7 @@ export function createApp({ version, region, webDir, readHost, clerkPublishableK
 
   if (cli) app.route('/api', cli)
   if (account) app.route('/api', account)
+  if (notifications) app.route('/api', notifications)
   if (windows) app.route('/api', windows)
   else app.on(['GET', 'POST', 'PATCH', 'DELETE'], ['/api/windows', '/api/windows/*'], (c) => c.json({ error: "Windows workspaces aren't set up on this server" }, 503))
 

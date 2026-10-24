@@ -5,6 +5,7 @@ import { resetSettings, updateSettings, useSettings } from '../app/settings.ts'
 import { Button, Card, FieldRow, PageHeader, Segmented } from '../app/ui.tsx'
 import { Connectors } from '../account/Connectors.tsx'
 import { SshAccessPanel } from '../workspaces/SshAccessPanel.tsx'
+import { TaskNotifications } from '../account/TaskNotifications.tsx'
 
 export function SettingsPage({ account, userName }: { account?: ReactNode; userName?: string | null }) {
   const settings = useSettings()
@@ -29,6 +30,7 @@ export function SettingsPage({ account, userName }: { account?: ReactNode; userN
       </Card>
 
       {/* Keys and tokens belong to a signed-in account. */}
+      <TaskNotifications />
       {account && (
         <Card title="SSH access" className="rise" style={{ '--i': 2 } as React.CSSProperties}>
           <div className="workspaces"><SshAccessPanel /></div>

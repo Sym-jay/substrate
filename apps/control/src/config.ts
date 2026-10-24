@@ -60,6 +60,9 @@ export const config = {
   // Encrypts users' agent keys and GitHub tokens. Without it, those are off.
   kmsKeyId: process.env.SUBSTRATE_KMS_KEY || null,
   publicUrl: process.env.SUBSTRATE_PUBLIC_URL || null,
+  telegram: process.env.SUBSTRATE_TELEGRAM_BOT_TOKEN && process.env.SUBSTRATE_TELEGRAM_BOT_USERNAME && process.env.SUBSTRATE_TELEGRAM_WEBHOOK_SECRET
+    ? { token: process.env.SUBSTRATE_TELEGRAM_BOT_TOKEN, username: process.env.SUBSTRATE_TELEGRAM_BOT_USERNAME, webhookSecret: process.env.SUBSTRATE_TELEGRAM_WEBHOOK_SECRET }
+    : null,
   // A GitHub OAuth app, for "Connect with GitHub" (docs/phase2.md).
   githubOAuth:
     process.env.SUBSTRATE_GITHUB_CLIENT_ID && process.env.SUBSTRATE_GITHUB_CLIENT_SECRET

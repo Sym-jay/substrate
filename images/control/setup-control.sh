@@ -101,7 +101,7 @@ if db_host=$(param /substrate/database/host); then
     "$db_host" "$(param /substrate/database/port)" "$(param /substrate/database/name)" "$(param /substrate/database/user)" "$(param /substrate/database/master-secret)" >>"$secrets")
   log "data in Postgres at ${db_host}"
 fi
-for pair in kms-key:SUBSTRATE_KMS_KEY public-url:SUBSTRATE_PUBLIC_URL github-oauth/client-id:SUBSTRATE_GITHUB_CLIENT_ID github-oauth/client-secret:SUBSTRATE_GITHUB_CLIENT_SECRET admins:SUBSTRATE_ADMINS; do
+for pair in kms-key:SUBSTRATE_KMS_KEY public-url:SUBSTRATE_PUBLIC_URL github-oauth/client-id:SUBSTRATE_GITHUB_CLIENT_ID github-oauth/client-secret:SUBSTRATE_GITHUB_CLIENT_SECRET admins:SUBSTRATE_ADMINS telegram/bot-token:SUBSTRATE_TELEGRAM_BOT_TOKEN telegram/bot-username:SUBSTRATE_TELEGRAM_BOT_USERNAME telegram/webhook-secret:SUBSTRATE_TELEGRAM_WEBHOOK_SECRET; do
   if value=$(param "/substrate/${pair%%:*}"); then (umask 077 && printf '%s=%s\n' "${pair##*:}" "$value" >>"$secrets"); fi
 done
 

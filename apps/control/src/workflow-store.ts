@@ -2,20 +2,24 @@ import { Comparison, Task, taskIsPending } from '@substrate/protocol'
 import type { Db } from './db.ts'
 import { taskSummary } from './task-summary.ts'
 import { Owners } from './owners.ts'
+import { enqueueTaskNotification } from './notification-events.ts'
 
 export class WorkflowStore {
-  constructor(private db: Db) {}
+  constructor(private db: Db, private inTransaction = false, private now = Date.now) {}
   async reserveComparison(userId: string, comparison: Comparison, tasks: [Task, Task]) {
     await this.db.begin(async (tx) => {
-      const owners = new Owners(tx), store = new WorkflowStore(tx)
+      const owners = new Owners(tx), store = new WorkflowStore(tx, true, this.now)
       for (const task of tasks) { await owners.add(task.vmId, userId); await store.saveTask(userId, task) }
       await store.saveComparison(userId, comparison)
     })
   }
   async saveTask(userId: string, task: Task) {
-    await this.db`insert into tasks (id, user_id, payload, summary, created_at, active, reviewed_at)
+    if (!this.inTransaction) return this.db.begin(async (tx) => { await new WorkflowStore(tx, true, this.now).saveTask(userId, task) })
+    const [previous] = await this.db`select active from tasks where id = ${task.id} and user_id = ${userId}`
+    const saved = await this.db`insert into tasks (id, user_id, payload, summary, created_at, active, reviewed_at)
       values (${task.id}, ${userId}, ${JSON.stringify(task)}, ${JSON.stringify(taskSummary(task))}, ${task.createdAt}, ${taskIsPending(task) ? 1 : 0}, ${task.reviewedAt})
-      on conflict(id) do update set payload = excluded.payload, summary = excluded.summary, active = excluded.active where tasks.user_id = excluded.user_id`
+      on conflict(id) do update set payload = excluded.payload, summary = excluded.summary, active = excluded.active where tasks.user_id = excluded.user_id returning id`
+    if (saved.length && Number(previous?.active) === 1 && !taskIsPending(task)) await enqueueTaskNotification(this.db, userId, task, this.now())
   }
   async saveComparison(userId: string, comparison: Comparison) {
     await this.db`insert into comparisons (id, user_id, payload, created_at)

@@ -29,6 +29,8 @@ import { WindowsStore } from './windows/store.ts'
 import { WindowsTerminals, withControllingTerminal } from './windows/terminals.ts'
 import { WindowsWorkspaces } from './windows/workspaces.ts'
 import { Workflows, WorkflowStore } from './workflows.ts'
+import { Notifications } from './notifications.ts'
+import { notificationRoutes } from './notification-routes.ts'
 
 const browserAuthenticate = config.clerk
   ? clerkAuth({ ...config.clerk, authorizedParties: config.authorizedParties, allowedEmails: config.allowedEmails })
@@ -37,6 +39,8 @@ const browserAuthenticate = config.clerk
     : null
 
 const db = await openDatabase()
+const notifications = new Notifications(db, config.telegram, config.publicUrl)
+notifications.start()
 const cliCredentials = browserAuthenticate ? new CliCredentials(db) : undefined
 const authenticate = browserAuthenticate && cliCredentials ? withCliAuthentication(browserAuthenticate, cliCredentials,
   config.clerk ? clerkCliAccess({ secretKey: config.clerk.secretKey, allowedEmails: config.allowedEmails }) : async (id) => id === 'local-dev') : null
@@ -133,6 +137,7 @@ async function setUpWindows(windows: NonNullable<typeof config.windows>, authent
 }
 
 const app = createApp({
+  notifications: authenticate ? notificationRoutes(authenticate, notifications) : undefined,
   version: config.version,
   region: config.region,
   webDir: config.webDir,
