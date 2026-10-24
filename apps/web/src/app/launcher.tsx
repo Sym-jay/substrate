@@ -1,7 +1,7 @@
-import { VmName, type Agent, type AgentMode } from '@substrate/protocol'
+import { VmName, sizeCeiling, type Agent, type AgentMode, type Quota } from '@substrate/protocol'
 import { AppWindow, ArrowLeft, ArrowRight, SquareTerminal } from 'lucide-react'
-import { createContext, useCallback, useContext, useState, type FormEvent, type ReactNode } from 'react'
-import { windowsApi } from '../workspaces/api.ts'
+import { createContext, useCallback, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { accountApi, windowsApi } from '../workspaces/api.ts'
 import { AgentIcon } from './AgentIcon.tsx'
 import { Slider } from './Slider.tsx'
 import { agentCatalog } from './agents.ts'
@@ -100,6 +100,14 @@ export function LauncherProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// The stops at or under a limit; at least the first, so a slider always has one.
+const upTo = (stops: number[], most: number) => {
+  const allowed = stops.filter((n) => n <= most)
+  return allowed.length ? allowed : stops.slice(0, 1)
+}
+// The stop nearest a value.
+const nearestStop = (stops: number[], value: number) => stops.reduce((best, s) => (Math.abs(s - value) < Math.abs(best - value) ? s : best))
+
 const autoPauseChoices: { value: string; label: string }[] = [
   { value: 'default', label: 'Default' }, { value: 'off', label: 'Never' },
   { value: '10', label: 'After 10 min idle' }, { value: '30', label: 'After 30 min idle' },
@@ -135,6 +143,22 @@ function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, on
   const [autoPause, setAutoPause] = useState(initial.autoPauseMinutes === 'default' ? 'default' : initial.autoPauseMinutes === null ? 'off' : String(initial.autoPauseMinutes))
   const [remember, setRemember] = useState(false)
   const [error, setError] = useState('')
+  // The plan's limits, once they're in. Sizes over them aren't offered.
+  const [limits, setLimits] = useState<Quota | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    accountApi.quota(controller.signal).then((q) => setLimits(q.limits), () => {})
+    return () => controller.abort()
+  }, [])
+  const most = limits ? sizeCeiling(limits) : null
+  const vcpuChoices = most ? upTo(vcpuStops, most.vcpus) : vcpuStops
+  const memChoices = most ? upTo(memGibStops, most.memMib / 1024) : memGibStops
+  const diskChoices = limits ? upTo(diskGibStops, limits.maxDiskGib) : diskGibStops
+  // What's chosen, within the plan: a saved default over it lands on its top stop.
+  const cpu = nearestStop(vcpuChoices, vcpus)
+  const mem = nearestStop(memChoices, memGib)
+  const disk = nearestStop(diskChoices, diskGib)
+  const capped = !!most && (vcpuChoices.length < vcpuStops.length || memChoices.length < memGibStops.length || diskChoices.length < diskGibStops.length)
   const windows = os === 'windows'
   const steps: Step[] = windows ? ['basics', 'size', 'review'] : ['basics', 'size', 'agent', 'review']
   const at = steps.indexOf(step)
@@ -165,7 +189,7 @@ function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, on
     if (at < steps.length - 1) return go(at + 1)
     if (windows) return onLaunchWindows(name || placeholder)
     onLaunch({
-      name: name || placeholder, vcpus, memMib: memGib * 1024, diskGib, agent, mode,
+      name: name || placeholder, vcpus: cpu, memMib: mem * 1024, diskGib: disk, agent, mode,
       repository: source === 'github' ? repository.trim() : undefined,
       autoPauseMinutes: autoPause === 'default' ? 'default' : autoPause === 'off' ? null : Number(autoPause),
     }, remember)
@@ -173,7 +197,7 @@ function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, on
 
   const summary = windows
     ? `Windows · ${windowsSize.vcpus} vCPU · ${windowsSize.memGib} GB`
-    : `${vcpus} vCPU · ${gibLabel(memGib)} · ${gibLabel(diskGib)} disk`
+    : `${cpu} vCPU · ${gibLabel(mem)} · ${gibLabel(disk)} disk`
 
   return (
     <form onSubmit={submit} className="modal-form">
@@ -215,14 +239,17 @@ function LaunchForm({ initial, os: initialOs, windowsOffered, busy, onLaunch, on
         </>}
 
         {step === 'size' && <>
-          <Slider label="vCPU" stops={vcpuStops} value={windows ? windowsSize.vcpus : vcpus} onChange={setVcpus} format={(n) => `${n} vCPU`} tick={String} disabled={windows} />
-          <Slider label="Memory" stops={memGibStops} value={windows ? windowsSize.memGib : memGib} onChange={setMemGib} format={gibLabel} tick={String} disabled={windows} />
+          <Slider label="vCPU" stops={windows ? vcpuStops : vcpuChoices} value={windows ? windowsSize.vcpus : cpu} onChange={setVcpus} format={(n) => `${n} vCPU`} tick={String} disabled={windows} />
+          <Slider label="Memory" stops={windows ? memGibStops : memChoices} value={windows ? windowsSize.memGib : mem} onChange={setMemGib} format={gibLabel} tick={String} disabled={windows} />
           {windows ? (
             <p className="text-muted text-sm leading-relaxed">
               Every Windows workspace is this size: Windows Server 2025 with Git, Node.js, PowerShell 7, WSL, Claude Code and Codex. Its first start takes 5 to 10 minutes; one can be on at a time, and it stops itself when idle.
             </p>
           ) : (
-            <Slider label="Disk" stops={diskGibStops} value={diskGib} onChange={setDiskGib} format={gibLabel} tick={(g) => (g >= 1024 ? '1T' : String(g))} />
+            <>
+              <Slider label="Disk" stops={diskChoices} value={disk} onChange={setDiskGib} format={gibLabel} tick={(g) => (g >= 1024 ? '1T' : String(g))} />
+              {capped && most && limits && <p className="text-faint text-xs">Your plan allows up to {most.vcpus} vCPU, {gibLabel(most.memMib / 1024)} and a {gibLabel(limits.maxDiskGib)} disk per workspace.</p>}
+            </>
           )}
         </>}
 
