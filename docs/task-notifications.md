@@ -161,6 +161,11 @@ None of these paths is available through the separate preview origin.
   captures show pending, confirmation, connected and unconfigured states without
   horizontal overflow. The mechanical design detector returned no findings.
 
-These are not evidence of a live BotFather setup or a delivered real Telegram
-message. Live setup and one signed-in user's test must complete before claiming
-end-to-end production delivery.
+A separate live preflight validated the operator-provided bot token with
+Telegram's `getMe` and checked for a conflicting webhook. The supplied AWS
+identity returned `AccessDeniedException` for storing `/substrate/telegram/*`,
+so the control service has not been redeployed and no real Telegram message was
+sent. Grant that identity `ssm:GetParameter` and `ssm:PutParameter` on
+`arn:aws:ssm:ap-south-1:*:parameter/substrate/telegram/*`, or run the setup with
+an already authorized operator identity. Then deploy control, register the webhook
+and complete one signed-in user's test before claiming production delivery.
