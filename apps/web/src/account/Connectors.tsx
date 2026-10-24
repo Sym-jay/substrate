@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '../app/ui.tsx'
 import { accountApi } from './api.ts'
 import { markGitHubReturn, type GitHubReturn } from './githubReturn.ts'
+import { TelegramConnector } from './TelegramConnector.tsx'
 
 const message = (error: unknown) => (error instanceof Error ? error.message : 'Something went wrong. Try again.')
 
@@ -45,8 +46,8 @@ export function ConnectGitHubButton({ status, returnTo, size, label = 'Connect G
   return <Button size={size} className="btn-github" icon={<GitHubMark />} disabled={busy} onClick={() => void connect()}>{busy ? 'Opening GitHub…' : label}</Button>
 }
 
-// Apps your workspaces can reach. GitHub for now: connecting it goes through
-// GitHub (OAuth), and lets a new workspace start from your repositories.
+// Apps Substrate works with. GitHub, through GitHub (OAuth), so a new
+// workspace can start from your repositories; Telegram, for task alerts.
 export function Connectors() {
   // undefined while it's asked; null when it couldn't be.
   const [github, setGitHub] = useState<GitHubStatus | null | undefined>(undefined)
@@ -82,6 +83,7 @@ export function Connectors() {
             : <ConnectGitHubButton size="sm" status={github} returnTo="settings" label="Connect" onError={setError} />}
         </div>
       </div>
+      <TelegramConnector />
       <p className="text-faint text-xs">More connectors are on the way.</p>
     </div>
   )
