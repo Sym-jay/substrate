@@ -159,8 +159,8 @@ export function WorkspacesTable() {
               return (
                 <div key={r.id} className={`data-row ${running ? 'is-running' : ''}`} role="row">
                   {running && <Shimmer />}
-                  <input type="checkbox" aria-label={`Select ${r.name}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
-                  <span role="cell" className="min-w-0">
+                  <input type="checkbox" className="ws-check" aria-label={`Select ${r.name}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                  <span role="cell" className="ws-name min-w-0">
                     <a href={r.kind === 'linux' ? href('workspaces', r.id) : href('windows', r.id)} className="block truncate hover:underline">{r.name}</a>
                     <span className="text-faint block truncate text-xs">
                       {r.kind === 'linux' ? [r.vm.repository, agents ? `${agents} agent${agents === 1 ? '' : 's'} working` : null].filter(Boolean).join(' · ') || ' ' : ' '}
@@ -170,12 +170,12 @@ export function WorkspacesTable() {
                     onClick={() => void navigator.clipboard.writeText(r.id).then(() => toast('Id copied.'))}>
                     <span className="truncate">{r.id}</span><Copy className="size-3 shrink-0" />
                   </button>
-                  <span role="cell" className="text-muted">{r.kind === 'linux' ? 'Linux' : 'Windows'}</span>
-                  <span role="cell"><StateBadge state={r.state} /></span>
-                  <span role="cell" className="text-muted">{r.kind === 'linux' ? `${r.vm.vcpus} vCPU · ${gb(r.vm.memMib)}` : `${windowsSizeOf(r.w).vcpus} vCPU · ${windowsSizeOf(r.w).memGib} GB`}</span>
+                  <span role="cell" className="ws-type text-muted">{r.kind === 'linux' ? 'Linux' : 'Windows'}</span>
+                  <span role="cell" className="ws-state"><StateBadge state={r.state} /></span>
+                  <span role="cell" className="ws-size text-muted truncate">{r.kind === 'linux' ? `${r.vm.vcpus} vCPU · ${gb(r.vm.memMib)}` : `${windowsSizeOf(r.w).vcpus} vCPU · ${windowsSizeOf(r.w).memGib} GB`}</span>
                   <span role="cell" className="ws-created text-faint truncate" title={new Date(r.createdAt).toLocaleString()}>{since(r.createdAt)}</span>
-                  <span role="cell" className="min-w-0">{timer ? <><span className="block truncate">{timer.main}</span>{timer.sub && <span className="text-faint block truncate text-xs">{timer.sub}</span>}</> : <span className="text-faint">—</span>}</span>
-                  <span role="cell" className="flex items-center justify-end gap-1">
+                  <span role="cell" className="ws-pauses min-w-0">{timer ? <><span className="block truncate">{timer.main}</span>{timer.sub && <span className="text-faint block truncate text-xs">{timer.sub}</span>}</> : <span className="text-faint">—</span>}</span>
+                  <span role="cell" className="ws-actions flex items-center justify-end gap-1">
                     {running || isBusy(r.state) ? <Button size="sm" variant="ghost" onClick={() => open(r)}>Open</Button>
                       : r.state === 'paused' ? <Button size="sm" variant="ghost" icon={<Play />} disabled={!!busy} onClick={() => void run([r], 'resume', 'Resumed')}>Resume</Button>
                       : r.state === 'stopped' ? <Button size="sm" variant="ghost" icon={<Play />} disabled={!!busy} onClick={() => void run([r], 'start', 'Started')}>Start</Button>
@@ -189,7 +189,7 @@ export function WorkspacesTable() {
                           {r.kind === 'linux' && <MenuItem icon={<GitBranch />} hint="a copy, as it is now" disabled={!!busy || (r.state !== 'running' && r.state !== 'paused')} onClick={() => { close(); void fork(r.vm) }}>Fork</MenuItem>}
                           {r.kind === 'linux' && <MenuItem icon={<LayoutTemplate />} hint="soon" onClick={() => { close(); toast('Saving a workspace as a template is on the way.') }}>Save as template</MenuItem>}
                           {r.kind === 'linux' && <MenuItem icon={<ScrollText />} onClick={() => { close(); navigate('logs', r.id) }}>Logs</MenuItem>}
-                          <MenuItem icon={<Trash />} disabled={!!busy} onClick={() => { close(); void run([r], 'delete', 'Deleted') }}>Delete</MenuItem>
+                          <MenuItem icon={<Trash />} danger disabled={!!busy} onClick={() => { close(); void run([r], 'delete', 'Deleted') }}>Delete</MenuItem>
                         </>
                       )}
                     </Menu>
