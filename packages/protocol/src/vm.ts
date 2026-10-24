@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { GitHubRepo } from './github.ts'
+import { EgressPolicy } from './egress.ts'
 
 // Preset sizes. `large` is the default: enough for Claude Code plus a build.
 export const VmSizes = {
@@ -61,6 +62,9 @@ export const Vm = z.object({
   maxAwakeHours: z.number().int().nullable().optional(),
   // memMib remains the ceiling; this reports the live, elastic allocation.
   memory: VmMemory.nullable().optional(),
+  // Phase 2: whether it runs under the jailer, and where it may connect out to.
+  isolation: z.enum(['none', 'jail']).optional(),
+  egress: EgressPolicy.optional(),
 })
 export type Vm = z.infer<typeof Vm>
 
@@ -78,6 +82,7 @@ export const CreateVm = z.object({
   // hostd also holds this between the image's own size and the host's storage pool.
   diskGib: z.number().int().min(8).max(1024).optional(),
   repository: GitHubRepo.optional(),
+  egress: EgressPolicy.optional(),
 })
 export type CreateVm = z.infer<typeof CreateVm>
 
@@ -88,9 +93,10 @@ export const AutoPauseMinutes = z.number().int().min(1).max(1440).nullable()
 export const DEFAULT_MAX_AWAKE_HOURS = 24
 export const MaxAwakeHours = z.number().int().min(1).max(720).nullable()
 
+// A new egress policy takes effect at the VM's next start.
 export const UpdateVm = z
-  .object({ autoPauseMinutes: AutoPauseMinutes.optional(), maxAwakeHours: MaxAwakeHours.optional() })
-  .refine((v) => v.autoPauseMinutes !== undefined || v.maxAwakeHours !== undefined, 'nothing to change')
+  .object({ autoPauseMinutes: AutoPauseMinutes.optional(), maxAwakeHours: MaxAwakeHours.optional(), egress: EgressPolicy.optional() })
+  .refine((v) => v.autoPauseMinutes !== undefined || v.maxAwakeHours !== undefined || v.egress !== undefined, 'nothing to change')
 export type UpdateVm = z.infer<typeof UpdateVm>
 
 // Disks only grow: shrinking one could cut off data the guest wrote.
@@ -120,7 +126,7 @@ export const GuestHealth = z.object({
   vmId: z.string(),
   version: z.string(),
   uptimeMs: z.number(),
-  features: z.object({ forkNetwork: z.boolean() }).optional(),
+  features: z.object({ forkNetwork: z.boolean(), tasks: z.boolean().optional() }).optional(),
 })
 export type GuestHealth = z.infer<typeof GuestHealth>
 

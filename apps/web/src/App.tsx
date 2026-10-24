@@ -6,6 +6,7 @@ import { Shell } from './app/Shell.tsx'
 import { Toasts } from './app/ui.tsx'
 import { CommandPalette } from './app/CommandPalette.tsx'
 import { EnvironmentPage } from './pages/EnvironmentPage.tsx'
+import { InboxPage } from './pages/InboxPage.tsx'
 import { JobsPage } from './pages/JobsPage.tsx'
 import { LogsPage } from './pages/LogsPage.tsx'
 import { ProfilePage, type Profile } from './pages/ProfilePage.tsx'
@@ -36,6 +37,7 @@ export function App({ account, userName, profile }: { account?: ReactNode; userN
 function Page({ account, userName, profile }: { account?: ReactNode; userName?: string | null; profile?: Profile }) {
   const { page, params } = useRoute()
   switch (page) {
+    case 'inbox': return <InboxPage />
     case 'windows': return <WindowsPage params={params} />
     case 'snapshots': return <SnapshotsPage params={params} />
     case 'jobs': return <JobsPage />

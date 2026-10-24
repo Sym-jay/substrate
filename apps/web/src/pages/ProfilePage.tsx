@@ -1,9 +1,10 @@
 import { UserRound } from 'lucide-react'
+import type { QuotaStatus, UsageReport } from '@substrate/protocol'
 import { useEffect, useState, type CSSProperties } from 'react'
 import { useData } from '../app/data.tsx'
 import { gibLabel, windowsSize } from '../app/launch.ts'
 import { Button, Card, PageHeader } from '../app/ui.tsx'
-import { accountApi, type QuotaStatus, type UsageReport } from '../workspaces/api.ts'
+import { accountApi } from '../workspaces/api.ts'
 
 // Who's signed in, from the sign-in provider (ClerkApp.tsx). Absent when
 // sign-in is off.

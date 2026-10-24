@@ -411,6 +411,10 @@ select.input option { background: var(--bg); color: var(--ink); }
 .ws-tab[aria-selected='true'] { color: var(--ink); border-color: var(--accent); }
 .ws-tab.is-ended { opacity: 0.5; }
 .ws-terminal { flex: 1; min-height: 0; padding: 0.6rem; }
+/* A microVM's desktop, in its Desktop tab: status and controls above the screen. */
+.vm-desktop { display: flex; flex-direction: column; gap: 0.5rem; height: 100%; }
+.vm-desktop-bar { display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; }
+.vm-desktop-body { position: relative; flex: 1; min-height: 0; border: var(--hair) solid var(--line); }
 @media (max-width: 767px) {
   .ws-single { height: auto; }
   .ws-pane { height: calc(100dvh - 8rem); }

@@ -1,10 +1,12 @@
 import { mkdir } from 'node:fs/promises'
-import { randomBytes } from 'node:crypto'
 import { websocket } from 'hono/bun'
 import { createApp } from './app.ts'
 import { config } from './config.ts'
 import { currentImage } from './images.ts'
-import { applyFirewall, defaultUplink } from './network.ts'
+import { applyFirewall, defaultUplink, PROXY_PORT, slotOfGuest } from './network.ts'
+import { startEgressProxy } from './egress.ts'
+import { listRecords } from './state.ts'
+import { Tokens } from './tokens.ts'
 import { AutoPause } from './autopause.ts'
 import { logOnly, ntfy } from './notify.ts'
 import { Supervisor } from './supervisor.ts'
@@ -12,19 +14,12 @@ import { MemoryController } from './balloon.ts'
 import { VmManager } from './vms.ts'
 import * as zfs from './zfs.ts'
 
-// The bearer token for this API. Generated once and kept on the data disk;
-// on the host, `bun run vm` reads it to talk to hostd.
-async function loadToken() {
-  const file = Bun.file(config.paths.token)
-  if (await file.exists()) return (await file.text()).trim()
-  const token = randomBytes(32).toString('hex')
-  await Bun.write(config.paths.token, token, { mode: 0o600 })
-  return token
-}
-
 await mkdir(config.paths.run, { recursive: true })
 await mkdir(config.paths.vms, { recursive: true })
-const token = await loadToken()
+// The bearer token for this API: on the data disk, kept in step with
+// Parameter Store (see tokens.ts). `bun run vm` reads it to talk to hostd.
+const tokens = new Tokens({ current: config.paths.token, previous: config.paths.previousToken })
+await tokens.init()
 const uplink = await defaultUplink()
 await applyFirewall(uplink, config.paths.run)
 
@@ -40,8 +35,20 @@ new AutoPause({ vms, notify, quietMs: config.autoPause.quietMs }).start(config.a
 new Supervisor({ vms, pool, notify }).start(config.autoPause.pollMs)
 new MemoryController(() => vms.balanceMemory()).start()
 
+// Allowlisted VMs reach the internet only through this (see network.ts). A
+// VM with open egress may use it too, to anywhere public.
+startEgressProxy({
+  port: PROXY_PORT,
+  async grantFor(sourceIp) {
+    const slot = slotOfGuest(sourceIp)
+    const record = slot === null ? undefined : (await listRecords()).find((r) => r.slot === slot)
+    if (!record) return null
+    return { vmId: record.id, allow: record.egress.mode === 'allowlist' ? record.egress.allow : 'any' }
+  },
+})
+
 const app = createApp({
-  token,
+  token: (given) => tokens.verify(given),
   version: config.version,
   image: async () => (await currentImage())?.version ?? null,
   pool,

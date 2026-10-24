@@ -15,3 +15,5 @@ vm-*-ssh.json
 .DS_Store
 # Left behind by `bun build --compile`.
 *.bun-build
+# Local screenshots generated while checking application changes.
+**/.impeccable/review/

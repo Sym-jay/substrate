@@ -1,5 +1,5 @@
 import { open, readdir, rename } from 'node:fs/promises'
-import { AutoPauseMinutes, DEFAULT_AUTO_PAUSE_MINUTES, DEFAULT_MAX_AWAKE_HOURS, MaxAwakeHours } from '@substrate/protocol'
+import { AutoPauseMinutes, DEFAULT_AUTO_PAUSE_MINUTES, DEFAULT_MAX_AWAKE_HOURS, EgressPolicy, MaxAwakeHours } from '@substrate/protocol'
 import { z } from 'zod'
 import { RunCheckpoint } from '@substrate/protocol'
 import { config } from './config.ts'
@@ -42,10 +42,16 @@ export const VmRecord = z.object({
   forkCapable: z.boolean().default(false),
   // Old running VMs/snapshots have no device; enable it on their next cold boot.
   balloonEnabled: z.boolean().default(false),
+  // A frozen task would execute twice if its saved process were forked.
+  activeTaskAtSave: z.boolean().default(false),
   maxAwakeHours: MaxAwakeHours.default(DEFAULT_MAX_AWAKE_HOURS),
   // Started and not since stopped or deleted. A VM like this that isn't running
   // (and isn't paused) went down by itself, so hostd boots it again.
   shouldRun: z.boolean().default(false),
+  // How it was last launched (see config.isolation): what a pause saved, a
+  // resume must load the same way.
+  isolation: z.enum(['none', 'jail']).default('none'),
+  egress: EgressPolicy.default({ mode: 'open', allow: [] }),
 })
 export type VmRecord = z.infer<typeof VmRecord>
 

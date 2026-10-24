@@ -12,6 +12,7 @@ import { Sessions, TerminalSession, sessionArgv, withControllingTerminal } from 
 const token = 't'.repeat(40)
 const auth = { Authorization: `Bearer ${token}` }
 
+const agentEnvs: unknown[] = []
 const app = createApp({
   vmId: 'vm-test',
   token,
@@ -19,6 +20,18 @@ const app = createApp({
   run: async (req) => ({ exitCode: 0, stdout: req.command, stderr: '', durationMs: 1, timedOut: false }),
   sessions: new Sessions(),
   activity: new Activity(),
+  agentEnv: async (env) => { agentEnvs.push(env) },
+})
+
+describe('agent keys', () => {
+  const put = (body: unknown) => app.request('/agent-env', { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  test('only the agent key variables, with key-like values', async () => {
+    expect((await put({ ANTHROPIC_API_KEY: 'sk-ant-api03-abc_DEF-123' })).status).toBe(204)
+    expect(agentEnvs.at(-1)).toEqual({ ANTHROPIC_API_KEY: 'sk-ant-api03-abc_DEF-123' })
+    expect((await put({ LD_PRELOAD: '/tmp/x.so' })).status).toBe(400)
+    expect((await put({ OPENAI_API_KEY: "sk-x'; rm -rf ~; '" })).status).toBe(400)
+    expect((await app.request('/agent-env', { method: 'PUT', body: '{}' })).status).toBe(401)
+  })
 })
 
 describe('guestd API', () => {

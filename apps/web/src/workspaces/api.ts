@@ -1,4 +1,4 @@
-import { Session, Vm, VmLogs, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
+import { AccountSshKey, QuotaStatus, Session, UsageReport, SshToken, Vm, VmGui, VmLogs, RunCheckpoint, WindowsCredentials, WindowsWorkspace, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type ResizeVm, type ForkVm, type CreateSession, type CreateVm, type UpdateVm } from '@substrate/protocol'
 import { authHeaders } from '../auth.ts'
 
 export class WorkspaceApiError extends Error {
@@ -7,7 +7,7 @@ export class WorkspaceApiError extends Error {
   }
 }
 
-async function request(path: string, init?: RequestInit): Promise<unknown> {
+export async function request(path: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(path, { ...init, headers: { ...(init?.headers as Record<string, string>), ...(await authHeaders()) } })
   if (!response.ok) {
     const body = await response.json().catch(() => null)
@@ -68,6 +68,20 @@ export const workspaceApi = {
   async sessions(vmId: string, signal?: AbortSignal) {
     return Session.array().parse(await request(`${vmPath(vmId)}/sessions`, { signal }))
   },
+  // The VM's desktop: whether it has one, setting one up, and VNC to it.
+  async gui(vmId: string, signal?: AbortSignal) {
+    return VmGui.parse(await request(`${vmPath(vmId)}/gui`, { signal }))
+  },
+  async setupGui(vmId: string) {
+    return VmGui.parse(await request(`${vmPath(vmId)}/gui/setup`, post({})))
+  },
+  async guiConnection(vmId: string) {
+    const { ticket } = (await request(`${vmPath(vmId)}/gui/ticket`, post({}))) as { ticket: string }
+    const url = new URL(`${vmPath(vmId)}/gui/vnc`, window.location.href)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    url.searchParams.set('ticket', ticket)
+    return { url: url.href }
+  },
   async createSession(vmId: string, input: CreateSession = {}) {
     return Session.parse(await request(`${vmPath(vmId)}/sessions`, post(input)))
   },
@@ -127,15 +141,19 @@ export const dashboardApi = {
   },
 }
 
-// The signed-in user's quota and this month's metered use, from PR #14's
-// /api/quota and /api/usage (the protocol's QuotaStatus and UsageReport once
-// it merges). A server without them answers 404.
-export type QuotaStatus = {
-  limits: { maxVms: number; maxDiskGib: number; maxTotalDiskGib: number; maxRunningHours: number }
-  used: { vms: number; totalDiskGib: number; runningHours: number }
+// SSH with your own keys: keys on your account, and tokens for ssh-proxy.mjs.
+export const sshApi = {
+  async keys() { return AccountSshKey.array().parse(await request('/api/ssh/keys')) },
+  async addKey(publicKey: string, name?: string) { return AccountSshKey.parse(await request('/api/ssh/keys', post({ publicKey, name: name || undefined }))) },
+  async removeKey(id: string) { await request(`/api/ssh/keys/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
+  async tokens() { return SshToken.array().parse(await request('/api/ssh/tokens')) },
+  async createToken(name: string) { return (await request('/api/ssh/tokens', post({ name }))) as SshToken & { token: string } },
+  async revokeToken(id: string) { await request(`/api/ssh/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
 }
-export type UsageReport = { month: string; totals: { runningHours: number; vcpuHours: number; gibHours: number } }
+
+// The signed-in user's quota and this month's metered use. A server without
+// them answers 404.
 export const accountApi = {
-  async quota(signal?: AbortSignal) { return (await request('/api/quota', { signal })) as QuotaStatus },
-  async usage(signal?: AbortSignal) { return (await request('/api/usage', { signal })) as UsageReport },
+  async quota(signal?: AbortSignal) { return QuotaStatus.parse(await request('/api/quota', { signal })) },
+  async usage(signal?: AbortSignal) { return UsageReport.parse(await request('/api/usage', { signal })) },
 }

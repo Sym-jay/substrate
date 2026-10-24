@@ -67,7 +67,7 @@ Only me and a friend helping build it use it. Nothing here is production.
 |---|---|
 | Monorepo | Bun workspaces (Bun 1.4.4), TypeScript strict |
 | `apps/web` | Vite 8 + React 19 + Tailwind CSS 4 + `@xterm/xterm` 6. Mobile-first: on-screen key bar (Esc, Ctrl, Tab, arrows), installable as a PWA |
-| `apps/control` | Bun + Hono 4 on the control box. Serves the web build and a REST + WebSocket API, relays terminals and preview URLs to hostd, and starts/stops the host (M5). State in SQLite (`bun:sqlite`) |
+| `apps/control` | Bun + Hono 4 on the control box. Serves the web build and a REST + WebSocket API, relays terminals and preview URLs to hostd, and starts/stops the host (M5). State in SQLite (`bun:sqlite`); Postgres on RDS from Phase 2 |
 | `apps/hostd` | Bun + TS on the sandbox host. Talks to Firecracker's HTTP API over its Unix socket using a typed client generated from Firecracker's OpenAPI spec. Handles ZFS, TAP networking, snapshots and capacity checks |
 | `apps/guestd` | Bun + TS, built with `bun build --compile` into one binary inside the rootfs and run by systemd. Runs terminals with `Bun.spawn({ terminal })`, keeps sessions and their scrollback, reports agent activity |
 | `packages/protocol` | zod schemas and types shared by all of the above |
@@ -259,6 +259,10 @@ in the browser, run an agent, and release it.
 # Phase 2: Private beta
 
 Before anyone else uses Substrate. Phase 1 must be finished first.
+
+Data, Isolation between users and Secrets are built, along with connecting
+GitHub for repository workspaces: see [phase2.md](phase2.md) for how they work,
+how to deploy them (after M9) and what's still unverified.
 
 **Access**
 - A custom domain with HTTPS, so sign-in can move to Clerk's production
