@@ -6,6 +6,25 @@ const PAGE = 4096, MAX_BYTES = 64 * 1024 * 1024, MAX_RANGES = 4096
 type Range = { offset: number; length: number }
 type Hint = { version: 1; fileSize: number; ranges: Range[] }
 
+// /proc/PID/maps uses the process's chroot-relative pathname. Match the actual
+// device/inode instead, so a jailed mapping and its host path identify the same
+// immutable snapshot without accepting a similarly named file in another jail.
+export function memoryMappings(text: string, file: { dev: bigint; ino: bigint }) {
+  const major = ((file.dev >> 8n) & 0xfffn) | ((file.dev >> 32n) & 0xfffff000n)
+  const minor = (file.dev & 0xffn) | ((file.dev >> 12n) & 0xffffff00n)
+  return text.split('\n').flatMap((line) => {
+    const fields = line.trim().split(/\s+/)
+    if (!fields[3] || !fields[4] || !/^[0-9]+$/.test(fields[4])) return []
+    const device = fields[3].split(':')
+    if (device.length !== 2 || !device.every(part => /^[0-9a-f]+$/i.test(part)) ||
+      BigInt(`0x${device[0]}`) !== major || BigInt(`0x${device[1]}`) !== minor || BigInt(fields[4]) !== file.ino) return []
+    const [start, end] = fields[0]!.split('-').map(n => Number.parseInt(n, 16))
+    const offset = Number.parseInt(fields[2]!, 16)
+    if (![start, end, offset].every(n => Number.isSafeInteger(n) && n! >= 0 && n! % PAGE === 0) || end! <= start!) return []
+    return [{ start: start!, end: end!, offset }]
+  })
+}
+
 export function validHint(value: unknown, size: number): value is Hint {
   const hint = value as Hint | null
   if (!hint || hint.version !== 1 || hint.fileSize !== size || !Array.isArray(hint.ranges) || hint.ranges.length > MAX_RANGES) return false
@@ -28,13 +47,8 @@ export async function captureWorkingSet(vmId: string, memory: string): Promise<H
   try {
     const pid = (await $`systemctl show -p MainPID --value ${unitName(vmId)}`.quiet().text()).trim()
     if (!/^[1-9][0-9]*$/.test(pid)) return null
-    const size = (await stat(memory)).size
-    const mappings = (await readFile(`/proc/${pid}/maps`, 'utf8')).split('\n').flatMap((line) => {
-      const fields = line.trim().split(/\s+/)
-      if (fields.slice(5).join(' ') !== memory) return []
-      const [start, end] = fields[0]!.split('-').map(n => Number.parseInt(n, 16))
-      return [{ start: start!, end: end!, offset: Number.parseInt(fields[2]!, 16) }]
-    })
+    const file = await stat(memory, { bigint: true }), size = Number(file.size)
+    const mappings = memoryMappings(await readFile(`/proc/${pid}/maps`, 'utf8'), file)
     const pages = await open(`/proc/${pid}/pagemap`, 'r'), ranges: Range[] = []
     let bytes = 0
     try {

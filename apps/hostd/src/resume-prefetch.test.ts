@@ -2,7 +2,18 @@ import { expect, test } from 'bun:test'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { prefetchWorkingSet, validHint } from './resume-prefetch.ts'
+import { memoryMappings, prefetchWorkingSet, validHint } from './resume-prefetch.ts'
+
+test('resident mappings match file identity across the jail, never a same-named snapshot in another dataset', () => {
+  const text = `1000-3000 rw-p 00000000 00:123 456 /snapshots/generation/memory
+4000-5000 rw-p 00003000 00:124 456 /snapshots/generation/memory
+6000-7000 rw-p 00000000 00:123 789 /snapshots/generation/memory
+8000-9000 rw-p 00004000 00:123 456 /another-path/memory`
+  expect(memoryMappings(text, { dev: 0x100023n, ino: 456n })).toEqual([
+    { start: 0x1000, end: 0x3000, offset: 0 }, { start: 0x8000, end: 0x9000, offset: 0x4000 },
+  ])
+  expect(memoryMappings('malformed', { dev: 0n, ino: 0n })).toEqual([])
+})
 
 test('memory hints reject corruption, overlaps, out-of-bounds pages and oversized reads', () => {
   const hint = { version: 1, fileSize: 16384, ranges: [{ offset: 0, length: 4096 }] }
