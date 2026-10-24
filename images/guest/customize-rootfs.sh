@@ -73,7 +73,13 @@ install -m 0755 "$guestd" "$root/usr/local/bin/substrate-guestd"
 cat >"$root/etc/systemd/system/substrate-guestd.service" <<'EOF'
 [Unit]
 Description=Substrate guest agent
-After=network.target
+# Kernel ip= configures eth0 before userspace. The agent needs writable local
+# files and runtime directories, not the whole basic.target boot transaction.
+DefaultDependencies=no
+Wants=systemd-tmpfiles-setup.service
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=shutdown.target
+Conflicts=shutdown.target
 
 [Service]
 ExecStart=/usr/local/bin/substrate-guestd
@@ -143,6 +149,14 @@ in_root '
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.cache /root/.bun
 '
 printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" >"$root/etc/resolv.conf"
+
+# Package installation is finished. Prepare the final linker cache once in the
+# image, instead of making each new VM run first-boot ldconfig on the critical
+# path. The update stamps remain older than any later /usr change inside a VM,
+# so systemd still runs its update services when /usr is marked updated later.
+log "preparing first-boot library cache"
+in_root 'systemd-sysusers; journalctl --update-catalog; ldconfig'
+touch "$root/etc/.updated" "$root/var/.updated"
 
 # If the host dies, a VM loses at most ~5 s of writes rather than ~30 s.
 printf "vm.dirty_expire_centisecs = 500\nvm.dirty_writeback_centisecs = 100\n" >"$root/etc/sysctl.d/90-substrate.conf"

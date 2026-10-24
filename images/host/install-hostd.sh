@@ -42,6 +42,12 @@ fi
   else
     log "no /substrate/ntfy-topic in Parameter Store (run \`bun run secrets --ntfy\`): alerts only go to hostd's log" >&2
   fi
+  # VMs to keep booted ahead of time (apps/hostd/src/warm-pool.ts has the
+  # format). Without the parameter, hostd keeps one of the default size.
+  if pool=$(aws ssm get-parameter --region "$SUBSTRATE_REGION" --name /substrate/warm-pool --query Parameter.Value --output text 2>/dev/null); then
+    echo "SUBSTRATE_WARM_POOL=${pool}"
+    log "warm pool from Parameter Store: ${pool}" >&2
+  fi
 } | (umask 077 && cat >/etc/substrate/hostd.env)
 
 ln -sfn "$release" /opt/substrate/hostd/current

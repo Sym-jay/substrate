@@ -34,6 +34,9 @@ new AutoPause({ vms, notify, quietMs: config.autoPause.quietMs }).start(config.a
 // Its first pass, right away, brings back VMs that were running before a host crash.
 new Supervisor({ vms, pool, notify }).start(config.autoPause.pollMs)
 new MemoryController(() => vms.balanceMemory()).start()
+// VMs booted ahead of time, so a create that fits one is ready at once.
+vms.pool.start(config.warmPoolCheckMs)
+console.log(`warm pool: ${config.warmPool.map((s) => `${s.count} × ${s.vcpus} vCPU/${s.memMib / 1024} GiB/${s.diskGib} GiB`).join(', ') || 'off'}`)
 
 // Allowlisted VMs reach the internet only through this (see network.ts). A
 // VM with open egress may use it too, to anywhere public.

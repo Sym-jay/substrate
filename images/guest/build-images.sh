@@ -7,6 +7,13 @@ set -euo pipefail
 # SSM runs commands without HOME, which bun and its installer need.
 export HOME=${HOME:-/root}
 
+# Keep the source symlink stable for the whole build and prevent benchmarks
+# from mixing guest image generations. All callers share these locks.
+exec 9>/run/lock/substrate-host-deploy.lock
+flock -n 9 || { echo '[build-images] host deployment or benchmark is active'; exit 1; }
+exec 8>/run/lock/substrate-image-build.lock
+flock -n 8 || { echo '[build-images] another image build is active'; exit 1; }
+
 here=$(cd "$(dirname "$0")" && pwd)
 guestd=${1:-/opt/substrate/hostd/current/bin/substrate-guestd}
 version=$(date -u +%Y%m%d-%H%M%S)

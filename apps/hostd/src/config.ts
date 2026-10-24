@@ -1,3 +1,5 @@
+import { parsePoolSpecs } from './warm-pool.ts'
+
 // Set by `bun build --define` in images/host/install-hostd.sh.
 declare const BUILD_VERSION: string | undefined
 
@@ -20,7 +22,14 @@ export const config = {
   memReserveMib: 4_096,
   // How long a VM may take from launch to its guest agent answering.
   bootTimeoutMs: 60_000,
+  // Experimental: the bounded working-set read did not consistently beat
+  // parallel preparation across all sizes. Keep normal restore as the default.
+  resumePrefetch: process.env.SUBSTRATE_RESUME_PREFETCH === '1',
   memory: { floorMib: 4096, pollMs: 2000, reclaimAfterMs: 30_000 },
+  // VMs booted ahead of time, so a create that fits one is ready at once
+  // (warm-pool.ts has the format). Checked, and topped up, this often.
+  warmPool: parsePoolSpecs(process.env.SUBSTRATE_WARM_POOL),
+  warmPoolCheckMs: 5_000,
   // Agent alerts and auto-pause notices go to this ntfy topic (`bun run
   // secrets --ntfy`). Without one they're only logged.
   ntfy: process.env.SUBSTRATE_NTFY_TOPIC

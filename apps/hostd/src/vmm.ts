@@ -85,6 +85,13 @@ export async function launch(record: VmRecord, resumeSessions = false) {
   await firecracker.launch(spec, { config, metadata: metadataFile(record.id) }, root)
 }
 
+// A running VM's metadata, replaced in place: a warm pool VM's new name.
+export async function updateMetadata(record: VmRecord) {
+  const meta = metadata(record)
+  await Bun.write(metadataFile(record.id), JSON.stringify(meta), { mode: 0o600 })
+  await firecracker.api(record.id)('PUT /mmds', meta)
+}
+
 // A fresh, unconfigured Firecracker to load a save into.
 export async function launchForRestore(record: VmRecord) {
   const meta = JSON.stringify(metadata(record))

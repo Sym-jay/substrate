@@ -19,9 +19,11 @@ import {
   type Session,
   type RunCheckpoint,
   type Vm,
+  type WarmPoolSize,
 } from '@substrate/protocol'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { hostCapacity } from './capacity.ts'
+import { LifecycleProfile } from './lifecycle-profile.ts'
 import { config } from './config.ts'
 import { HttpError, message } from './errors.ts'
 import * as firecracker from './firecracker.ts'
@@ -39,6 +41,7 @@ import { Balloons } from './balloon.ts'
 import { importRepository } from './repositories.ts'
 import { forkGeneration } from './fork-generation.ts'
 import * as zfs from './zfs.ts'
+import { WarmPool, fits, requestedSize, type Pooled } from './warm-pool.ts'
 
 // What the HTTP API needs; tests substitute a fake.
 export interface VmService {
@@ -63,6 +66,9 @@ export interface VmService {
   guest(id: string): Promise<GuestClient>
   capacity(): Promise<Capacity>
   touch?(id: string): void
+  // A VM from the warm pool, handed over at once; null when none fits.
+  claim?(input: CreateVm, githubToken: string | undefined, claimedBy: string): Promise<Vm | null>
+  poolStatus?(): Promise<WarmPoolSize[]>
 }
 
 export { HttpError }
@@ -83,96 +89,299 @@ export class VmManager implements VmService {
   private runCheckpoints = new Checkpoints()
   private activity = new ExternalActivity()
   private balloons = new Balloons()
+  // Claiming from the warm pool takes this, not the lifecycle lock, so a boot
+  // in progress (the pool refilling, or a cold create) never holds a claim up.
+  private poolLock = new Mutex()
+  // Pool VMs being taken down, which a claim must pass over, and ones being
+  // handed over (and the names they're taking), which nothing else may touch.
+  private retiring = new Set<string>()
+  private claiming = new Set<string>()
+  private claimingNames = new Set<string>()
+
+  readonly pool = new WarmPool({
+    pooled: () => this.pooled(),
+    image: async () => (await currentImage())?.version ?? null,
+    memFreeMib: async () => (await this.capacity()).memFreeMib,
+    // IDs like control's, which every other VM has.
+    boot: async (spec) => { await this.boot({ vcpus: spec.vcpus, memMib: spec.memMib, diskGib: spec.diskGib }, { pool: true, targetId: `vm-${randomBytes(8).toString('hex')}` }) },
+    discard: (id) => this.discardPooled(id),
+  }, config.warmPool)
 
   touch(id: string) { this.activity.touch(id) }
 
   constructor(private readonly notify: Notify = logOnly) {}
 
+  // The warm pool's VMs aren't anyone's yet, so they aren't listed.
   async list() {
-    const records = await listRecords()
+    const records = (await listRecords()).filter((r) => !r.pool)
     return Promise.all(records.map((r) => this.toVm(r)))
   }
 
   async get(id: string) {
-    return this.toVm(await this.record(id))
+    const record = await this.record(id)
+    if (record.pool) throw new HttpError(404, `no VM ${id}`)
+    return this.toVm(record)
   }
 
   async create(input: CreateVm, githubToken?: string, targetId?: string) {
-    const image = await currentImage()
-    if (!image) throw new HttpError(409, 'no VM image yet: run `bun run images:build`')
-    const preset = VmSizes[input.size ?? DEFAULT_VM_SIZE]
-    const size = { vcpus: input.vcpus ?? preset.vcpus, memMib: input.memMib ?? preset.memMib }
-    const diskGib = await this.checkDiskSize(input.diskGib ?? DEFAULT_DISK_GIB, image.rootfs)
+    return this.boot(input, { githubToken, targetId })
+  }
 
-    return this.lock.run(async () => {
-      const records = await listRecords()
-      if (input.name && records.some((r) => r.name === input.name)) {
-        throw new HttpError(409, `a VM named ${input.name} already exists`)
-      }
-      await this.ensureFits(size.memMib)
+  // A cold boot: a new disk from the image, Firecracker and the guest. Only
+  // the checks and the reservation (name, capacity, slot, dataset) take the
+  // lifecycle lock; the clone, launch and boot run alongside other boots.
+  // `pool` boots one into the warm pool instead of for a create.
+  private async boot(input: CreateVm, { githubToken, targetId, pool = false }: { githubToken?: string; targetId?: string; pool?: boolean }) {
+    const profile = new LifecycleProfile(pool ? 'pool-boot' : 'create', targetId ?? null)
+    let ok = false
+    try {
+      const image = await profile.measure('image', () => currentImage())
+      if (!image) throw new HttpError(409, 'no VM image yet: run `bun run images:build`')
+      const preset = VmSizes[input.size ?? DEFAULT_VM_SIZE]
+      const size = { vcpus: input.vcpus ?? preset.vcpus, memMib: input.memMib ?? preset.memMib }
+      const diskGib = await this.checkDiskSize(input.diskGib ?? DEFAULT_DISK_GIB, image.rootfs)
 
-      const id = targetId ?? newVmId()
-      if (await zfs.datasetExists(dataset(id))) throw new HttpError(409, 'workspace destination already exists')
-      const record: VmRecord = {
-        id,
-        name: input.name ?? id,
-        ...size,
-        diskGib,
-        slot: lowestFreeSlot(records.map((r) => r.slot)),
-        token: randomBytes(32).toString('hex'),
-        image: image.version,
-        kernel: image.kernel,
-        createdAt: new Date().toISOString(),
-        startedAt: null,
-        bootMs: null,
-        lastError: null,
-        checkpoint: null,
-        paused: false,
-        pauseMs: null,
-        resumeMs: null,
-        awakeSince: null,
-        autoPauseMinutes: DEFAULT_AUTO_PAUSE_MINUTES,
-        runCheckpoints: [],
-        repository: input.repository ?? null,
-        parentId: null,
-        rootPath: `${config.paths.run}/rootfs`,
-        forkCapable: false,
-        balloonEnabled: true,
-        activeTaskAtSave: false,
-        maxAwakeHours: DEFAULT_MAX_AWAKE_HOURS,
-        shouldRun: true,
-        isolation: 'none',
-        egress: input.egress ?? { mode: 'open', allow: [] },
-      }
+      const record = await this.lock.run(async () => {
+        const records = await profile.measure('records', () => listRecords())
+        if (input.name && records.some((r) => r.name === input.name)) {
+          throw new HttpError(409, `a VM named ${input.name} already exists`)
+        }
+        // The pool gives way to a create: its VMs are only there to save time.
+        if (!pool) await profile.measure('poolMakeRoom', () => this.makeRoom(size.memMib))
+        await profile.measure('capacity', () => this.ensureFits(size.memMib))
+
+        const id = targetId ?? newVmId()
+        profile.vmId = id
+        if (await zfs.datasetExists(dataset(id))) throw new HttpError(409, 'workspace destination already exists')
+        const record: VmRecord = {
+          id,
+          name: input.name ?? id,
+          ...size,
+          diskGib,
+          slot: lowestFreeSlot(records.map((r) => r.slot)),
+          token: randomBytes(32).toString('hex'),
+          image: image.version,
+          kernel: image.kernel,
+          createdAt: new Date().toISOString(),
+          startedAt: null,
+          bootMs: null,
+          lastError: null,
+          checkpoint: null,
+          paused: false,
+          pauseMs: null,
+          resumeMs: null,
+          awakeSince: null,
+          autoPauseMinutes: DEFAULT_AUTO_PAUSE_MINUTES,
+          runCheckpoints: [],
+          repository: input.repository ?? null,
+          parentId: null,
+          rootPath: `${config.paths.run}/rootfs`,
+          forkCapable: false,
+          balloonEnabled: true,
+          activeTaskAtSave: false,
+          maxAwakeHours: DEFAULT_MAX_AWAKE_HOURS,
+          shouldRun: true,
+          isolation: 'none',
+          egress: input.egress ?? { mode: 'open', allow: [] },
+          pool,
+          claimedBy: null,
+        }
+        // Starting from here: its memory counts against the host's and other
+        // VMs keep off it. Its record holds its slot once written.
+        this.transitions.set(id, 'starting')
+        try {
+          await profile.measure('dataset', () => zfs.createFilesystem(dataset(id)))
+          await profile.measure('initialRecord', () => writeRecord(record))
+        } catch (err) {
+          this.transitions.delete(id)
+          await this.cleanUp(record).catch(() => {})
+          throw err
+        }
+        return record
+      })
       try {
-        await zfs.createFilesystem(dataset(id))
-        await writeRecord(record)
-        await zfs.cloneVolume(image.rootfs, rootVolume(id), record.diskGib)
-        await zfs.waitForDevice(zfs.zvolDevice(rootVolume(id)))
-        await zfs.growFilesystem(zfs.zvolDevice(rootVolume(id)))
-        await this.launch(record)
+        await profile.measure('diskClone', () => zfs.cloneVolume(image.rootfs, rootVolume(record.id), record.diskGib))
+        await profile.measure('deviceReady', () => zfs.waitForDevice(zfs.zvolDevice(rootVolume(record.id))))
+        await profile.measure('filesystemResize', () => zfs.growFilesystem(zfs.zvolDevice(rootVolume(record.id))))
+        await this.launch(record, { profile })
       } catch (err) {
+        this.transitions.delete(record.id)
         await this.cleanUp(record).catch(() => {})
         throw err
       }
-      await this.awaitBoot(record)
+      await this.awaitBoot(record, profile)
       if (record.repository) {
-        try { await importRepository(record, githubToken) }
+        try { await profile.measure('repository', () => importRepository(record, githubToken)) }
         catch (error) {
           record.lastError = error instanceof Error ? error.message : String(error)
-          await writeRecord(record)
+          await profile.measure('initialRecord', () => writeRecord(record))
           // Preserve the newly created VM for retry instead of leaking an
           // unreachable workspace behind a failed create response.
         }
       }
-      return this.get(record.id)
+      const vm = await profile.measure('response', () => this.toVm(record))
+      ok = true
+      return vm
+    } finally { profile.finish(ok ? 'ok' : 'failed') }
+  }
+
+  // Hands a ready VM from the warm pool to this create, if one fits: renamed,
+  // its disk grown to the size asked for, and recorded as `claimedBy`'s. The
+  // pool then boots a replacement in the background.
+  async claim(input: CreateVm, githubToken: string | undefined, claimedBy: string): Promise<Vm | null> {
+    const profile = new LifecycleProfile('claim', null)
+    let ok = false
+    try {
+      const record = await this.takeFromPool(input, claimedBy, profile)
+      if (!record) return null
+      void this.pool.fill()
+      if (record.repository) {
+        try { await profile.measure('repository', () => importRepository(record, githubToken)) }
+        catch (error) {
+          record.lastError = error instanceof Error ? error.message : String(error)
+          await writeRecord(record)
+        }
+      }
+      const vm = await profile.measure('response', () => this.toVm(record))
+      ok = true
+      return vm
+    } finally { if (profile.vmId) profile.finish(ok ? 'ok' : 'failed') }
+  }
+
+  async poolStatus() { return this.pool.status() }
+
+  // The pool lock is held only to pick a VM, so claims run side by side.
+  private async takeFromPool(input: CreateVm, claimedBy: string, profile: LifecycleProfile) {
+    const image = await currentImage()
+    if (!image) return null
+    const want = requestedSize(input)
+    for (;;) {
+      const record = await this.poolLock.run(async () => {
+        const records = await profile.measure('records', () => listRecords())
+        if (input.name && (records.some((r) => !r.pool && r.name === input.name) || this.claimingNames.has(input.name))) {
+          throw new HttpError(409, `a VM named ${input.name} already exists`)
+        }
+        for (const r of records) {
+          if (!r.pool || this.retiring.has(r.id) || this.claiming.has(r.id) || this.transitions.has(r.id) || r.bootMs === null || r.lastError ||
+            r.image !== image.version || !fits(r, input) || !(await firecracker.isRunning(r.id))) continue
+          this.claiming.add(r.id)
+          if (input.name) this.claimingNames.add(input.name)
+          return r
+        }
+        return null
+      })
+      if (!record) return null
+      profile.vmId = record.id
+      try {
+        if (want.diskGib > record.diskGib) {
+          await this.checkPoolFits(want.diskGib)
+          await profile.measure('disk', () => this.growLive(record, want.diskGib))
+          record.diskGib = want.diskGib
+        }
+        const renamed = !!input.name && input.name !== record.name
+        const now = new Date().toISOString()
+        Object.assign(record, { name: input.name ?? record.name, pool: false, claimedBy, createdAt: now, awakeSince: now, repository: input.repository ?? null, lastError: null })
+        await profile.measure('record', () => writeRecord(record))
+        // It booted under its ID. Its metadata and hostname take its name
+        // straight after, off the claim's path: a guest exec can stall for
+        // seconds when the host's disks are busy, and a name is cosmetic.
+        if (renamed) void this.rename(record).catch((error) => console.error(`rename ${record.id}: ${message(error)}`))
+        return record
+      } catch (error) {
+        // Not this one, then: replace it, and try the next.
+        console.error(`warm pool ${record.id}: ${message(error)}`)
+        void this.discardPooled(record.id)
+      } finally {
+        this.claiming.delete(record.id)
+        if (input.name) this.claimingNames.delete(input.name)
+      }
+    }
+  }
+
+  // The pool's VMs, as warm-pool.ts sees them.
+  private async pooled(): Promise<Pooled[]> {
+    const pooled: Pooled[] = []
+    for (const record of await listRecords()) {
+      if (!record.pool || this.retiring.has(record.id) || this.claiming.has(record.id)) continue
+      const state = this.transitions.has(record.id) ? 'booting'
+        : record.bootMs !== null && !record.lastError && (await firecracker.isRunning(record.id)) ? 'ready' : 'dead'
+      pooled.push({ id: record.id, vcpus: record.vcpus, memMib: record.memMib, diskGib: record.diskGib, image: record.image, state })
+    }
+    return pooled
+  }
+
+  // Takes a pool VM down, unless a claim got it first.
+  private async discardPooled(id: string) {
+    const ours = await this.poolLock.run(async () => {
+      if (this.claiming.has(id) || !(await readRecord(id))?.pool) return false
+      this.retiring.add(id)
+      return true
     })
+    if (!ours) return
+    try { await this.lock.run(() => this.destroyPooled(id)) } finally { this.retiring.delete(id) }
+  }
+
+  // With the lifecycle lock held.
+  private async destroyPooled(id: string) {
+    const record = await readRecord(id)
+    if (!record?.pool) return
+    await firecracker.kill(id)
+    await this.cleanUp(record)
+    this.activity.forget(id)
+    this.balloons.forget(id)
+  }
+
+  // With the lifecycle lock held: takes pool VMs down, biggest first, until a
+  // VM of this much memory fits, or there are none left to take.
+  private async makeRoom(memMib: number) {
+    let free = (await this.capacity()).memFreeMib
+    if (free >= memMib) return
+    const candidates = (await this.pooled()).filter((vm) => vm.state !== 'booting').sort((a, b) => b.memMib - a.memMib)
+    for (const vm of candidates) {
+      if (free >= memMib) break
+      const ours = await this.poolLock.run(async () => {
+        if (this.claiming.has(vm.id) || !(await readRecord(vm.id))?.pool) return false
+        this.retiring.add(vm.id)
+        return true
+      })
+      if (!ours) continue
+      try { await this.destroyPooled(vm.id) } finally { this.retiring.delete(vm.id) }
+      free = (await this.capacity()).memFreeMib
+    }
+  }
+
+  // A warm VM's new name: its metadata, and the guest's hostname.
+  private async rename(record: VmRecord) {
+    await vmm.updateMetadata(record)
+    const result = await (await this.guest(record.id)).exec({ command: `hostname ${record.name}`, user: 'root', timeoutMs: 5_000 })
+    if (result.exitCode !== 0) throw new Error(`couldn't set the hostname: ${(result.stderr || result.stdout).trim()}`)
+  }
+
+  // A running VM's disk, grown: Firecracker rereads its size and tells the
+  // guest, which grows its filesystem with the resize ioctl.
+  private async growLive(record: VmRecord, diskGib: number) {
+    await zfs.setVolumeSize(rootVolume(record.id), diskGib)
+    await this.growGuestFilesystem(record, diskGib)
+  }
+
+  private async growGuestFilesystem(record: VmRecord, diskGib: number) {
+    await firecracker.api(record.id)('PATCH /drives/rootfs', { drive_id: 'rootfs', path_on_host: vmm.rootDrivePath(record) })
+    const result = await (await this.guest(record.id)).exec({ command: growFilesystemInGuest(diskGib), user: 'root', timeoutMs: 60_000 })
+    if (result.exitCode !== 0) {
+      throw new HttpError(502, `the disk grew, but the guest couldn't grow its filesystem: ${(result.stderr || result.stdout).trim()}`)
+    }
+  }
+
+  // A VM still booting can't be paused, stopped or changed until it's up.
+  private settled(record: VmRecord) {
+    if (this.transitions.get(record.id) === 'starting') throw new HttpError(409, `${record.name} is still starting`)
   }
 
   async start(id: string) {
     const started = performance.now()
     return this.lock.run(async () => {
       const record = await this.record(id)
+      if (this.transitions.get(id) === 'starting') return this.toVm(record)
       if (!record.shouldRun) {
         record.shouldRun = true
         await writeRecord(record)
@@ -190,7 +399,8 @@ export class VmManager implements VmService {
   async crashed() {
     const vms: Vm[] = []
     for (const record of await listRecords()) {
-      if (!record.shouldRun || record.paused || this.transitions.has(record.id)) continue
+      // The pool replaces its own.
+      if (!record.shouldRun || record.paused || record.pool || this.transitions.has(record.id)) continue
       if (!(await firecracker.isRunning(record.id))) vms.push(await this.toVm(record))
     }
     return vms
@@ -210,6 +420,7 @@ export class VmManager implements VmService {
   async pause(id: string) {
     return this.lock.run(async () => {
       const record = await this.record(id)
+      this.settled(record)
       if (record.paused) {
         await this.snapshots.reconcile(record)
         return this.get(id)
@@ -237,6 +448,7 @@ export class VmManager implements VmService {
     const started = performance.now()
     return this.lock.run(async () => {
       const record = await this.record(id)
+      this.settled(record)
       if (!record.paused) {
         if (await firecracker.isRunning(id)) return this.get(id)
         throw new HttpError(409, `${record.name} has no paused session; start it instead`)
@@ -292,6 +504,7 @@ export class VmManager implements VmService {
   async update(id: string, input: UpdateVm) {
     return this.lock.run(async () => {
       const record = await this.record(id)
+      this.settled(record)
       if (input.autoPauseMinutes !== undefined) record.autoPauseMinutes = input.autoPauseMinutes
       if (input.maxAwakeHours !== undefined) record.maxAwakeHours = input.maxAwakeHours
       // The firewall and the guest's proxy settings change at its next start.
@@ -306,6 +519,7 @@ export class VmManager implements VmService {
   async growDisk(id: string, { diskGib }: GrowDisk) {
     return this.lock.run(async () => {
       const record = await this.record(id)
+      this.settled(record)
       if (record.paused) throw new HttpError(409, `${record.name} is paused; resume it first`)
       // The same size again retries growing the filesystem.
       if (diskGib < record.diskGib) throw new HttpError(400, `the disk is ${record.diskGib} GiB, and disks can only grow`)
@@ -315,13 +529,7 @@ export class VmManager implements VmService {
       record.diskGib = diskGib
       await writeRecord(record)
       if (await firecracker.isRunning(id)) {
-        // Firecracker rereads the size and tells the guest, which then grows
-        // its filesystem with the resize ioctl.
-        await firecracker.api(id)('PATCH /drives/rootfs', { drive_id: 'rootfs', path_on_host: vmm.rootDrivePath(record) })
-        const result = await (await this.guest(id)).exec({ command: growFilesystemInGuest(diskGib), user: 'root', timeoutMs: 60_000 })
-        if (result.exitCode !== 0) {
-          throw new HttpError(502, `the disk grew, but the guest couldn't grow its filesystem: ${(result.stderr || result.stdout).trim()}`)
-        }
+        await this.growGuestFilesystem(record, diskGib)
       } else {
         await zfs.growFilesystem(device)
       }
@@ -332,6 +540,7 @@ export class VmManager implements VmService {
   async stop(id: string) {
     await this.lock.run(async () => {
       const record = await this.record(id)
+      this.settled(record)
       if (record.paused) throw new HttpError(409, `${record.name} is paused; resume it before stopping`)
       // First, so a stop is never mistaken for a crash.
       if (record.shouldRun) {
@@ -361,6 +570,7 @@ export class VmManager implements VmService {
   async remove(id: string) {
     await this.lock.run(async () => {
       const record = await this.record(id)
+      this.settled(record)
       await firecracker.kill(id)
       await this.cleanUp(record)
       this.activity.forget(id)
@@ -371,6 +581,7 @@ export class VmManager implements VmService {
   async resize(id: string, input: ResizeVm) {
     return this.lock.run(async () => {
       const record = await this.record(id)
+      this.settled(record)
       if (record.paused || await firecracker.isRunning(id)) throw new HttpError(409, 'Stop the workspace before resizing; paused sessions cannot be resized')
       const diskGib = input.diskGib ?? record.diskGib
       if (diskGib < record.diskGib) throw new HttpError(400, 'Disks can only be grown, not shrunk')
@@ -401,6 +612,7 @@ export class VmManager implements VmService {
   async rollback(id: string, checkpointId: string) {
     return this.lock.run(async () => {
       const record = await this.record(id)
+      this.settled(record)
       if (!record.runCheckpoints.some((point) => point.id === checkpointId)) throw new HttpError(404, 'checkpoint not found')
       if (record.paused || await firecracker.isRunning(id)) throw new HttpError(409, 'Stop the workspace before rolling back its disk')
       const save = record.checkpoint
@@ -442,6 +654,7 @@ export class VmManager implements VmService {
   private async forkChildren(id: string, destinations: { id: string; name?: string }[]) {
     return this.lock.run(async () => {
       const source = await this.record(id)
+      this.settled(source)
       if (!source.forkCapable || !source.rootPath) throw new HttpError(409, 'This VM needs a newer guest image for running-state forks. Create a workspace from the latest image first.')
       if (source.paused && source.activeTaskAtSave) throw new HttpError(409, 'This save contains a running task. Resume it and finish or cancel the task before forking.')
       const records = await listRecords()
@@ -579,7 +792,7 @@ export class VmManager implements VmService {
     const running = await firecracker.isRunning(record.id)
     const state =
       this.transitions.get(record.id) ?? (record.paused ? 'paused' : running ? 'running' : record.lastError ? 'failed' : 'stopped')
-    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, shouldRun: _shouldRun, runCheckpoints: _runs, rootPath: _root, forkCapable: _fork, balloonEnabled: _balloon, activeTaskAtSave: _taskAtSave, ...rest } = record
+    const { token: _token, slot, kernel: _kernel, checkpoint: _checkpoint, paused: _paused, shouldRun: _shouldRun, runCheckpoints: _runs, rootPath: _root, forkCapable: _fork, balloonEnabled: _balloon, activeTaskAtSave: _taskAtSave, pool: _pool, ...rest } = record
     const memory = running && !record.paused && record.balloonEnabled ? this.balloons.get(record.id) ?? {
       floorMib: Math.min(config.memory.floorMib, record.memMib), limitMib: record.memMib,
       targetMib: null, actualMib: null,
@@ -626,15 +839,15 @@ export class VmManager implements VmService {
 
   // `resumeSessions` asks guestd to reopen the sessions the VM had (see sessions.ts).
   // A cold boot is when a VM changes isolation (config.isolation).
-  private async launch(record: VmRecord, { resumeSessions = false } = {}) {
+  private async launch(record: VmRecord, { resumeSessions = false, profile }: { resumeSessions?: boolean; profile?: LifecycleProfile } = {}) {
     this.balloons.forget(record.id)
     record.balloonEnabled = true
     record.isolation = vmm.isolationForBoot()
     await writeRecord(record)
-    await vmm.startNetwork(record)
+    await (profile ? profile.measure('network', () => vmm.startNetwork(record)) : vmm.startNetwork(record))
     this.transitions.set(record.id, 'starting')
     try {
-      await vmm.launch(record, resumeSessions)
+      await (profile ? profile.measure('firecrackerLaunch', () => vmm.launch(record, resumeSessions)) : vmm.launch(record, resumeSessions))
     } catch (err) {
       this.transitions.delete(record.id)
       await deleteTap(record.slot)
@@ -644,14 +857,15 @@ export class VmManager implements VmService {
   }
 
   // Waits for the guest agent and records how long the boot took.
-  private async awaitBoot(record: VmRecord): Promise<Vm> {
+  private async awaitBoot(record: VmRecord, profile?: LifecycleProfile): Promise<Vm> {
     const launched = performance.now()
     const client = guestClient(slotAddresses(record.slot).guestIp, record.token)
     try {
-      const health = await waitForGuest(client, {
+      const ready = () => waitForGuest(client, {
         timeoutMs: config.bootTimeoutMs,
         alive: () => firecracker.isRunning(record.id),
       })
+      const health = await (profile ? profile.measure('guestReady', ready) : ready())
       if (health.vmId !== record.id) throw new Error('guest identity does not match this VM')
       record.forkCapable = health.features?.forkNetwork === true
       record.bootMs = Math.round(performance.now() - launched)

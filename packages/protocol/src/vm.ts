@@ -65,8 +65,25 @@ export const Vm = z.object({
   // Phase 2: whether it runs under the jailer, and where it may connect out to.
   isolation: z.enum(['none', 'jail']).optional(),
   egress: EgressPolicy.optional(),
+  // hostd only: who a pre-booted VM from the warm pool was handed to, so
+  // control can still record its owner if it restarts mid-claim. Control
+  // doesn't pass it on.
+  claimedBy: z.string().nullable().optional(),
 })
 export type Vm = z.infer<typeof Vm>
+
+// The warm pool (hostd): VMs booted ahead of time, each handed over whole to
+// the first create that fits it, so a new workspace is ready at once.
+export const WarmPoolSize = z.object({
+  vcpus: z.number().int(),
+  memMib: z.number().int(),
+  diskGib: z.number().int(),
+  // How many to keep ready; how many are, and how many are booting.
+  want: z.number().int(),
+  ready: z.number().int(),
+  booting: z.number().int(),
+})
+export type WarmPoolSize = z.infer<typeof WarmPoolSize>
 
 export const VmName = z.string().regex(/^[a-z0-9][a-z0-9-]{0,30}$/, 'lowercase letters, digits and dashes')
 

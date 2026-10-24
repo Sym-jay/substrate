@@ -68,6 +68,8 @@ export function vmRoutes(o: VmRoutesOptions) {
       status: res.status,
       headers: { 'content-type': res.headers.get('content-type') ?? 'application/json' },
     })
+  // Who a warm VM was claimed for is for control alone.
+  const withoutClaim = ({ claimedBy: _claimedBy, ...vm }: Vm) => vm
   const allVms = async () => {
     const res = await callHostd('/vms')
     return res?.ok ? ((await res.json()) as Vm[]) : null
@@ -142,7 +144,15 @@ export function vmRoutes(o: VmRoutesOptions) {
     const vms = await allVms()
     if (!vms) return unreachable(c)
     const mine = new Set(await owners.vmsOf(c.var.user.id))
-    return c.json(vms.filter((vm) => mine.has(vm.id)))
+    // A warm VM claimed for this user just as control restarted, before its
+    // owner was recorded: record it now.
+    for (const vm of vms) {
+      if (vm.claimedBy === c.var.user.id && !mine.has(vm.id) && !(await owners.owner(vm.id))) {
+        await owners.add(vm.id, c.var.user.id)
+        mine.add(vm.id)
+      }
+    }
+    return c.json(vms.filter((vm) => mine.has(vm.id)).map(withoutClaim))
   })
 
   const exclusive = <T,>(userId: string, work: () => Promise<T>) => jobs ? jobs.exclusive(userId, work) : work()
@@ -179,6 +189,16 @@ export function vmRoutes(o: VmRoutesOptions) {
     // A plan with allowlisted egress makes every new VM's egress allowlisted.
     if (quota.limits.egress === 'allowlist') input.egress = { mode: 'allowlist', allow: input.egress?.allow ?? [] }
     const credential = input.repository ? await githubToken?.(c.var.user.id) : undefined
+    // A VM the host booted ahead of time, when it has one this size: ready at
+    // once, so there's no job to wait on. 404 (none fits, or an older hostd)
+    // falls through to booting one.
+    const claimed = await callHostd('/vms/claim', { method: 'POST', body: JSON.stringify({ ...input, githubToken: credential, claimedBy: c.var.user.id }) })
+    if (claimed?.status === 201) {
+      const vm = (await claimed.json()) as Vm
+      await owners.add(vm.id, c.var.user.id)
+      await record(c.var.user.id, 'vm.created', vm.id, { size: input.size ?? DEFAULT_VM_SIZE, ...custom, repository: input.repository ?? null, warm: true })
+      return c.json(withoutClaim(vm), 201)
+    }
     if (jobs) {
       const targetId = `vm-${randomBytes(8).toString('hex')}`
       await owners.add(targetId, c.var.user.id)
