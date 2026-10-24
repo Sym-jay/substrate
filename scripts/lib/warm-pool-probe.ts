@@ -40,7 +40,12 @@ async function terminal(vmId: string) {
     socket.onmessage = (event) => {
       const message = JSON.parse(String(event.data))
       transcript += message.type === 'ready' ? message.scrollback ?? '' : message.data ?? ''
-      if (message.type === 'ready' && !sent) { sent = true; socket.send(JSON.stringify({ type: 'input', data: `echo WARM_${nonce}_$(hostname)\r` })) }
+      if (message.type === 'ready' && !sent) {
+        sent = true
+        // printf, so the command the terminal echoes back can't match: only
+        // its output has the nonce right before the name.
+        socket.send(JSON.stringify({ type: 'input', data: `printf 'WARM_%s_%s\\n' ${nonce} "$(hostname)"\r` }))
+      }
       const match = new RegExp(`WARM_${nonce}_(\\S+)`).exec(transcript)
       if (match) { clearTimeout(timer); socket.onclose = null; socket.close(); resolve(match[1]!) }
     }

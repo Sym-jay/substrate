@@ -245,6 +245,23 @@ one claims it.
   alongside other boots. Pausing, stopping or changing a VM that's still
   starting answers 409. This speeds up refilling and cold creates in bursts.
 
+**Measured** on the same host (`r8i.8xlarge`), host-local, with the pool set to
+`large:1,2x2:8`. *Claim* is the request until the VM is ready and recorded;
+*first command* opens a new session in it and waits for a command's output
+(`printf` with the hostname, which also checks the rename took).
+
+| Case | Claim | First command | Renamed by then |
+| --- | ---: | ---: | ---: |
+| 8 × 2 vCPU/2 GiB, all at once | median 39 ms, max 62 ms | median 187 ms, max 251 ms | 8 of 8 |
+| 3 × 6 vCPU/16 GiB, one at a time | median 14 ms, max 16 ms | median 618 ms, max 723 ms | 3 of 3 |
+
+The burst ran straight after a hostd restart. An earlier build held the pool
+lock through the rename, and the first claim's guest exec stalled 4.5 s while
+the disks were busy just after nine boots, queueing the burst behind it: the
+lock now only covers picking a VM, and the rename follows the durable record.
+Through control and the browser, add one API round trip; a cold create still
+takes 2–3 s.
+
 **Limits.** A claim is subsecond only while a VM of that size is ready: a burst
 larger than the pool gets the pool's VMs at once and cold boots (2–3 s, now in
 parallel) for the rest. Each pooled VM reserves its full memory against the
