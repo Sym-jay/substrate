@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { bar, buttonFrame, reducedMotion, scrambled, shimmerFrame } from './ascii.ts'
 
@@ -352,17 +352,30 @@ export function Menu({ button, children, align = 'start' }: { button: (props: { 
       if (!root.current?.contains(target) && !menu.current?.contains(target)) setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    const close = () => setOpen(false)
+    // Phones resize the window as their address bar slides in and out, and
+    // as the keyboard opens: only a change of width moves the button.
+    const width = window.innerWidth
+    const onResize = () => { if (window.innerWidth !== width) setOpen(false) }
+    const onScroll = (e: Event) => { if (!menu.current?.contains(e.target as Node)) setOpen(false) }
     document.addEventListener('pointerdown', onDown)
     document.addEventListener('keydown', onKey)
-    window.addEventListener('resize', close)
-    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', onScroll, true)
     return () => {
       document.removeEventListener('pointerdown', onDown)
       document.removeEventListener('keydown', onKey)
-      window.removeEventListener('resize', close)
-      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('scroll', onScroll, true)
     }
+  }, [open])
+  // Kept on screen: lined up with its button, unless that would put it past
+  // an edge (on a phone, a menu lined up to a button near the left).
+  useLayoutEffect(() => {
+    const r = open ? menu.current?.getBoundingClientRect() : undefined
+    if (!r) return
+    const gap = 8
+    if (r.left < gap) setPlace((p) => ({ ...p, left: gap, right: 'auto' }))
+    else if (r.right > window.innerWidth - gap) setPlace((p) => ({ ...p, right: gap, left: 'auto' }))
   }, [open])
   // Fixed to the window, so a scrolling container can't clip it; above the
   // button when there isn't room below. It's drawn in <body>: inside, an
@@ -388,12 +401,20 @@ export function Menu({ button, children, align = 'start' }: { button: (props: { 
   )
 }
 
-export function MenuItem({ icon, children, hint, onClick, disabled }: { icon?: ReactNode; children: ReactNode; hint?: ReactNode; onClick: () => void; disabled?: boolean }) {
+// One item in a menu. Hovered, it lights up like the sidebar (the ASCII wave
+// over a blue tint); `current` fills it blue, as the page you're on; `danger`
+// is red, for what can't be undone.
+export function MenuItem({ icon, children, hint, onClick, disabled, current, danger }: {
+  icon?: ReactNode; children: ReactNode; hint?: ReactNode; onClick: () => void; disabled?: boolean; current?: boolean; danger?: boolean
+}) {
+  const wave = useHoverWave()
   return (
-    <button type="button" role="menuitem" className="menu-item" onClick={onClick} disabled={disabled}>
-      <span className="text-faint [&>svg]:size-4">{icon}</span>
-      <span className="flex-1 text-left">{children}</span>
-      {hint && <span className="text-faint text-xs">{hint}</span>}
+    <button type="button" role="menuitem" className={`menu-item ${current ? 'is-current' : ''} ${danger ? 'is-danger' : ''}`} aria-current={current ? 'page' : undefined}
+      onClick={onClick} disabled={disabled} {...(disabled ? {} : wave.handlers)}>
+      <span ref={wave.field} className="nav-flow" aria-hidden />
+      <span className="menu-icon [&>svg]:size-4">{icon}</span>
+      <span className="flex-1 text-left"><span className="menu-text">{children}</span></span>
+      {hint && <span className="menu-hint text-xs">{hint}</span>}
     </button>
   )
 }

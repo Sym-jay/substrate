@@ -1,4 +1,4 @@
-import { Camera, Layers, LayoutTemplate, ListChecks, PanelLeftClose, PanelLeftOpen, ScrollText, Search, Settings, SquarePlus, SquareTerminal } from 'lucide-react'
+import { Camera, Ellipsis, Layers, LayoutTemplate, ListChecks, PanelLeftClose, PanelLeftOpen, ScrollText, Search, Settings, SquarePlus, SquareTerminal } from 'lucide-react'
 import { useSyncExternalStore, type ReactNode } from 'react'
 import type { Profile } from '../pages/ProfilePage.tsx'
 import { AccountCorner } from './AccountCorner.tsx'
@@ -7,10 +7,10 @@ import { openPalette, paletteShortcut } from './CommandPalette.tsx'
 import { useData } from './data.tsx'
 import { useLauncher } from './launcher.tsx'
 import { Wordmark } from './Logo.tsx'
-import { href, useRoute, type Page } from './router.ts'
+import { href, navigate, useRoute, type Page } from './router.ts'
 import { updateSettings, useSettings } from './settings.ts'
 import { WorkspaceSidebar } from './WorkspaceSidebar.tsx'
-import { Button, useHoverWave } from './ui.tsx'
+import { Button, Menu, MenuItem, useHoverWave } from './ui.tsx'
 
 type Item = { page: Page; label: string; icon: ReactNode; badge?: number }
 
@@ -34,8 +34,14 @@ export function Shell({ profile, children }: { profile?: Profile; children: Reac
   const workspaces: Item = { page: 'workspaces', label: 'Workspaces', icon: <SquareTerminal /> }
   const jobs: Item = { page: 'jobs', label: 'Jobs', icon: <ListChecks />, badge: agentsWorking || undefined }
   const settings: Item = { page: 'settings', label: 'Settings', icon: <Settings /> }
-  const main: Item[] = [workspaces, { page: 'templates', label: 'Templates', icon: <LayoutTemplate /> }, { page: 'snapshots', label: 'Snapshots', icon: <Camera /> }, jobs, { page: 'logs', label: 'Logs', icon: <ScrollText /> }]
-  const setup: Item[] = [{ page: 'environment', label: 'Environment', icon: <Layers /> }, settings]
+  const templates: Item = { page: 'templates', label: 'Templates', icon: <LayoutTemplate /> }
+  const snapshots: Item = { page: 'snapshots', label: 'Snapshots', icon: <Camera /> }
+  const logs: Item = { page: 'logs', label: 'Logs', icon: <ScrollText /> }
+  const environment: Item = { page: 'environment', label: 'Environment', icon: <Layers /> }
+  const main: Item[] = [workspaces, templates, snapshots, jobs, logs]
+  const setup: Item[] = [environment, settings]
+  // On phones, the pages the tab bar has no room for.
+  const more: Item[] = [snapshots, logs, environment, settings]
   const { sidebar } = useSettings()
   const narrow = useSyncExternalStore(subscribeNarrow, isNarrow)
   const collapsed = narrow || sidebar === 'collapsed'
@@ -92,13 +98,28 @@ export function Shell({ profile, children }: { profile?: Profile; children: Reac
       </aside>
 
       <nav className="tabbar card" aria-label="Main">
-        <Nav items={[workspaces, jobs, settings]} active={page} orientation="horizontal">
+        <Nav items={[workspaces, templates, jobs]} active={page} orientation="horizontal">
           <li><button type="button" className="nav-item w-full" onClick={openPalette} aria-label="Search" title="Search"><Search /></button></li>
+          {/* The rest of the pages; it's the current one while you're on any of them. */}
+          <li>
+            <Menu align="end" button={({ open, toggle }) => (
+              <button type="button" className="nav-item w-full" aria-haspopup="menu" aria-expanded={open} aria-label="More pages" title="More"
+                aria-current={more.some((m) => m.page === page) ? 'page' : undefined} onClick={toggle}><Ellipsis /></button>
+            )}>
+              {(close) => more.map((m) => (
+                <MenuItem key={m.page} icon={m.icon} current={m.page === page} onClick={() => { close(); navigate(m.page) }}>{m.label}</MenuItem>
+              ))}
+            </Menu>
+          </li>
         </Nav>
       </nav>
 
       <main className="page" style={{ viewTransitionName: 'page' }}>
         {/* Not inside a workspace: that view is the workspace's own. */}
+        {/* Phones have no sidebar: the logo sits top left (the welcome page has its own). */}
+        {!nested && page !== 'welcome' && (
+          <a href={href('welcome')} className="mobile-brand" aria-label="Substrate"><Wordmark /></a>
+        )}
         {!nested && (
           <div className="page-corner">
             <ActionCenter />
