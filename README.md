@@ -1,6 +1,6 @@
 # Substrate
 
-Persistent sandboxes for long-running coding agents.
+Give your agent a computer it’s allowed to wreck.
 
 Substrate runs each workspace in its own Firecracker microVM on AWS. You can start Claude Code, Codex, or any other agent in it, then open the same session from a laptop, tablet, or phone.
 
