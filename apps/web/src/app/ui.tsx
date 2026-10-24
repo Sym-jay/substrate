@@ -292,7 +292,8 @@ export function Modal({ open, title, onClose, className = '', children }: { open
     const before = document.activeElement as HTMLElement | null
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', onKey)
-    panel.current?.focus()
+    // Into the dialog, unless a field in it already took focus (autoFocus).
+    if (!panel.current?.contains(document.activeElement)) panel.current?.focus()
     return () => { document.removeEventListener('keydown', onKey); before?.focus?.() }
   }, [open, onClose])
   if (!open) return null
