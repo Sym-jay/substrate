@@ -52,6 +52,11 @@ export const VmRecord = z.object({
   // resume must load the same way.
   isolation: z.enum(['none', 'jail']).default('none'),
   egress: EgressPolicy.default({ mode: 'open', allow: [] }),
+  // Booted ahead of time into the warm pool (warm-pool.ts), and not yet
+  // anyone's: hidden from the API until a create claims it.
+  pool: z.boolean().default(false),
+  // Who a claimed pool VM was handed to (see Vm.claimedBy).
+  claimedBy: z.string().nullable().default(null),
 })
 export type VmRecord = z.infer<typeof VmRecord>
 

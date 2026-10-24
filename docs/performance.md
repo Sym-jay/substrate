@@ -212,5 +212,42 @@ claim one atomically, set its owner/token/metadata and wait for the correct
 identity; the pool would refill in the background, with ordinary boot as the
 fallback. Pool quota reservation, concurrent claims, cleanup, custom sizes and
 secret isolation need their own acceptance checks. A previously used workspace
-must never be reassigned from that pool. This is follow-up work, not implemented
-or represented as a completed latency guarantee here.
+must never be reassigned from that pool. That follow-up is the warm pool below.
+
+## Warm pool: new workspaces in under a second
+
+A boot can't get under a second (the kernel alone takes 0.74–1.00 s), so a new
+workspace skips it: hostd keeps VMs booted ahead of time, and a create that fits
+one claims it.
+
+- **What's kept.** `SUBSTRATE_WARM_POOL` (from `/substrate/warm-pool` in Parameter
+  Store at install): comma-separated `<size>[@<diskGib>]:<count>`, a size being a
+  preset or `<vcpus>x<memGib>`, e.g. `large:1,2x2:8`. Unset, one `large` with a
+  32 GiB disk, which is what the launcher asks for by default. `off` keeps none.
+- **Claiming.** `POST /vms/claim` hands over a ready, never-used VM of the same
+  vCPUs and memory, a disk no bigger than asked for (grown live if smaller) and
+  open egress. It's renamed (metadata and hostname), recorded as the caller's
+  (`claimedBy`) and leaves the pool for good. Claims take their own lock, never
+  the lifecycle lock, so a boot in progress doesn't hold them up. Anything that
+  doesn't fit (another size, an allowlist) answers 404 and is created as before.
+- **Control.** Creating tries a claim first and answers 201 with the VM, so there
+  is no job for the browser to poll. If control restarts between the claim and
+  recording the owner, the VM's `claimedBy` lets the user's next listing record
+  it. The quota is checked before either path.
+- **Refilling.** Every 5 s, and after each claim, each size is topped up; boots
+  run side by side, never into the last of the host's memory a create of that
+  size would need. Pool VMs from an older image, of a size no longer wanted, or
+  that went down are replaced. A cold create that needs the memory takes pool
+  VMs down first. Pool VMs are hidden from the API, aren't auto-paused, and are
+  balloon-managed like any other VM.
+- **Boots in parallel.** Only the checks and the reservation (name, capacity,
+  slot, dataset) now take the lifecycle lock; the clone, launch and boot run
+  alongside other boots. Pausing, stopping or changing a VM that's still
+  starting answers 409. This speeds up refilling and cold creates in bursts.
+
+**Limits.** A claim is subsecond only while a VM of that size is ready: a burst
+larger than the pool gets the pool's VMs at once and cold boots (2–3 s, now in
+parallel) for the rest. Each pooled VM reserves its full memory against the
+host's capacity, though the balloon keeps an idle one's real use near its floor.
+`bun run benchmark:warm-pool` times claims, one at a time or as a burst
+(`--parallel`), with a first terminal command in each.

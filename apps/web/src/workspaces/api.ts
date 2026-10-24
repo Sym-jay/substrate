@@ -24,12 +24,13 @@ const post = (body: unknown): RequestInit => ({
 })
 
 const vmPath = (id: string) => `/api/vms/${encodeURIComponent(id)}`
+// Often at first, since a boot takes a few seconds, then every second.
 async function waitForVmJob(job: { id: string; vmId: string }) {
-  for (;;) {
+  for (let i = 0; ; i++) {
     const status = await request(`/api/jobs/${encodeURIComponent(job.id)}`) as { state: string; error: string | null }
     if (status.state === 'failed') throw new Error(status.error ?? 'Workspace operation failed')
     if (status.state === 'done') return Vm.parse(await request(vmPath(job.vmId)))
-    await new Promise((resolve) => setTimeout(resolve, 1_000))
+    await new Promise((resolve) => setTimeout(resolve, [150, 300, 500, 800][i] ?? 1_000))
   }
 }
 export const workspaceApi = {

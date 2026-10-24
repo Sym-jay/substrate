@@ -41,6 +41,16 @@ fakeHostd.post('/vms', async (c) => {
   hostdVms.set(id, vm)
   return c.json(vm, 201)
 })
+// The warm pool: VMs booted ahead of time, handed out whole. Empty unless a test fills it.
+const warmPool: Vm[] = []
+fakeHostd.post('/vms/claim', async (c) => {
+  const { claimedBy, name } = await c.req.json() as { claimedBy: string; name?: string }
+  const warm = warmPool.shift()
+  if (!warm) return c.json({ error: 'no warm VM fits; create one instead' }, 404)
+  const vm = { ...warm, name: name ?? warm.name, claimedBy }
+  hostdVms.set(vm.id, vm)
+  return c.json(vm, 201)
+})
 fakeHostd.get('/vms/:id', (c) => c.json(hostdVms.get(c.req.param('id'))))
 fakeHostd.patch('/vms/:id', async (c) => {
   const vm = { ...hostdVms.get(c.req.param('id'))!, ...((await c.req.json()) as Partial<Vm>) }
@@ -221,5 +231,34 @@ describe('terminal tickets', () => {
   test('a terminal without a ticket is refused', async () => {
     const res = await alice('/api/vms/vm-00000001/sessions/s/terminal')
     expect(res.status).toBe(401)
+  })
+})
+
+describe('the warm pool', () => {
+  const warm = (id: string): Vm => ({ id, name: id, vcpus: 6, memMib: 16_384, diskGib: 32, state: 'running', image: 'test',
+    guestIp: '172.30.0.6', createdAt: new Date().toISOString(), startedAt: null, bootMs: 900, lastError: null })
+
+  test('a warm VM is ready at once, with no job to wait on, and is its creator\'s', async () => {
+    const erin = as('erin')
+    warmPool.push(warm('vm-00000000000000aa'))
+    const res = await erin('/api/vms', { method: 'POST', body: JSON.stringify({ name: 'instant' }) })
+    expect(res.status).toBe(201)
+    const vm = await res.json() as Vm
+    expect(vm).toMatchObject({ id: 'vm-00000000000000aa', name: 'instant', state: 'running' })
+    // Who it was claimed for stays between control and hostd.
+    expect(vm.claimedBy).toBeUndefined()
+    expect(((await (await erin('/api/vms')).json()) as Vm[]).map((v) => v.id)).toEqual(['vm-00000000000000aa'])
+    expect((await bob('/api/vms/vm-00000000000000aa')).status).toBe(404)
+    // With the pool empty, creating falls back to a job.
+    expect((await erin('/api/vms', { method: 'POST', body: JSON.stringify({ name: 'cold' }) })).status).toBe(202)
+  })
+
+  test('a VM claimed just as control restarted, before its owner was recorded, is still found', async () => {
+    hostdVms.set('vm-00000000000000bb', { ...warm('vm-00000000000000bb'), name: 'orphan', claimedBy: 'frank' })
+    expect(await (await bob('/api/vms')).json()).not.toContainEqual(expect.objectContaining({ id: 'vm-00000000000000bb' }))
+    const listed = await (await as('frank')('/api/vms')).json() as Vm[]
+    expect(listed.map((v) => v.id)).toEqual(['vm-00000000000000bb'])
+    expect(listed[0]!.claimedBy).toBeUndefined()
+    expect((await as('frank')('/api/vms/vm-00000000000000bb')).status).toBe(200)
   })
 })

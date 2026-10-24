@@ -30,6 +30,7 @@
     "check:m8": "bun scripts/check-m8.ts",
     "check:phase2:data": "bun scripts/check-phase2-data.ts",
     "benchmark:vms": "bun scripts/benchmark-vms.ts",
+    "benchmark:warm-pool": "bun scripts/benchmark-warm-pool.ts",
     "check:phase2:host": "bun scripts/check-phase2-host.ts",
     "check:m9": "bun scripts/check-m9.ts",
     "check:workflows": "bun scripts/check-workflows.ts",

@@ -38,6 +38,14 @@ export function createApp({ token, version, image, pool, vms, logs = vmLogs, pro
     const { githubToken, targetId, ...input } = await body(c, CreateVm.extend({ githubToken: z.string().max(4096).optional(), targetId: z.string().regex(/^vm-[a-f0-9]{16}$/).optional() }))
     return c.json(await vms.create(input, githubToken, targetId), 201)
   })
+  // A VM from the warm pool, ready at once (201), or 404 when none fits:
+  // create one instead. `claimedBy` is who it's for, kept with it.
+  app.post('/vms/claim', async (c) => {
+    const { githubToken, claimedBy, ...input } = await body(c, CreateVm.extend({ githubToken: z.string().max(4096).optional(), claimedBy: z.string().min(1).max(200) }))
+    const vm = vms.claim ? await vms.claim(input, githubToken, claimedBy) : null
+    return vm ? c.json(vm, 201) : c.json({ error: 'no warm VM fits; create one instead' }, 404)
+  })
+  app.get('/pool', async (c) => c.json(vms.poolStatus ? await vms.poolStatus() : []))
   app.get('/vms/:id', async (c) => c.json(await vms.get(c.req.param('id'))))
   app.patch('/vms/:id', async (c) => c.json(await vms.update(c.req.param('id'), await body(c, UpdateVm))))
   app.post('/vms/:id/start', async (c) => c.json(await vms.start(c.req.param('id'))))

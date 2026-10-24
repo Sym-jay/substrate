@@ -144,6 +144,8 @@ describe('hostd API', () => {
       throw new HttpError(409, 'demo isn\'t running')
     },
     capacity: async () => ({ vcpus: 16, memTotalMib: 126_000, memReservedMib: 4_096, memUsedMib: 0, memFreeMib: 121_904 }),
+    claim: async (input, _githubToken, claimedBy) => input.size === 'small' ? null : ({ ...vm, name: input.name ?? vm.name, claimedBy }),
+    poolStatus: async () => [{ vcpus: 6, memMib: 16_384, diskGib: 32, want: 1, ready: 1, booting: 0 }],
   }
   const app = createApp({ token, version: 'test', image: async () => '20261023-000000', vms: fake })
   const call = (path: string, init: RequestInit = {}) =>
@@ -154,6 +156,16 @@ describe('hostd API', () => {
 
   test('everything needs the token', async () => {
     expect((await app.request('/vms')).status).toBe(401)
+  })
+
+  test('a warm VM is claimed for whoever asked, or 404 sends the caller to create one', async () => {
+    const claimed = await call('/vms/claim', { method: 'POST', body: JSON.stringify({ name: 'quick', claimedBy: 'user_1' }) })
+    expect(claimed.status).toBe(201)
+    expect(await claimed.json()).toMatchObject({ name: 'quick', claimedBy: 'user_1' })
+    expect((await call('/vms/claim', { method: 'POST', body: JSON.stringify({ size: 'small', claimedBy: 'user_1' }) })).status).toBe(404)
+    // Who it's for is required.
+    expect((await call('/vms/claim', { method: 'POST', body: JSON.stringify({ name: 'quick' }) })).status).toBe(400)
+    expect(await (await call('/pool')).json()).toEqual([{ vcpus: 6, memMib: 16_384, diskGib: 32, want: 1, ready: 1, booting: 0 }])
   })
 
   test('health reports the current image and the storage pool', async () => {
