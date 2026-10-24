@@ -1,0 +1,2543 @@
+{
+  "date": "2026-10-24",
+  "environment": {
+    "hostInstanceType": "r8i.8xlarge",
+    "region": "ap-south-1",
+    "dataVolume": "50 GiB gp3, ZFS",
+    "firecracker": "1.17.0",
+    "guestSizesGiB": [
+      4,
+      8,
+      16
+    ],
+    "blankGuestDiskGiB": 8
+  },
+  "notes": [
+    "Host-local HTTP latency, excluding SSM and public control/browser network latency.",
+    "Terminal latency is additional to request latency.",
+    "Fixed small/medium/large order on each EC2 stop/start; one cold sample per size per run, not size-isolated or a percentile guarantee.",
+    "Baseline did not record per-VM image generation; old ldconfig boot path verified, image-build overlap cannot be excluded.",
+    "final-prefetch warm run passed, but its 30-minute lease expired and it refused the requested EC2 restart. No cold samples from that run.",
+    "First pause after a fresh boot has no learned prefetch hint."
+  ],
+  "runs": [
+    {
+      "label": "baseline-guarded",
+      "prefetchEnabled": false,
+      "version": "926beaa",
+      "image": null,
+      "coldHostRequested": true,
+      "temporaryVMsRemoved": true,
+      "measurements": [
+        {
+          "action": "create",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "create",
+              "requestMs": 4084.91,
+              "terminalMs": 676.84,
+              "bootMs": 2298,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 4081.59,
+              "stagesMs": {
+                "image": 0.16,
+                "records": 0.44,
+                "capacity": 10.6,
+                "dataset": 1085.07,
+                "initialRecord": 27.82,
+                "diskClone": 81.5,
+                "deviceReady": 50.56,
+                "filesystemResize": 416.93,
+                "network": 64.97,
+                "firecrackerLaunch": 20.16,
+                "guestReady": 2297.45,
+                "response": 4.19
+              }
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 346.37,
+              "terminalMs": 125.97,
+              "resumeMs": 336,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 380.55,
+              "terminalMs": 123.35,
+              "resumeMs": 371,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 380.34,
+              "terminalMs": 131.18,
+              "resumeMs": 372,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 426.01,
+              "terminalMs": 115.33,
+              "resumeMs": 418,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 392.43,
+              "terminalMs": 123.66,
+              "resumeMs": 382,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 340.47,
+              "stagesMs": {
+                "processCheck": 3.21,
+                "diskRollback": 44.16,
+                "network": 72.38,
+                "firecrackerLaunch": 20.19,
+                "apiReady": 10.76,
+                "snapshotLoad": 6.8,
+                "metadata": 0.23,
+                "unpause": 0.28,
+                "guestReady": 157.6,
+                "recordCommit": 4.12
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 374.45,
+              "stagesMs": {
+                "processCheck": 3.31,
+                "diskRollback": 64.46,
+                "network": 60.82,
+                "firecrackerLaunch": 26.15,
+                "apiReady": 10.57,
+                "snapshotLoad": 6.67,
+                "metadata": 0.74,
+                "unpause": 0.83,
+                "guestReady": 177.87,
+                "recordCommit": 2.94
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 374.54,
+              "stagesMs": {
+                "processCheck": 3.4,
+                "diskRollback": 45.46,
+                "network": 64.97,
+                "firecrackerLaunch": 21.25,
+                "apiReady": 10.98,
+                "snapshotLoad": 6.53,
+                "metadata": 0.54,
+                "unpause": 0.32,
+                "guestReady": 198.54,
+                "recordCommit": 2.89
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 420.42,
+              "stagesMs": {
+                "processCheck": 3.06,
+                "diskRollback": 61.03,
+                "network": 51.85,
+                "firecrackerLaunch": 22.19,
+                "apiReady": 10.75,
+                "snapshotLoad": 6.74,
+                "metadata": 0.67,
+                "unpause": 0.68,
+                "guestReady": 241.06,
+                "recordCommit": 2.88
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 386.77,
+              "stagesMs": {
+                "processCheck": 3.05,
+                "diskRollback": 61.25,
+                "network": 65.13,
+                "firecrackerLaunch": 17.27,
+                "apiReady": 11.03,
+                "snapshotLoad": 6.4,
+                "metadata": 0.28,
+                "unpause": 0.34,
+                "guestReady": 196.63,
+                "recordCommit": 4.53
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "create",
+              "requestMs": 2696.69,
+              "terminalMs": 830.04,
+              "bootMs": 2198,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2694.73,
+              "stagesMs": {
+                "image": 0.22,
+                "records": 0.52,
+                "capacity": 11.03,
+                "dataset": 67.66,
+                "initialRecord": 40.18,
+                "diskClone": 82.89,
+                "deviceReady": 50.75,
+                "filesystemResize": 125.15,
+                "network": 74.27,
+                "firecrackerLaunch": 17.02,
+                "guestReady": 2198.14,
+                "response": 4.18
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "create",
+              "requestMs": 2552.53,
+              "terminalMs": 674.12,
+              "bootMs": 2077,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2550.37,
+              "stagesMs": {
+                "image": 0.17,
+                "records": 0.42,
+                "capacity": 13.26,
+                "dataset": 44.3,
+                "initialRecord": 34.6,
+                "diskClone": 72.8,
+                "deviceReady": 50.51,
+                "filesystemResize": 134.6,
+                "network": 64.72,
+                "firecrackerLaunch": 27.28,
+                "guestReady": 2076.57,
+                "response": 4.79
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "create",
+              "requestMs": 2744.99,
+              "terminalMs": 663.83,
+              "bootMs": 2288,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2743.03,
+              "stagesMs": {
+                "image": 0.35,
+                "records": 0.27,
+                "capacity": 9.88,
+                "dataset": 45.9,
+                "initialRecord": 37.98,
+                "diskClone": 68.3,
+                "deviceReady": 50.75,
+                "filesystemResize": 129.83,
+                "network": 63.73,
+                "firecrackerLaunch": 17.19,
+                "guestReady": 2287.5,
+                "response": 4.56
+              }
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 347.1,
+              "terminalMs": 167.01,
+              "resumeMs": 339,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 351.9,
+              "terminalMs": 153.24,
+              "resumeMs": 343,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 322.06,
+              "terminalMs": 106.6,
+              "resumeMs": 316,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 350.2,
+              "terminalMs": 121.39,
+              "resumeMs": 342,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 367.63,
+              "terminalMs": 165.35,
+              "resumeMs": 359,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 341.61,
+              "stagesMs": {
+                "processCheck": 3.1,
+                "diskRollback": 48.29,
+                "network": 71.46,
+                "firecrackerLaunch": 17.21,
+                "apiReady": 10.51,
+                "snapshotLoad": 8.57,
+                "metadata": 0.18,
+                "unpause": 0.79,
+                "guestReady": 155.31,
+                "recordCommit": 2.81
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 346.05,
+              "stagesMs": {
+                "processCheck": 3.12,
+                "diskRollback": 53.01,
+                "network": 60.63,
+                "firecrackerLaunch": 20.21,
+                "apiReady": 10.59,
+                "snapshotLoad": 7.63,
+                "metadata": 0.63,
+                "unpause": 0.6,
+                "guestReady": 162.7,
+                "recordCommit": 2.94
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 317.44,
+              "stagesMs": {
+                "processCheck": 3.1,
+                "diskRollback": 40.76,
+                "network": 56.41,
+                "firecrackerLaunch": 17.17,
+                "apiReady": 10.58,
+                "snapshotLoad": 8.12,
+                "metadata": 0.32,
+                "unpause": 0.33,
+                "guestReady": 156.09,
+                "recordCommit": 1.68
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 344.69,
+              "stagesMs": {
+                "processCheck": 3.15,
+                "diskRollback": 52.14,
+                "network": 62.38,
+                "firecrackerLaunch": 20.2,
+                "apiReady": 10.62,
+                "snapshotLoad": 7.18,
+                "metadata": 0.22,
+                "unpause": 0.33,
+                "guestReady": 162.56,
+                "recordCommit": 2.66
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 361.86,
+              "stagesMs": {
+                "processCheck": 3.11,
+                "diskRollback": 54.48,
+                "network": 65.46,
+                "firecrackerLaunch": 21.24,
+                "apiReady": 10.57,
+                "snapshotLoad": 7.64,
+                "metadata": 0.59,
+                "unpause": 0.43,
+                "guestReady": 172.6,
+                "recordCommit": 2.7
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "create",
+              "requestMs": 2638.23,
+              "terminalMs": 629.93,
+              "bootMs": 2192,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2636.04,
+              "stagesMs": {
+                "image": 0.29,
+                "records": 0.46,
+                "capacity": 14.34,
+                "dataset": 46.17,
+                "initialRecord": 16.79,
+                "diskClone": 69.74,
+                "deviceReady": 50.42,
+                "filesystemResize": 136.47,
+                "network": 56.1,
+                "firecrackerLaunch": 23.3,
+                "guestReady": 2191.77,
+                "response": 4.25
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "create",
+              "requestMs": 2794.66,
+              "terminalMs": 624.04,
+              "bootMs": 2332,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2792.5,
+              "stagesMs": {
+                "image": 0.14,
+                "records": 0.37,
+                "capacity": 13.99,
+                "dataset": 43.63,
+                "initialRecord": 34.19,
+                "diskClone": 61.32,
+                "deviceReady": 50.58,
+                "filesystemResize": 132.23,
+                "network": 67.28,
+                "firecrackerLaunch": 27.12,
+                "guestReady": 2332.06,
+                "response": 4.72
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "create",
+              "requestMs": 2524.41,
+              "terminalMs": 819.52,
+              "bootMs": 2072,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2522.29,
+              "stagesMs": {
+                "image": 0.2,
+                "records": 0.35,
+                "capacity": 14.65,
+                "dataset": 42.49,
+                "initialRecord": 37.39,
+                "diskClone": 63.7,
+                "deviceReady": 50.67,
+                "filesystemResize": 131.53,
+                "network": 61.2,
+                "firecrackerLaunch": 17.29,
+                "guestReady": 2071.75,
+                "response": 4.99
+              }
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 347.25,
+              "terminalMs": 152.72,
+              "resumeMs": 339,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 387.45,
+              "terminalMs": 139.87,
+              "resumeMs": 379,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 345.56,
+              "terminalMs": 126.35,
+              "resumeMs": 337,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 381.69,
+              "terminalMs": 134.69,
+              "resumeMs": 372,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 350.73,
+              "terminalMs": 213.1,
+              "resumeMs": 342,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 341.99,
+              "stagesMs": {
+                "processCheck": 3.11,
+                "diskRollback": 44.58,
+                "network": 60.63,
+                "firecrackerLaunch": 18.22,
+                "apiReady": 11,
+                "snapshotLoad": 9.71,
+                "metadata": 0.58,
+                "unpause": 0.68,
+                "guestReady": 164.77,
+                "recordCommit": 2.76
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 381.67,
+              "stagesMs": {
+                "processCheck": 3.09,
+                "diskRollback": 59.73,
+                "network": 56.99,
+                "firecrackerLaunch": 20.27,
+                "apiReady": 11.31,
+                "snapshotLoad": 8.6,
+                "metadata": 0.6,
+                "unpause": 1.06,
+                "guestReady": 189.65,
+                "recordCommit": 2.78
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 339.84,
+              "stagesMs": {
+                "processCheck": 3.24,
+                "diskRollback": 51.12,
+                "network": 65.09,
+                "firecrackerLaunch": 24.4,
+                "apiReady": 10.68,
+                "snapshotLoad": 7.84,
+                "metadata": 0.22,
+                "unpause": 0.4,
+                "guestReady": 148.03,
+                "recordCommit": 2.8
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 375.55,
+              "stagesMs": {
+                "processCheck": 3.05,
+                "diskRollback": 55.27,
+                "network": 68.71,
+                "firecrackerLaunch": 20.21,
+                "apiReady": 11.09,
+                "snapshotLoad": 8.8,
+                "metadata": 0.37,
+                "unpause": 0.65,
+                "guestReady": 177.78,
+                "recordCommit": 3.55
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 344.91,
+              "stagesMs": {
+                "processCheck": 3.11,
+                "diskRollback": 60.13,
+                "network": 61.46,
+                "firecrackerLaunch": 20.14,
+                "apiReady": 10.98,
+                "snapshotLoad": 8.74,
+                "metadata": 0.65,
+                "unpause": 0.45,
+                "guestReady": 148.91,
+                "recordCommit": 3.26
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "create",
+              "requestMs": 2879.12,
+              "terminalMs": 463.38,
+              "bootMs": 2379,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2877.03,
+              "stagesMs": {
+                "image": 0.16,
+                "records": 0.41,
+                "capacity": 17.7,
+                "dataset": 64.83,
+                "initialRecord": 43.22,
+                "diskClone": 68.21,
+                "deviceReady": 50.48,
+                "filesystemResize": 129.74,
+                "network": 65.49,
+                "firecrackerLaunch": 27.22,
+                "guestReady": 2379.29,
+                "response": 4.35
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "create",
+              "requestMs": 2774.75,
+              "terminalMs": 580.42,
+              "bootMs": 2314,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2772.84,
+              "stagesMs": {
+                "image": 0.28,
+                "records": 0.38,
+                "capacity": 17.43,
+                "dataset": 44.39,
+                "initialRecord": 34.61,
+                "diskClone": 70.56,
+                "deviceReady": 50.71,
+                "filesystemResize": 127.43,
+                "network": 58.99,
+                "firecrackerLaunch": 23.07,
+                "guestReady": 2314.08,
+                "response": 4.16
+              }
+            }
+          ]
+        },
+        {
+          "action": "host-cycle",
+          "totalMs": 52206
+        },
+        {
+          "action": "cold",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "cold",
+              "requestMs": 1143.49,
+              "terminalMs": 390.1,
+              "resumeMs": 1116,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 1120.1,
+              "stagesMs": {
+                "processCheck": 3.44,
+                "diskRollback": 39.68,
+                "network": 71.12,
+                "firecrackerLaunch": 27.22,
+                "apiReady": 40.45,
+                "snapshotLoad": 11.25,
+                "metadata": 0.63,
+                "unpause": 1.31,
+                "guestReady": 894.26,
+                "recordCommit": 4.23
+              }
+            }
+          ]
+        },
+        {
+          "action": "cold",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "cold",
+              "requestMs": 782.39,
+              "terminalMs": 270.3,
+              "resumeMs": 773,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 776.21,
+              "stagesMs": {
+                "processCheck": 3.15,
+                "diskRollback": 46.61,
+                "network": 62.96,
+                "firecrackerLaunch": 28.22,
+                "apiReady": 11.06,
+                "snapshotLoad": 9.52,
+                "metadata": 0.42,
+                "unpause": 0.81,
+                "guestReady": 588.27,
+                "recordCommit": 3.02
+              }
+            }
+          ]
+        },
+        {
+          "action": "cold",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "cold",
+              "requestMs": 614.58,
+              "terminalMs": 350.76,
+              "resumeMs": 605,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 608.18,
+              "stagesMs": {
+                "processCheck": 3.22,
+                "diskRollback": 55.2,
+                "network": 59.33,
+                "firecrackerLaunch": 22.24,
+                "apiReady": 10.98,
+                "snapshotLoad": 11.03,
+                "metadata": 0.59,
+                "unpause": 1.03,
+                "guestReady": 420.55,
+                "recordCommit": 2.87
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "optimized",
+      "prefetchEnabled": false,
+      "action": "environment",
+      "version": "2f22bb9",
+      "image": "20261024-020337-perf",
+      "coldHostRequested": true,
+      "temporaryVMsRemoved": true,
+      "measurements": [
+        {
+          "action": "create",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2497.33,
+              "terminalMs": 693.87,
+              "bootMs": 2050,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2494.99,
+              "stagesMs": {
+                "image": 2.4,
+                "records": 0.37,
+                "capacity": 7.7,
+                "dataset": 37.47,
+                "initialRecord": 36.18,
+                "diskClone": 68.5,
+                "deviceReady": 50.71,
+                "filesystemResize": 132.23,
+                "network": 59.6,
+                "firecrackerLaunch": 20.3,
+                "guestReady": 2049.65,
+                "response": 4.5
+              }
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 293.65,
+              "terminalMs": 166.78,
+              "resumeMs": 283,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 311.58,
+              "terminalMs": 122.19,
+              "resumeMs": 303,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 346.16,
+              "terminalMs": 101.42,
+              "resumeMs": 337,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 317.55,
+              "terminalMs": 155.2,
+              "resumeMs": 309,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 375.15,
+              "terminalMs": 109.48,
+              "resumeMs": 367,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 287.29,
+              "stagesMs": {
+                "processCheck": 3.13,
+                "diskRollback": 38.17,
+                "network": 55.82,
+                "firecrackerLaunch": 17.11,
+                "apiReady": 10.73,
+                "snapshotLoad": 6.59,
+                "metadata": 0.25,
+                "unpause": 0.43,
+                "guestReady": 169.49,
+                "recordCommit": 4.34
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 306.21,
+              "stagesMs": {
+                "processCheck": 3.07,
+                "diskRollback": 51.57,
+                "network": 65.34,
+                "firecrackerLaunch": 19.22,
+                "apiReady": 10.69,
+                "snapshotLoad": 6.39,
+                "metadata": 0.26,
+                "unpause": 0.35,
+                "guestReady": 178.16,
+                "recordCommit": 2.69
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 341,
+              "stagesMs": {
+                "processCheck": 3.05,
+                "diskRollback": 43.43,
+                "network": 66.14,
+                "firecrackerLaunch": 18.09,
+                "apiReady": 10.91,
+                "snapshotLoad": 6.51,
+                "metadata": 0.36,
+                "unpause": 1.03,
+                "guestReady": 211.3,
+                "recordCommit": 3.91
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 312.44,
+              "stagesMs": {
+                "processCheck": 3.3,
+                "diskRollback": 45.61,
+                "network": 61.71,
+                "firecrackerLaunch": 16.22,
+                "apiReady": 11.49,
+                "snapshotLoad": 7.27,
+                "metadata": 0.79,
+                "unpause": 1.27,
+                "guestReady": 187.37,
+                "recordCommit": 3.22
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 369.56,
+              "stagesMs": {
+                "processCheck": 3.12,
+                "diskRollback": 43.55,
+                "network": 61.84,
+                "firecrackerLaunch": 18.24,
+                "apiReady": 10.72,
+                "snapshotLoad": 6.83,
+                "metadata": 0.85,
+                "unpause": 0.58,
+                "guestReady": 244.56,
+                "recordCommit": 2.74
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2209.05,
+              "terminalMs": 111.14,
+              "bootMs": 1750,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2207.26,
+              "stagesMs": {
+                "image": 0.2,
+                "records": 0.38,
+                "capacity": 10.95,
+                "dataset": 51.42,
+                "initialRecord": 37.6,
+                "diskClone": 68.18,
+                "deviceReady": 50.48,
+                "filesystemResize": 131.81,
+                "network": 57.17,
+                "firecrackerLaunch": 21.23,
+                "guestReady": 1749.55,
+                "response": 4.05
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2123.87,
+              "terminalMs": 102.29,
+              "bootMs": 1650,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2121.64,
+              "stagesMs": {
+                "image": 0.18,
+                "records": 0.28,
+                "capacity": 32.86,
+                "dataset": 51.26,
+                "initialRecord": 32.36,
+                "diskClone": 69.73,
+                "deviceReady": 50.6,
+                "filesystemResize": 119.99,
+                "network": 58.09,
+                "firecrackerLaunch": 25.2,
+                "guestReady": 1650.38,
+                "response": 4.31
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2748.87,
+              "terminalMs": 806.95,
+              "bootMs": 2292,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2746.78,
+              "stagesMs": {
+                "image": 0.25,
+                "records": 0.32,
+                "capacity": 10.15,
+                "dataset": 40.09,
+                "initialRecord": 38.81,
+                "diskClone": 73.26,
+                "deviceReady": 50.61,
+                "filesystemResize": 127.09,
+                "network": 64.53,
+                "firecrackerLaunch": 19.34,
+                "guestReady": 2291.67,
+                "response": 4.92
+              }
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 296.23,
+              "terminalMs": 136.69,
+              "resumeMs": 287,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 297.74,
+              "terminalMs": 154.16,
+              "resumeMs": 287,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 288.88,
+              "terminalMs": 119.43,
+              "resumeMs": 281,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 298.1,
+              "terminalMs": 113.54,
+              "resumeMs": 290,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 296.04,
+              "terminalMs": 167.28,
+              "resumeMs": 288,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 290.59,
+              "stagesMs": {
+                "processCheck": 3.62,
+                "diskRollback": 44.29,
+                "network": 58.86,
+                "firecrackerLaunch": 28.07,
+                "apiReady": 11.22,
+                "snapshotLoad": 7.79,
+                "metadata": 1,
+                "unpause": 0.85,
+                "guestReady": 152.07,
+                "recordCommit": 4
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 290.55,
+              "stagesMs": {
+                "processCheck": 3.37,
+                "network": 55.08,
+                "diskRollback": 59.96,
+                "firecrackerLaunch": 16.62,
+                "apiReady": 11.5,
+                "snapshotLoad": 8.38,
+                "metadata": 0.79,
+                "unpause": 0.58,
+                "guestReady": 163.55,
+                "recordCommit": 3.78
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 283.94,
+              "stagesMs": {
+                "processCheck": 3.04,
+                "diskRollback": 50.55,
+                "network": 58.2,
+                "firecrackerLaunch": 24.24,
+                "apiReady": 11.08,
+                "snapshotLoad": 8.85,
+                "metadata": 0.24,
+                "unpause": 0.41,
+                "guestReady": 151.88,
+                "recordCommit": 2.84
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 292.96,
+              "stagesMs": {
+                "processCheck": 3.42,
+                "diskRollback": 46.4,
+                "network": 63.2,
+                "firecrackerLaunch": 21.21,
+                "apiReady": 10.7,
+                "snapshotLoad": 8.21,
+                "metadata": 0.19,
+                "unpause": 0.97,
+                "guestReady": 159.21,
+                "recordCommit": 2.97
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 290.34,
+              "stagesMs": {
+                "processCheck": 3.03,
+                "diskRollback": 60.11,
+                "network": 64.62,
+                "firecrackerLaunch": 24.19,
+                "apiReady": 11.12,
+                "snapshotLoad": 7.08,
+                "metadata": 0.23,
+                "unpause": 0.4,
+                "guestReady": 152.97,
+                "recordCommit": 2.81
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2690.55,
+              "terminalMs": 491.49,
+              "bootMs": 2226,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2688.49,
+              "stagesMs": {
+                "image": 0.16,
+                "records": 0.29,
+                "capacity": 13.5,
+                "dataset": 60.04,
+                "initialRecord": 33.53,
+                "diskClone": 59.41,
+                "deviceReady": 50.59,
+                "filesystemResize": 131.03,
+                "network": 62.72,
+                "firecrackerLaunch": 22.38,
+                "guestReady": 2226.03,
+                "response": 4.61
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2596.11,
+              "terminalMs": 812.26,
+              "bootMs": 2119,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2594.12,
+              "stagesMs": {
+                "image": 0.14,
+                "records": 0.42,
+                "capacity": 13.44,
+                "dataset": 42.1,
+                "initialRecord": 38.37,
+                "diskClone": 78.32,
+                "deviceReady": 50.43,
+                "filesystemResize": 141.99,
+                "network": 59.13,
+                "firecrackerLaunch": 21.39,
+                "guestReady": 2118.48,
+                "response": 3.99
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2914.48,
+              "terminalMs": 830.38,
+              "bootMs": 2410,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2912.24,
+              "stagesMs": {
+                "image": 0.14,
+                "records": 0.26,
+                "capacity": 13.46,
+                "dataset": 47.71,
+                "initialRecord": 35.6,
+                "diskClone": 89.12,
+                "deviceReady": 50.32,
+                "filesystemResize": 149.72,
+                "network": 63.07,
+                "firecrackerLaunch": 24.78,
+                "guestReady": 2409.63,
+                "response": 3.94
+              }
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 293.17,
+              "terminalMs": 146.99,
+              "resumeMs": 285,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 310.19,
+              "terminalMs": 169.25,
+              "resumeMs": 301,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 321.28,
+              "terminalMs": 140.64,
+              "resumeMs": 313,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 306.87,
+              "terminalMs": 130.94,
+              "resumeMs": 299,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 309.42,
+              "terminalMs": 141.48,
+              "resumeMs": 300,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 288.14,
+              "stagesMs": {
+                "processCheck": 3.15,
+                "diskRollback": 43.28,
+                "network": 62.95,
+                "firecrackerLaunch": 21.19,
+                "apiReady": 10.56,
+                "snapshotLoad": 8.16,
+                "metadata": 0.24,
+                "unpause": 0.75,
+                "guestReady": 151.93,
+                "recordCommit": 3.47
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 304.54,
+              "stagesMs": {
+                "processCheck": 3.13,
+                "diskRollback": 61.31,
+                "network": 67.46,
+                "firecrackerLaunch": 17.19,
+                "apiReady": 10.55,
+                "snapshotLoad": 8.09,
+                "metadata": 1,
+                "unpause": 0.83,
+                "guestReady": 165.14,
+                "recordCommit": 3.66
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 316.63,
+              "stagesMs": {
+                "processCheck": 3.13,
+                "diskRollback": 50.46,
+                "network": 62.3,
+                "firecrackerLaunch": 28.45,
+                "apiReady": 10.76,
+                "snapshotLoad": 7.46,
+                "metadata": 0.26,
+                "unpause": 0.38,
+                "guestReady": 173.89,
+                "recordCommit": 3.25
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 301.5,
+              "stagesMs": {
+                "processCheck": 3.06,
+                "diskRollback": 60.96,
+                "network": 62.59,
+                "firecrackerLaunch": 21.06,
+                "apiReady": 11.29,
+                "snapshotLoad": 9.59,
+                "metadata": 0.35,
+                "unpause": 0.64,
+                "guestReady": 164.17,
+                "recordCommit": 2.91
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 303.14,
+              "stagesMs": {
+                "processCheck": 3.1,
+                "diskRollback": 63.38,
+                "network": 68.48,
+                "firecrackerLaunch": 18.31,
+                "apiReady": 11.49,
+                "snapshotLoad": 8.12,
+                "metadata": 1.23,
+                "unpause": 0.59,
+                "guestReady": 161.68,
+                "recordCommit": 2.94
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2805.38,
+              "terminalMs": 690.45,
+              "bootMs": 2320,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2803.41,
+              "stagesMs": {
+                "image": 0.12,
+                "records": 0.24,
+                "capacity": 16.1,
+                "dataset": 72.59,
+                "initialRecord": 32.79,
+                "diskClone": 65.4,
+                "deviceReady": 50.99,
+                "filesystemResize": 133.84,
+                "network": 64.92,
+                "firecrackerLaunch": 19.18,
+                "guestReady": 2319.6,
+                "response": 3.95
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2625.72,
+              "terminalMs": 709.58,
+              "bootMs": 2165,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2623.74,
+              "stagesMs": {
+                "image": 0.17,
+                "records": 0.28,
+                "capacity": 17.34,
+                "dataset": 46.73,
+                "initialRecord": 36.86,
+                "diskClone": 68.39,
+                "deviceReady": 50.37,
+                "filesystemResize": 138.03,
+                "network": 54.15,
+                "firecrackerLaunch": 18.22,
+                "guestReady": 2164.99,
+                "response": 4.19
+              }
+            }
+          ]
+        },
+        {
+          "action": "host-cycle",
+          "totalMs": 51958
+        },
+        {
+          "action": "cold",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "cold",
+              "requestMs": 1279.78,
+              "terminalMs": 341.6,
+              "resumeMs": 1243,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 1248.27,
+              "stagesMs": {
+                "processCheck": 3.39,
+                "diskRollback": 43.79,
+                "network": 70.81,
+                "firecrackerLaunch": 31.36,
+                "apiReady": 41.14,
+                "snapshotLoad": 13.05,
+                "metadata": 1.34,
+                "unpause": 3.71,
+                "guestReady": 1050.36,
+                "recordCommit": 5.5
+              }
+            }
+          ]
+        },
+        {
+          "action": "cold",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "cold",
+              "requestMs": 655.27,
+              "terminalMs": 339.68,
+              "resumeMs": 644,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 646.65,
+              "stagesMs": {
+                "processCheck": 3.19,
+                "diskRollback": 52.11,
+                "network": 66.51,
+                "firecrackerLaunch": 25.36,
+                "apiReady": 10.67,
+                "snapshotLoad": 11.01,
+                "metadata": 0.39,
+                "unpause": 0.79,
+                "guestReady": 502.53,
+                "recordCommit": 3.09
+              }
+            }
+          ]
+        },
+        {
+          "action": "cold",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "cold",
+              "requestMs": 589.66,
+              "terminalMs": 324.0,
+              "resumeMs": 579,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 582.36,
+              "stagesMs": {
+                "processCheck": 3.22,
+                "diskRollback": 57.65,
+                "network": 62.67,
+                "firecrackerLaunch": 25.29,
+                "apiReady": 10.61,
+                "snapshotLoad": 11.84,
+                "metadata": 0.47,
+                "unpause": 0.5,
+                "guestReady": 442.03,
+                "recordCommit": 3.75
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "final-prefetch",
+      "prefetchEnabled": true,
+      "action": "environment",
+      "version": "1c258ff",
+      "image": "20261024-020337-perf",
+      "coldHostRequested": true,
+      "temporaryVMsRemoved": true,
+      "measurements": [
+        {
+          "action": "create",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2698.1,
+              "terminalMs": 863.39,
+              "bootMs": 2251,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2696.01,
+              "stagesMs": {
+                "image": 0.15,
+                "records": 0.3,
+                "capacity": 7.47,
+                "dataset": 37.39,
+                "initialRecord": 30.74,
+                "diskClone": 72.34,
+                "deviceReady": 50.68,
+                "filesystemResize": 126.26,
+                "network": 62.96,
+                "firecrackerLaunch": 28.12,
+                "guestReady": 2251.15,
+                "response": 4.39
+              },
+              "counters": {}
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 283.48,
+              "terminalMs": 140.76,
+              "resumeMs": 275,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 282.24,
+              "terminalMs": 84.41,
+              "resumeMs": 274,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 285.76,
+              "terminalMs": 72.08,
+              "resumeMs": 277,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 301.46,
+              "terminalMs": 77.19,
+              "resumeMs": 292,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 281.97,
+              "terminalMs": 82.25,
+              "resumeMs": 271,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 277.98,
+              "stagesMs": {
+                "processCheck": 3.1,
+                "prefetch": 0.46,
+                "diskRollback": 36.73,
+                "network": 54.65,
+                "firecrackerLaunch": 21.19,
+                "apiReady": 10.62,
+                "snapshotLoad": 6.97,
+                "metadata": 0.37,
+                "unpause": 0.3,
+                "guestReady": 157.94,
+                "recordCommit": 2.84
+              },
+              "counters": {
+                "prefetchedBytes": 0
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 276.71,
+              "stagesMs": {
+                "processCheck": 3.2,
+                "diskRollback": 46.13,
+                "network": 67.85,
+                "prefetch": 121.77,
+                "firecrackerLaunch": 25.3,
+                "apiReady": 11.23,
+                "snapshotLoad": 7,
+                "metadata": 0.69,
+                "unpause": 0.73,
+                "guestReady": 82.43,
+                "recordCommit": 2.85
+              },
+              "counters": {
+                "prefetchedBytes": 15417344
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 279.61,
+              "stagesMs": {
+                "processCheck": 3.12,
+                "diskRollback": 43.89,
+                "network": 66.7,
+                "prefetch": 121.5,
+                "firecrackerLaunch": 18.37,
+                "apiReady": 10.65,
+                "snapshotLoad": 6.56,
+                "metadata": 0.37,
+                "unpause": 0.5,
+                "guestReady": 94.69,
+                "recordCommit": 2.92
+              },
+              "counters": {
+                "prefetchedBytes": 14442496
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 295.69,
+              "stagesMs": {
+                "processCheck": 3.13,
+                "diskRollback": 42.3,
+                "network": 63.29,
+                "prefetch": 122.17,
+                "firecrackerLaunch": 26.12,
+                "apiReady": 10.61,
+                "snapshotLoad": 6.54,
+                "metadata": 0.22,
+                "unpause": 0.59,
+                "guestReady": 102.53,
+                "recordCommit": 3.18
+              },
+              "counters": {
+                "prefetchedBytes": 14872576
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 274.81,
+              "stagesMs": {
+                "processCheck": 3.35,
+                "diskRollback": 50.02,
+                "network": 63.5,
+                "prefetch": 121.63,
+                "firecrackerLaunch": 18.96,
+                "apiReady": 11.27,
+                "snapshotLoad": 7.95,
+                "metadata": 0.4,
+                "unpause": 0.65,
+                "guestReady": 83.91,
+                "recordCommit": 3.76
+              },
+              "counters": {
+                "prefetchedBytes": 13447168
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2620.02,
+              "terminalMs": 597.47,
+              "bootMs": 2155,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2617.27,
+              "stagesMs": {
+                "image": 0.13,
+                "records": 0.62,
+                "capacity": 10.84,
+                "dataset": 52.28,
+                "initialRecord": 35.95,
+                "diskClone": 69.82,
+                "deviceReady": 50.72,
+                "filesystemResize": 129.2,
+                "network": 57.71,
+                "firecrackerLaunch": 28.22,
+                "guestReady": 2155.14,
+                "response": 4.22
+              },
+              "counters": {}
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 305.46,
+              "terminalMs": 185.38,
+              "resumeMs": 297,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 286.61,
+              "terminalMs": 104.71,
+              "resumeMs": 278,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 297.37,
+              "terminalMs": 96.15,
+              "resumeMs": 290,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 289.81,
+              "terminalMs": 95.22,
+              "resumeMs": 281,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 315.37,
+              "terminalMs": 87.84,
+              "resumeMs": 307,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 299.88,
+              "stagesMs": {
+                "processCheck": 3.05,
+                "prefetch": 0.39,
+                "diskRollback": 43.03,
+                "network": 63.03,
+                "firecrackerLaunch": 26.3,
+                "apiReady": 10.64,
+                "snapshotLoad": 7.24,
+                "metadata": 0.2,
+                "unpause": 0.4,
+                "guestReady": 163.38,
+                "recordCommit": 2.78
+              },
+              "counters": {
+                "prefetchedBytes": 0
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 281.22,
+              "stagesMs": {
+                "processCheck": 3.12,
+                "diskRollback": 47.97,
+                "network": 64.4,
+                "prefetch": 121.56,
+                "firecrackerLaunch": 22.04,
+                "apiReady": 10.91,
+                "snapshotLoad": 7.08,
+                "metadata": 0.2,
+                "unpause": 0.6,
+                "guestReady": 88.21,
+                "recordCommit": 2.69
+              },
+              "counters": {
+                "prefetchedBytes": 15536128
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 292.66,
+              "stagesMs": {
+                "processCheck": 3.18,
+                "diskRollback": 48.05,
+                "network": 68.01,
+                "prefetch": 121.54,
+                "firecrackerLaunch": 22.49,
+                "apiReady": 10.87,
+                "snapshotLoad": 8.03,
+                "metadata": 1.05,
+                "unpause": 1.13,
+                "guestReady": 98.29,
+                "recordCommit": 2.77
+              },
+              "counters": {
+                "prefetchedBytes": 14798848
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 284.29,
+              "stagesMs": {
+                "processCheck": 3.06,
+                "diskRollback": 53.32,
+                "network": 65.44,
+                "prefetch": 121.68,
+                "firecrackerLaunch": 22.97,
+                "apiReady": 11.24,
+                "snapshotLoad": 7.69,
+                "metadata": 0.67,
+                "unpause": 0.84,
+                "guestReady": 90.04,
+                "recordCommit": 3.05
+              },
+              "counters": {
+                "prefetchedBytes": 14581760
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 309.6,
+              "stagesMs": {
+                "processCheck": 3.05,
+                "diskRollback": 48.51,
+                "network": 62.85,
+                "prefetch": 121.58,
+                "firecrackerLaunch": 23.53,
+                "apiReady": 11.04,
+                "snapshotLoad": 7.77,
+                "metadata": 0.43,
+                "unpause": 0.35,
+                "guestReady": 115.44,
+                "recordCommit": 2.82
+              },
+              "counters": {
+                "prefetchedBytes": 14401536
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2746.48,
+              "terminalMs": 721.63,
+              "bootMs": 2274,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2744.32,
+              "stagesMs": {
+                "image": 0.28,
+                "records": 0.36,
+                "capacity": 13.08,
+                "dataset": 39.53,
+                "initialRecord": 34.82,
+                "diskClone": 83.02,
+                "deviceReady": 50.51,
+                "filesystemResize": 137.2,
+                "network": 64.91,
+                "firecrackerLaunch": 20.12,
+                "guestReady": 2274.44,
+                "response": 4.36
+              },
+              "counters": {}
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 303.32,
+              "terminalMs": 160.26,
+              "resumeMs": 295,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 297.95,
+              "terminalMs": 102.88,
+              "resumeMs": 289,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 290.9,
+              "terminalMs": 127.19,
+              "resumeMs": 283,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 290.58,
+              "terminalMs": 113.62,
+              "resumeMs": 282,
+              "terminalStateVerified": true
+            },
+            {
+              "kind": "warm",
+              "requestMs": 299.45,
+              "terminalMs": 118.63,
+              "resumeMs": 291,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 298.29,
+              "stagesMs": {
+                "processCheck": 3.1,
+                "prefetch": 0.35,
+                "diskRollback": 34.19,
+                "network": 71.47,
+                "firecrackerLaunch": 17.27,
+                "apiReady": 11.05,
+                "snapshotLoad": 9.16,
+                "metadata": 0.44,
+                "unpause": 0.38,
+                "guestReady": 157.03,
+                "recordCommit": 2.78
+              },
+              "counters": {
+                "prefetchedBytes": 0
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 292.09,
+              "stagesMs": {
+                "processCheck": 3.07,
+                "diskRollback": 57.92,
+                "network": 69.14,
+                "prefetch": 121.63,
+                "firecrackerLaunch": 22.76,
+                "apiReady": 10.56,
+                "snapshotLoad": 7.83,
+                "metadata": 0.26,
+                "unpause": 0.41,
+                "guestReady": 96.52,
+                "recordCommit": 3.11
+              },
+              "counters": {
+                "prefetchedBytes": 14786560
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 285.91,
+              "stagesMs": {
+                "processCheck": 3.31,
+                "diskRollback": 52.74,
+                "network": 64.37,
+                "prefetch": 121.43,
+                "firecrackerLaunch": 19.03,
+                "apiReady": 11.52,
+                "snapshotLoad": 9.09,
+                "metadata": 0.85,
+                "unpause": 1.04,
+                "guestReady": 90.53,
+                "recordCommit": 2.62
+              },
+              "counters": {
+                "prefetchedBytes": 13836288
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 285.13,
+              "stagesMs": {
+                "processCheck": 3.16,
+                "diskRollback": 52.48,
+                "network": 63.55,
+                "prefetch": 121.86,
+                "firecrackerLaunch": 22.93,
+                "apiReady": 11.07,
+                "snapshotLoad": 8.19,
+                "metadata": 0.5,
+                "unpause": 0.42,
+                "guestReady": 87.91,
+                "recordCommit": 2.78
+              },
+              "counters": {
+                "prefetchedBytes": 16318464
+              }
+            },
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 294.13,
+              "stagesMs": {
+                "processCheck": 3.42,
+                "diskRollback": 50.98,
+                "network": 71.2,
+                "prefetch": 122.01,
+                "firecrackerLaunch": 19.42,
+                "apiReady": 10.72,
+                "snapshotLoad": 8.07,
+                "metadata": 0.67,
+                "unpause": 0.44,
+                "guestReady": 99.97,
+                "recordCommit": 3.53
+              },
+              "counters": {
+                "prefetchedBytes": 14327808
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "final-cold",
+      "prefetchEnabled": true,
+      "action": "environment",
+      "version": "1c258ff",
+      "image": "20261024-020337-perf",
+      "coldHostRequested": true,
+      "temporaryVMsRemoved": true,
+      "measurements": [
+        {
+          "action": "create",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2280.17,
+              "terminalMs": 956.59,
+              "bootMs": 1798,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2277.47,
+              "stagesMs": {
+                "image": 0.14,
+                "records": 0.51,
+                "capacity": 7.59,
+                "dataset": 40.8,
+                "initialRecord": 37.51,
+                "diskClone": 85.02,
+                "deviceReady": 50.28,
+                "filesystemResize": 140.03,
+                "network": 62.85,
+                "firecrackerLaunch": 26.29,
+                "guestReady": 1797.71,
+                "response": 4.68
+              },
+              "counters": {}
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 277.11,
+              "terminalMs": 102.59,
+              "resumeMs": 268,
+              "pauseMs": 2878,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 270.91,
+              "stagesMs": {
+                "processCheck": 3.4,
+                "prefetch": 0.37,
+                "diskRollback": 41.63,
+                "network": 62.61,
+                "firecrackerLaunch": 19.86,
+                "apiReady": 10.93,
+                "snapshotLoad": 7.06,
+                "metadata": 0.59,
+                "unpause": 0.99,
+                "guestReady": 142.38,
+                "recordCommit": 2.71
+              },
+              "counters": {
+                "prefetchedBytes": 0
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2755.27,
+              "terminalMs": 600.58,
+              "bootMs": 2275,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2752.93,
+              "stagesMs": {
+                "image": 0.32,
+                "records": 0.25,
+                "capacity": 10.62,
+                "dataset": 53.83,
+                "initialRecord": 33.85,
+                "diskClone": 81.85,
+                "deviceReady": 50.3,
+                "filesystemResize": 128.11,
+                "network": 61.27,
+                "firecrackerLaunch": 28.15,
+                "guestReady": 2275.25,
+                "response": 4.61
+              },
+              "counters": {}
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 275.89,
+              "terminalMs": 126.06,
+              "resumeMs": 269,
+              "pauseMs": 3533,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 270.17,
+              "stagesMs": {
+                "processCheck": 3.16,
+                "prefetch": 0.35,
+                "diskRollback": 23.23,
+                "network": 61.14,
+                "firecrackerLaunch": 18.22,
+                "apiReady": 10.78,
+                "snapshotLoad": 7.3,
+                "metadata": 0.22,
+                "unpause": 0.85,
+                "guestReady": 144.42,
+                "recordCommit": 1.53
+              },
+              "counters": {
+                "prefetchedBytes": 0
+              }
+            }
+          ]
+        },
+        {
+          "action": "create",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "create",
+              "image": "20261024-020337-perf",
+              "requestMs": 2844.43,
+              "terminalMs": 884.4,
+              "bootMs": 2358,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "create",
+              "outcome": "ok",
+              "totalMs": 2842.14,
+              "stagesMs": {
+                "image": 0.17,
+                "records": 0.26,
+                "capacity": 13.93,
+                "dataset": 58.31,
+                "initialRecord": 37.75,
+                "diskClone": 77.93,
+                "deviceReady": 50.33,
+                "filesystemResize": 125.84,
+                "network": 71.24,
+                "firecrackerLaunch": 20.24,
+                "guestReady": 2357.91,
+                "response": 3.8
+              },
+              "counters": {}
+            }
+          ]
+        },
+        {
+          "action": "warm",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "warm",
+              "requestMs": 375.26,
+              "terminalMs": 137.73,
+              "resumeMs": 367,
+              "pauseMs": 5853,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 369.68,
+              "stagesMs": {
+                "processCheck": 3.35,
+                "prefetch": 0.36,
+                "diskRollback": 40.65,
+                "network": 73.31,
+                "firecrackerLaunch": 27.03,
+                "apiReady": 10.57,
+                "snapshotLoad": 8.25,
+                "metadata": 0.59,
+                "unpause": 0.69,
+                "guestReady": 217.59,
+                "recordCommit": 2.91
+              },
+              "counters": {
+                "prefetchedBytes": 0
+              }
+            }
+          ]
+        },
+        {
+          "action": "host-cycle",
+          "totalMs": 57303
+        },
+        {
+          "action": "cold",
+          "size": "small",
+          "samples": [
+            {
+              "kind": "cold",
+              "requestMs": 992.3,
+              "terminalMs": 240.8,
+              "resumeMs": 961,
+              "pauseMs": 9860,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 966.06,
+              "stagesMs": {
+                "processCheck": 3.09,
+                "diskRollback": 42.65,
+                "network": 63.46,
+                "prefetch": 126.11,
+                "firecrackerLaunch": 27.28,
+                "apiReady": 39.35,
+                "snapshotLoad": 8.34,
+                "metadata": 1.1,
+                "unpause": 1.25,
+                "guestReady": 730.3,
+                "recordCommit": 5.45
+              },
+              "counters": {
+                "prefetchedBytes": 7720960
+              }
+            }
+          ]
+        },
+        {
+          "action": "cold",
+          "size": "medium",
+          "samples": [
+            {
+              "kind": "cold",
+              "requestMs": 613.47,
+              "terminalMs": 323.49,
+              "resumeMs": 601,
+              "pauseMs": 17000,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 604.79,
+              "stagesMs": {
+                "processCheck": 3.31,
+                "diskRollback": 53.94,
+                "network": 73.44,
+                "prefetch": 125.16,
+                "firecrackerLaunch": 26.41,
+                "apiReady": 10.8,
+                "snapshotLoad": 7.41,
+                "metadata": 0.23,
+                "unpause": 0.63,
+                "guestReady": 404.47,
+                "recordCommit": 4.03
+              },
+              "counters": {
+                "prefetchedBytes": 8228864
+              }
+            }
+          ]
+        },
+        {
+          "action": "cold",
+          "size": "large",
+          "samples": [
+            {
+              "kind": "cold",
+              "requestMs": 598.56,
+              "terminalMs": 312.06,
+              "resumeMs": 589,
+              "pauseMs": 36441,
+              "terminalStateVerified": true
+            }
+          ],
+          "profiles": [
+            {
+              "operation": "resume",
+              "outcome": "ok",
+              "totalMs": 592.16,
+              "stagesMs": {
+                "processCheck": 3.15,
+                "diskRollback": 53.05,
+                "network": 70.63,
+                "prefetch": 124.14,
+                "firecrackerLaunch": 31.94,
+                "apiReady": 11.03,
+                "snapshotLoad": 8.6,
+                "metadata": 0.84,
+                "unpause": 0.81,
+                "guestReady": 385.98,
+                "recordCommit": 2.96
+              },
+              "counters": {
+                "prefetchedBytes": 7680000
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
