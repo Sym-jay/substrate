@@ -263,7 +263,7 @@ bun run cli:build bun-linux-x64
 PR #16 now targets current `main` and preserves its dashboard, Windows and Phase 2
 account features. CLI approval/credentials and the other remaining stores share
 Postgres in production; existing credential hashes and expiry migrate without
-relogin. The deployed control release is `e96dc54`. See the
+relogin. The deployed control release is `aa03fcc`. See the
 [Phase 2 deployment record](deployments/2026-10-24-phase2.md) and
 [database migration guide](database-migration.md) for verification and rollback
 limits. The initial 156-test report above describes the original CLI release;
