@@ -1,4 +1,4 @@
-import { Activity, Bot, GitBranch, Plus, SquareTerminal } from 'lucide-react'
+import { Bot, GitBranch, ListChecks, Plus, SquareTerminal } from 'lucide-react'
 import { AgentIcon } from '../app/AgentIcon.tsx'
 import { agentCatalog, agentName } from '../app/agents.ts'
 import { useData } from '../app/data.tsx'
@@ -38,7 +38,7 @@ export function JobsPage() {
       </Card>
 
       <Card title="Background operations" className="rise" style={{ '--i': 1 } as React.CSSProperties}>
-        {jobs.length === 0 ? <Empty icon={<Activity />} title="None yet">Creating and forking workspaces run here.</Empty> : (
+        {jobs.length === 0 ? <Empty icon={<ListChecks />} title="None yet">Creating and forking workspaces run here.</Empty> : (
           <ul>
             {jobs.map((job) => {
               const vm = byId.get(job.vmId)

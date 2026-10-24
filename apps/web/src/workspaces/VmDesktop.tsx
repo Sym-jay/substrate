@@ -30,7 +30,14 @@ export function useVmGui(vm: Vm) {
     catch (e) { setError(e instanceof Error ? e.message : 'Couldn’t set up a desktop.') }
   }, [vm.id])
 
-  return { ...gui, error, setup }
+  // Closes it: it stops, and stays off until it's set up again.
+  const close = useCallback(async () => {
+    const next = await workspaceApi.closeGui(vm.id)
+    setGui(next)
+    return next
+  }, [vm.id])
+
+  return { ...gui, error, setup, close }
 }
 
 // The Desktop tab's pane: the desktop when there is one, and otherwise what

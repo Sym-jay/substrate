@@ -1,6 +1,7 @@
-import type { Session, Status, Vm, WindowsWorkspace } from '@substrate/protocol'
+import type { QuotaStatus, Session, Status, Vm, WindowsWorkspace } from '@substrate/protocol'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useStatus } from '../useStatus.ts'
+import { AccountApiError, accountApi } from '../account/api.ts'
 import { dashboardApi, windowsApi, workspaceApi, WorkspaceApiError, type Job } from '../workspaces/api.ts'
 
 type Data = {
@@ -16,6 +17,9 @@ type Data = {
   sessions: Record<string, Session[]>
   // Null when the server has no Windows workspaces.
   windows: WindowsWorkspace[] | null
+  // The signed-in user's quota and what they've used: undefined until it's
+  // in, null when the server has no quotas.
+  quota: QuotaStatus | null | undefined
   refresh: () => void
   putVm: (vm: Vm) => void
   dropVm: (id: string) => void
@@ -85,6 +89,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     catch (error) { if (!signal.aborted && error instanceof WorkspaceApiError && [401, 404, 503].includes(error.status)) setWindows(null) }
   }, 8_000, tick)
 
+  const [quota, setQuota] = useState<QuotaStatus | null | undefined>(undefined)
+  usePoll(async (signal) => {
+    try { setQuota(await accountApi.quota(signal)) }
+    catch (error) { if (!signal.aborted && error instanceof AccountApiError && [401, 404, 503].includes(error.status)) setQuota(null) }
+  }, 60_000, tick)
+
   // Sessions for the VMs that are running (the others' can't be asked).
   const running = useMemo(() => (vms ?? []).filter((vm) => vm.state === 'running').map((vm) => vm.id).join(','), [vms])
   usePoll(async (signal) => {
@@ -101,14 +111,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(() => setTick((n) => n + 1), [])
   const putVm = useCallback((vm: Vm) => setVms((prev) => (prev ? [...prev.filter((v) => v.id !== vm.id), vm] : [vm])), [])
   const dropVm = useCallback((id: string) => setVms((prev) => prev?.filter((v) => v.id !== id) ?? null), [])
-  const putWindows = useCallback((w: WindowsWorkspace) => setWindows((prev) => prev?.map((p) => (p.id === w.id ? w : p)) ?? prev), [])
+  // Replaces it, or adds it if it's new (just launched).
+  const putWindows = useCallback((w: WindowsWorkspace) => setWindows((prev) => prev && (prev.some((p) => p.id === w.id) ? prev.map((p) => (p.id === w.id ? w : p)) : [...prev, w])), [])
 
   const status = statusState.kind === 'ok' ? statusState.status : statusState.kind === 'error' ? statusState.last : null
   const value: Data = {
     vms: vms ? [...vms].sort((a, b) => a.createdAt.localeCompare(b.createdAt)) : null,
     vmsError, vmsUnavailable, status,
     statusError: statusState.kind === 'error' ? statusState.message : null,
-    jobs, sessions, windows, refresh, putVm, dropVm, putWindows,
+    jobs, sessions, windows, quota, refresh, putVm, dropVm, putWindows,
   }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }

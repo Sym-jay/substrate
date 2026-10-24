@@ -41,6 +41,11 @@ export function guestClient(guestIp: string, token: string, port = GUESTD_PORT) 
     async createSession(req: CreateSession) {
       return Session.parse(await sessionCall(`${base}/sessions`, { method: 'POST', headers, body: JSON.stringify(req) }))
     },
+
+    // Ends it and forgets it. A guest from before this answers 404.
+    async closeSession(id: string) {
+      await sessionCall(`${base}/sessions/${encodeURIComponent(id)}`, { method: 'DELETE', headers })
+    },
     async tasks() { return GuestTask.array().parse(await sessionCall(`${base}/tasks`, { headers })) },
     async task(id: string) { return GuestTask.parse(await sessionCall(`${base}/tasks/${encodeURIComponent(id)}`, { headers })) },
     async createTask(input: StartGuestTask) { return GuestTask.parse(await sessionCall(`${base}/tasks`, { method: 'POST', headers, body: JSON.stringify(input) })) },

@@ -130,6 +130,14 @@ export class TerminalSession {
     if (this.state === 'running') this.process.kill('SIGKILL')
   }
 
+  // Its tab closed: a hangup, as when a terminal window closes, then a kill
+  // if it's still going. Whoever is attached hears it exit.
+  end() {
+    if (this.state !== 'running') return
+    this.process.kill('SIGHUP')
+    setTimeout(() => { if (this.state === 'running') this.process.kill('SIGKILL') }, 2_000)
+  }
+
   private output(data: string) {
     this.activity.touch()
     this.chunks.push(data)
@@ -178,6 +186,17 @@ export class Sessions {
 
   get(id: string) {
     return this.sessions.get(id)
+  }
+
+  // Ends a session, if it's still running, and forgets it. False if there's
+  // no such session.
+  close(id: string) {
+    const session = this.sessions.get(id)
+    if (!session) return false
+    session.end()
+    this.sessions.delete(id)
+    void this.save()
+    return true
   }
 
   // Null when the VM already has as many sessions as it may keep.

@@ -1,109 +1,43 @@
-import { VmName, type Session, type WindowsCredentials, type WindowsWorkspace } from '@substrate/protocol'
+import type { Session, WindowsCredentials, WindowsWorkspace } from '@substrate/protocol'
 import { AppWindow, ChevronLeft, Copy, KeyRound, Maximize, Minimize, Monitor, Play, Plus, RotateCw, Square, SquareTerminal, Trash } from 'lucide-react'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useData } from '../app/data.tsx'
-import { href, navigate } from '../app/router.ts'
-import { Button, Empty, PageHeader, Sheet, Shimmer, StateBadge, since, useToast } from '../app/ui.tsx'
+import { useLauncher } from '../app/launcher.tsx'
+import { href, navigate, redirect } from '../app/router.ts'
+import { Button, Empty, StateBadge, since, useToast } from '../app/ui.tsx'
 import { windowsApi } from '../workspaces/api.ts'
 import { useDesktop } from '../workspaces/DesktopView.tsx'
 import { TerminalView } from '../workspaces/TerminalView.tsx'
+import { WorkspacesTable } from './WorkspacesTable.tsx'
 
 const idleChoices = [null, 15, 30, 60, 120, 240]
 const idleLabel = (m: number | null) => (m === null ? 'never' : m < 60 ? `${m} min idle` : `${m / 60} h idle`)
 const stateText: Record<WindowsWorkspace['state'], string> = {
   creating: 'setting up', starting: 'starting', running: 'running', stopping: 'stopping', stopped: 'stopped', failed: 'failed',
 }
-const tone = (w: WindowsWorkspace) => (w.state === 'running' ? 'is-ok' : w.state === 'failed' ? 'is-bad' : w.state === 'stopped' ? '' : 'is-busy')
 
-// Windows workspaces: a grid of cards. Opening one fills the window with its
-// desktop, and its PowerShell terminals as tabs beside it.
+// A Windows workspace, opened (#/windows/<id>): its desktop over the whole
+// window, with Workspaces under it. Windows workspaces are listed and launched
+// with the rest, so there's nothing else here: #/windows goes to Workspaces.
 export function WindowsPage({ params }: { params: string[] }) {
   const [id, view = 'desktop'] = params
   const { windows } = useData()
-  const [creating, setCreating] = useState(false)
+  const { configure } = useLauncher()
   const opened = windows?.find((w) => w.id === id)
 
-  // #/windows/new (from the Workspaces page or ⌘K) opens New straight away.
   useEffect(() => {
-    if (id !== 'new') return
-    setCreating(true)
-    navigate('windows')
-  }, [id])
+    // An old #/windows/new link: Launch, set to Windows.
+    if (id === 'new') configure({ os: 'windows' })
+    // Nothing to open, once the list is in.
+    if (!id || id === 'new' || (windows !== undefined && !opened)) redirect('workspaces')
+  }, [id, windows, opened, configure])
 
-  if (windows === null) {
-    return <div className="card card-pad"><Empty icon={<AppWindow />} title="Windows workspaces aren’t set up here">They aren’t available here yet.</Empty></div>
-  }
   return (
-    <div className="page-body">
-      <PageHeader
-        title="Windows"
-        subtitle="Windows Server 2025 · 16 vCPU · 64 GB · $1.63/h while on, one on at a time. Stops itself when idle."
-        actions={<Button variant="primary" icon={<Plus />} onClick={() => setCreating(true)}>New</Button>}
-      />
-      {windows === undefined ? null : windows.length === 0
-        ? <div className="card card-pad"><Empty icon={<AppWindow />} title="No Windows workspaces">Create one: its first start takes 5 to 10 minutes.</Empty></div>
-        : <ul className="win-grid">{windows.map((w) => <WindowsCard key={w.id} workspace={w} />)}</ul>}
+    <>
+      <WorkspacesTable />
       {opened && <WindowsFull key={opened.id} workspace={opened} view={view} />}
-      <Sheet open={creating} title="New Windows workspace" onClose={() => setCreating(false)}>
-        <CreateWindows onCreated={(w) => { setCreating(false); navigate('windows', w.id) }} />
-      </Sheet>
-    </div>
-  )
-}
-
-function WindowsCard({ workspace: w }: { workspace: WindowsWorkspace }) {
-  const { putWindows } = useData()
-  const toast = useToast()
-  const [busy, setBusy] = useState<'start' | 'stop' | null>(null)
-  const running = w.state === 'running'
-  const act = async (action: 'start' | 'stop') => {
-    setBusy(action)
-    try { putWindows(await windowsApi[action](w.id)) }
-    catch (e) { toast(e instanceof Error ? e.message : `Couldn’t ${action} it.`, 'error') }
-    finally { setBusy(null) }
-  }
-  return (
-    <li className="win-card">
-      <a href={href('windows', w.id)} className={`win-card-screen ${running ? 'is-running' : ''}`} aria-label={`Open ${w.name}`}>
-        {running && <Shimmer />}
-        <Monitor />
-        <span className="label">{running ? 'Open desktop' : stateText[w.state]}</span>
-      </a>
-      <div className="win-card-foot">
-        <span className={`dot ${tone(w)}`} />
-        <a href={href('windows', w.id)} className="min-w-0 flex-1">
-          <span className="block truncate">{w.name}</span>
-          <span className="text-faint block truncate text-xs">{stateText[w.state]} · created {since(w.createdAt)} ago</span>
-        </a>
-        {w.state === 'stopped' && <Button size="sm" variant="primary" icon={<Play />} disabled={!!busy} onClick={() => void act('start')}>{busy === 'start' ? 'Starting…' : 'Start'}</Button>}
-        {running && <Button size="sm" variant="ghost" icon={<Square />} disabled={!!busy} onClick={() => void act('stop')}>{busy === 'stop' ? 'Stopping…' : 'Stop'}</Button>}
-      </div>
-    </li>
-  )
-}
-
-function CreateWindows({ onCreated }: { onCreated: (w: WindowsWorkspace) => void }) {
-  const { refresh } = useData()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const name = String(new FormData(event.currentTarget).get('name') ?? '').trim()
-    if (!VmName.safeParse(name).success) return setError('Use lowercase letters, digits and dashes, starting with a letter or digit.')
-    setBusy(true)
-    setError('')
-    try { const w = await windowsApi.create({ name }); refresh(); onCreated(w) }
-    catch (e) { setError(e instanceof Error ? e.message : 'Couldn’t create it.') }
-    finally { setBusy(false) }
-  }
-  return (
-    <form onSubmit={submit} className="flex flex-col gap-5">
-      <label className="field">Name<input className="input" name="name" required maxLength={31} autoCapitalize="none" spellCheck={false} placeholder="e.g. windows-dev" /></label>
-      <p className="text-muted text-sm leading-relaxed">Windows Server 2025 with Git, Node, PowerShell 7, Claude Code, Codex and WSL. 16 vCPU and 64 GB, at $1.63 an hour while it’s on; stopped, only its disk costs (about $9 a month).</p>
-      {error && <p role="alert" className="text-sm text-[var(--bad)]">{error}</p>}
-      <Button type="submit" variant="primary" size="lg" icon={<Plus />} disabled={busy}>{busy ? 'Creating…' : 'Create Windows workspace'}</Button>
-    </form>
+    </>
   )
 }
 
@@ -148,7 +82,7 @@ function WindowsFull({ workspace, view }: { workspace: WindowsWorkspace; view: s
   return createPortal(
     <div ref={frame} className="win-full" role="dialog" aria-label={workspace.name}>
       <div className="win-bar">
-        <a href={href('windows')} className="btn btn-ghost btn-sm btn-icon" aria-label="All Windows workspaces" title="All Windows workspaces"><ChevronLeft /></a>
+        <a href={href('workspaces')} className="btn btn-ghost btn-sm btn-icon" aria-label="All workspaces" title="All workspaces"><ChevronLeft /></a>
         <span className="truncate text-sm">{workspace.name}</span>
         <StateBadge state={workspace.state} label={stateText[workspace.state]} />
         <span className="win-bar-rule" />
@@ -179,7 +113,7 @@ function WindowsFull({ workspace, view }: { workspace: WindowsWorkspace; view: s
           {document.fullscreenEnabled && <Button size="sm" variant="ghost" icon={fullscreen ? <Minimize /> : <Maximize />} aria-label={fullscreen ? 'Leave full screen' : 'Full screen'} title={fullscreen ? 'Leave full screen' : 'Full screen'} onClick={toggleFullscreen} />}
           <Button size="sm" variant="danger" icon={<Trash />} aria-label="Delete" title="Delete" disabled={!!busy} onClick={() => {
             if (!confirm(`Delete ${workspace.name}? Its disk and everything on it go too.`)) return
-            void act('delete', async () => { await windowsApi.remove(workspace.id); refresh(); navigate('windows') })
+            void act('delete', async () => { await windowsApi.remove(workspace.id); refresh(); navigate('workspaces') })
           }} />
         </div>
       </div>

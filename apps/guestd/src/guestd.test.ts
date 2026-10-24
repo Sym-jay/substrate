@@ -84,6 +84,16 @@ describe('sessions', () => {
   })
 })
 
+test('closing a session ends it and forgets it', async () => {
+  const sessions = new Sessions(() => ['sleep', '30'], '/tmp')
+  const session = sessions.create({})!
+  expect(sessions.list()).toHaveLength(1)
+  expect(sessions.close(session.id)).toBe(true)
+  expect(sessions.list()).toEqual([])
+  expect(await session.exited).not.toBe(0)
+  expect(sessions.close(session.id)).toBe(false)
+})
+
 // Linux only: macOS has no setsid(1), and guestd only runs in Linux VMs.
 test.skipIf(process.platform !== 'linux')('Ctrl+C interrupts the foreground command', async () => {
   const session = new TerminalSession(null, withControllingTerminal(['bash', '--noprofile', '--norc', '-i']), '/tmp')

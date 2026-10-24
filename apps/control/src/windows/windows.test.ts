@@ -21,7 +21,7 @@ function fakeCloud() {
     instances, calls, userData, busy: null,
     async launch(input) {
       const id = `i-${++next}`
-      calls.push(`launch ${input.name}`)
+      calls.push(`launch ${input.name} as ${input.instanceType}`)
       userData.push(input.userData)
       instances.set(id, { state: 'pending', privateIp: `10.40.0.${100 + next}` })
       return id
@@ -91,6 +91,14 @@ describe('Windows workspaces', () => {
     expect(s.cloud.userData[0]).toContain('ssh-ed25519 AAAAkey substrate-control')
     // Its passwords never go out with the workspace.
     expect(JSON.stringify(w)).not.toContain(row.password)
+  })
+
+  test('each size is a size of the configured family; large by default', async () => {
+    const s = (await setup({ maxRunning: 3 }))
+    expect(await s.workspaces.create('ann', { name: 'big' })).toMatchObject({ instanceType: 'm8i.4xlarge', size: 'large' })
+    expect(await s.workspaces.create('bob', { name: 'small', size: 'small' })).toMatchObject({ instanceType: 'm8i.xlarge', size: 'small' })
+    expect(await s.workspaces.create('cat', { name: 'mid', size: 'medium' })).toMatchObject({ instanceType: 'm8i.2xlarge', size: 'medium' })
+    expect(s.cloud.calls.filter((c) => c.startsWith('launch'))).toEqual(['launch big as m8i.4xlarge', 'launch small as m8i.xlarge', 'launch mid as m8i.2xlarge'])
   })
 
   test("it's running once its first boot says it's ready", async () => {
@@ -250,6 +258,7 @@ describe('Windows routes, end to end', () => {
     const s = (await setup())
     const { base, api } = await serve(s)
     expect((await api('/windows', '')).status).toBe(401)
+    expect((await api('/windows', 'ann', { method: 'POST', body: JSON.stringify({ name: 'odd', size: 'huge' }) })).status).toBe(400)
     const created = await api('/windows', 'ann', { method: 'POST', body: JSON.stringify({ name: 'one' }) })
     expect(created.status).toBe(201)
     const { id } = (await created.json()) as { id: string }

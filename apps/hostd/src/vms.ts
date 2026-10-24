@@ -104,7 +104,8 @@ export class VmManager implements VmService {
     try {
       const image = await profile.measure('image', () => currentImage())
       if (!image) throw new HttpError(409, 'no VM image yet: run `bun run images:build`')
-      const size = VmSizes[input.size ?? DEFAULT_VM_SIZE]
+      const preset = VmSizes[input.size ?? DEFAULT_VM_SIZE]
+      const size = { vcpus: input.vcpus ?? preset.vcpus, memMib: input.memMib ?? preset.memMib }
       const diskGib = await this.checkDiskSize(input.diskGib ?? DEFAULT_DISK_GIB, image.rootfs)
 
       return await this.lock.run(async () => {

@@ -12,6 +12,10 @@ export const VmSizeName = z.enum(['large', 'medium', 'small'])
 export type VmSizeName = z.infer<typeof VmSizeName>
 export const DEFAULT_VM_SIZE: VmSizeName = 'large'
 
+// A custom size: any whole vCPU count and memory within these bounds, in
+// place of a preset's. hostd still checks the host has the memory.
+export const VmLimits = { vcpus: { min: 1, max: 16 }, memMib: { min: 2_048, max: 65_536 } } as const
+
 export const VmState = z.enum(['starting', 'running', 'stopping', 'stopped', 'failed', 'pausing', 'paused', 'resuming', 'forking', 'checkpointing', 'resizing'])
 export type VmState = z.infer<typeof VmState>
 
@@ -72,6 +76,9 @@ export const DEFAULT_DISK_GIB = 32
 export const CreateVm = z.object({
   name: VmName.optional(),
   size: VmSizeName.optional(),
+  // Either overrides the preset's.
+  vcpus: z.number().int().min(VmLimits.vcpus.min).max(VmLimits.vcpus.max).optional(),
+  memMib: z.number().int().min(VmLimits.memMib.min).max(VmLimits.memMib.max).multipleOf(256).optional(),
   // hostd also holds this between the image's own size and the host's storage pool.
   diskGib: z.number().int().min(8).max(1024).optional(),
   repository: GitHubRepo.optional(),
