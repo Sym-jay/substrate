@@ -153,9 +153,9 @@ printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" >"$root/etc/resolv.conf"
 # Package installation is finished. Prepare the final linker cache once in the
 # image, instead of making each new VM run first-boot ldconfig on the critical
 # path. The update stamps remain older than any later /usr change inside a VM,
-# so systemd still runs its update services after a user changes the image.
+# so systemd still runs its update services when /usr is marked updated later.
 log "preparing first-boot library cache"
-in_root 'ldconfig'
+in_root 'systemd-sysusers; journalctl --update-catalog; ldconfig'
 touch "$root/etc/.updated" "$root/var/.updated"
 
 # If the host dies, a VM loses at most ~5 s of writes rather than ~30 s.

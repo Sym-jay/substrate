@@ -89,6 +89,48 @@ async function rig() {
 }
 
 describe('snapshot lifecycle', () => {
+  test('failed disk preparation waits for network setup before cleanup and never launches', async () => {
+    const r = await rig()
+    await r.snapshots.pause(r.record)
+    r.events.length = 0
+    let networkDone = false
+    let release!: () => void
+    let networkStarted!: () => void
+    const started = new Promise<void>((resolve) => { networkStarted = resolve })
+    const network = new Promise<void>((resolve) => { release = resolve })
+    const snapshots = new Snapshots({ ...r.dependencies,
+      zfs: { ...r.dependencies.zfs, rollback: async () => { throw new Error('rollback failed') } },
+      startNetwork: async () => { networkStarted(); await network; networkDone = true },
+      deleteTap: async () => { expect(networkDone).toBe(true); r.events.push('cleanup') },
+    })
+    const result = snapshots.resume(r.record).catch((error: Error) => error)
+    await started
+    expect(r.events).not.toContain('cleanup')
+    release()
+    expect((await result as Error).message).toBe('rollback failed')
+    expect(r.events).not.toContain('launch')
+    expect(r.events).toContain('cleanup')
+    expect(r.saved.paused).toBe(true)
+  })
+
+  test('failed network preparation waits for disk rollback before cleanup', async () => {
+    const r = await rig()
+    await r.snapshots.pause(r.record)
+    let rolledBack = false, release!: () => void, entered!: () => void
+    const started = new Promise<void>((resolve) => { entered = resolve })
+    const disk = new Promise<void>((resolve) => { release = resolve })
+    const snapshots = new Snapshots({ ...r.dependencies,
+      zfs: { ...r.dependencies.zfs, rollback: async () => { entered(); await disk; rolledBack = true } },
+      startNetwork: async () => { throw new Error('network failed') },
+      deleteTap: async () => { expect(rolledBack).toBe(true) },
+    })
+    const result = snapshots.resume(r.record).catch((error: Error) => error)
+    await started; release()
+    expect((await result as Error).message).toBe('network failed')
+    expect(r.saved.paused).toBe(true)
+    expect(r.running).toBe(false)
+  })
+
   test('publishes matching memory and disk before releasing the VM', async () => {
     const r = await rig()
     await r.snapshots.pause(r.record)

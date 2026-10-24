@@ -98,8 +98,15 @@ if pgrep -f '^bash .*/images/guest/build-images.sh' >/dev/null; then exit 1; fi`
     results.push({ action: 'host-cycle', totalMs: Date.now() - before }); await save()
     for (const vm of retained) await probe({ action: 'cold', ...vm })
   }
+} catch (error) {
+  console.error('Benchmark failed:', error instanceof Error ? error.message : error)
+  throw error
 } finally {
-  if (stopped) { await waitState('stopped'); await ec2.send(new StartInstancesCommand({ InstanceIds: [host] })); await waitState('running'); await waitForSsm(host) }
+  if (stopped) {
+    if (await instanceState(host) === 'stopping') await waitState('stopped')
+    if (await instanceState(host) === 'stopped') await ec2.send(new StartInstancesCommand({ InstanceIds: [host] }))
+    await waitState('running'); await waitForSsm(host)
+  }
   const failures: string[] = []
   for (const id of [...owned].reverse()) {
     try {

@@ -65,8 +65,8 @@ if (input.action === 'create') {
     samples.push({ kind: input.action, requestMs, terminalMs: performance.now() - terminalBefore, resumeMs: vm.resumeMs, proof })
   }
 } else {
-  const result = await call(`/vms/${input.id}/exec`, { root: true, timeoutMs: 20_000,
-    command: "systemd-analyze time; systemd-analyze critical-chain substrate-guestd.service; journalctl -b -u substrate-guestd -o short-monotonic --no-pager; dmesg | head -15" })
+  const result = await call(`/vms/${input.id}/exec`, { user: 'root', timeoutMs: 20_000,
+    command: "systemd-analyze time; systemd-analyze critical-chain substrate-guestd.service; journalctl -b -u substrate-guestd -o short-monotonic --no-pager; cat /run/substrate-boot-profile.json 2>/dev/null || true; dmesg | tail -25" })
   samples.push({ kind: 'diagnose', stdout: result.stdout, exitCode: result.exitCode })
 }
 await Bun.sleep(100)

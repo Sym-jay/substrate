@@ -99,8 +99,13 @@ export class Snapshots {
     try {
       if (await profile.measure('processCheck', () => d.firecracker.isRunning(record.id))) await profile.measure('processStop', () => d.firecracker.kill(record.id))
       // Also resets disk writes made by a restore that failed after unpausing.
-      await profile.measure('diskRollback', () => d.zfs.rollback(files.disk))
-      await profile.measure('network', () => d.startNetwork(record))
+      // The disk and the network namespace are independent. Join both before
+      // launching, including on failure, so cleanup cannot race a late setup.
+      const prepared = await Promise.allSettled([
+        profile.measure('diskRollback', () => d.zfs.rollback(files.disk)),
+        profile.measure('network', () => d.startNetwork(record)),
+      ])
+      for (const result of prepared) if (result.status === 'rejected') throw result.reason
       await profile.measure('firecrackerLaunch', () => d.launchForRestore(record))
       const info = await profile.measure('apiReady', () => d.firecracker.waitForApi(record.id))
       if (info.vmm_version !== checkpoint.firecrackerVersion) {
@@ -118,6 +123,9 @@ export class Snapshots {
       await profile.measure('unpause', () => api('PATCH /vm', { state: 'Resumed' }))
       const health = await profile.measure('guestReady', () => d.waitForGuest(d.guestClient(net.guestIp, record.token), {
         timeoutMs: config.bootTimeoutMs,
+        // Cold memory faults can outlast 250 ms. Give the first valid request
+        // time to complete; avoid aborting it and opening another connection.
+        probeTimeoutMs: 1000,
         alive: () => d.firecracker.isRunning(record.id),
       }))
       if (health.vmId !== record.id) throw new Error('restored guest identity does not match this VM')

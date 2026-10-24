@@ -83,12 +83,12 @@ async function sessionCall(url: string, init: RequestInit) {
 // Polls until the guest agent answers. Gives up early if the VM process died.
 export async function waitForGuest(
   client: GuestClient,
-  { timeoutMs, alive }: { timeoutMs: number; alive: () => Promise<boolean> },
+  { timeoutMs, alive, probeTimeoutMs = 250 }: { timeoutMs: number; alive: () => Promise<boolean>; probeTimeoutMs?: number },
 ) {
   const deadline = Date.now() + timeoutMs
   for (let i = 0; ; i++) {
     try {
-      return await client.health(250)
+      return await client.health(Math.max(1, Math.min(probeTimeoutMs, deadline - Date.now())))
     } catch {
       if (Date.now() > deadline) throw new Error(`guest didn't answer within ${timeoutMs / 1000} s`)
       // Checking the unit costs a process spawn, so only every ~0.5 s.
