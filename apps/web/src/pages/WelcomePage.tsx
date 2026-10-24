@@ -41,7 +41,7 @@ export function WelcomeHero({ launch, more }: { launch: ReactNode; more?: ReactN
     <div className="welcome">
       <div className="welcome-text">
         <h1 className="welcome-title"><Wordmark className="welcome-wordmark" /></h1>
-        <p className="welcome-desc">Persistent sandboxes for coding agents.</p>
+        <p className="welcome-desc">Give your agent a computer it’s allowed to wreck.</p>
         {/* The agents every workspace comes with: their logos in colour, named on hover. */}
         <div className="welcome-agents">
           <span className="welcome-agents-label" id="supported-agents">Supported agents</span>
