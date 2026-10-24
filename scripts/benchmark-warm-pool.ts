@@ -22,7 +22,7 @@ const remote = `/tmp/substrate-warm-${marker}.ts`
 const response = await run(host, ['set -e', `trap 'unlink ${remote}' EXIT`, `printf %s '${source}' | base64 -d > '${remote}'`,
   'export PATH="$PATH:/usr/local/bin"', `bun '${remote}' '${args}'`].join('\n'), 900)
 if (!response.ok) throw new Error(response.stderr || response.stdout || 'warm pool probe failed')
-const result = JSON.parse(response.stdout) as { samples: { claimMs: number; hit: boolean; terminalMs?: number }[]; profiles: unknown[] }
+const result = JSON.parse(response.stdout) as { samples: { claimMs: number; hit: boolean; terminalMs?: number; named?: boolean }[]; profiles: unknown[] }
 await mkdir('.data', { recursive: true })
 await writeFile(`.data/warm-pool-${marker}.json`, JSON.stringify({ vcpus, memGib, diskGib, count, parallel, ...result }, null, 2), { mode: 0o600 })
 
@@ -34,4 +34,5 @@ const hits = result.samples.filter((s) => s.hit)
 console.log(`${parallel ? 'parallel' : 'one at a time'}: ${hits.length} of ${count} claimed from the pool (${vcpus} vCPU, ${memGib} GiB, ${diskGib} GiB disk)`)
 console.log(`  claim (VM ready):        ${ms(hits.map((s) => s.claimMs))}`)
 console.log(`  first terminal command:  ${ms(hits.flatMap((s) => s.terminalMs ?? []))}`)
+console.log(`  hostname already set:    ${hits.filter((s) => s.named).length} of ${hits.length}`)
 console.log(`results: .data/warm-pool-${marker}.json`)

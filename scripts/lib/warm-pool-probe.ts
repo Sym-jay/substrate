@@ -27,12 +27,13 @@ async function ready(count: number) {
   }
 }
 // A first command in a new session, start to answer.
+// Its hostname, as the guest reports it, to check the rename took.
 async function terminal(vmId: string) {
   const before = performance.now()
   const session = (await call('POST', `/vms/${vmId}/sessions`, {})).data as { id: string }
   const nonce = crypto.randomUUID()
   const socket = new WebSocket(`ws://127.0.0.1:7070/vms/${vmId}/sessions/${session.id}/terminal`, { headers })
-  await new Promise<void>((resolve, reject) => {
+  const hostname = await new Promise<string>((resolve, reject) => {
     let transcript = '', sent = false
     const timer = setTimeout(() => { socket.close(); reject(new Error('terminal timeout')) }, 15_000)
     socket.onerror = () => { clearTimeout(timer); reject(new Error('terminal failed')) }
@@ -41,13 +42,18 @@ async function terminal(vmId: string) {
       transcript += message.type === 'ready' ? message.scrollback ?? '' : message.data ?? ''
       if (message.type === 'ready' && !sent) { sent = true; socket.send(JSON.stringify({ type: 'input', data: `echo WARM_${nonce}_$(hostname)\r` })) }
       const match = new RegExp(`WARM_${nonce}_(\\S+)`).exec(transcript)
-      if (match) { clearTimeout(timer); socket.onclose = null; socket.close(); resolve() }
+      if (match) { clearTimeout(timer); socket.onclose = null; socket.close(); resolve(match[1]!) }
     }
   })
-  return performance.now() - before
+  return { terminalMs: performance.now() - before, hostname }
 }
 const claimed: string[] = []
-const samples: { claimMs: number; hit: boolean; terminalMs?: number }[] = []
+const samples: { claimMs: number; hit: boolean; terminalMs?: number; named?: boolean }[] = []
+const check = async (r: { claimMs: number; hit: boolean; id: string | null }, i: number) => {
+  if (!r.id) return { claimMs: r.claimMs, hit: false }
+  const t = await terminal(r.id)
+  return { claimMs: r.claimMs, hit: true, terminalMs: t.terminalMs, named: t.hostname === `warm-${input.marker}-${i}` }
+}
 const claim = async (i: number) => {
   const before = performance.now()
   const res = await call('POST', '/vms/claim', { name: `warm-${input.marker}-${i}`, vcpus: input.vcpus, memMib: input.memMib, diskGib: input.diskGib, claimedBy: `benchmark-${input.marker}` })
@@ -59,12 +65,11 @@ try {
   if (input.parallel) {
     await ready(input.count)
     const results = await Promise.all(Array.from({ length: input.count }, (_, i) => claim(i)))
-    for (const r of results) samples.push({ claimMs: r.claimMs, hit: r.hit, terminalMs: r.id ? await terminal(r.id) : undefined })
+    for (const [i, r] of results.entries()) samples.push(await check(r, i))
   } else {
     for (let i = 0; i < input.count; i++) {
       await ready(1)
-      const r = await claim(i)
-      samples.push({ claimMs: r.claimMs, hit: r.hit, terminalMs: r.id ? await terminal(r.id) : undefined })
+      samples.push(await check(await claim(i), i))
     }
   }
 } finally {

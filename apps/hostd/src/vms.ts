@@ -92,8 +92,11 @@ export class VmManager implements VmService {
   // Claiming from the warm pool takes this, not the lifecycle lock, so a boot
   // in progress (the pool refilling, or a cold create) never holds a claim up.
   private poolLock = new Mutex()
-  // Pool VMs being taken down, which a claim must pass over.
+  // Pool VMs being taken down, which a claim must pass over, and ones being
+  // handed over (and the names they're taking), which nothing else may touch.
   private retiring = new Set<string>()
+  private claiming = new Set<string>()
+  private claimingNames = new Set<string>()
 
   readonly pool = new WarmPool({
     pooled: () => this.pooled(),
@@ -229,7 +232,7 @@ export class VmManager implements VmService {
     const profile = new LifecycleProfile('claim', null)
     let ok = false
     try {
-      const record = await this.poolLock.run(() => this.takeFromPool(input, claimedBy, profile))
+      const record = await this.takeFromPool(input, claimedBy, profile)
       if (!record) return null
       void this.pool.fill()
       if (record.repository) {
@@ -247,15 +250,27 @@ export class VmManager implements VmService {
 
   async poolStatus() { return this.pool.status() }
 
+  // The pool lock is held only to pick a VM, so claims run side by side.
   private async takeFromPool(input: CreateVm, claimedBy: string, profile: LifecycleProfile) {
     const image = await currentImage()
     if (!image) return null
-    const records = await profile.measure('records', () => listRecords())
-    if (input.name && records.some((r) => !r.pool && r.name === input.name)) throw new HttpError(409, `a VM named ${input.name} already exists`)
     const want = requestedSize(input)
-    for (const record of records) {
-      if (!record.pool || this.retiring.has(record.id) || this.transitions.has(record.id) || record.bootMs === null || record.lastError ||
-        record.image !== image.version || !fits(record, input) || !(await firecracker.isRunning(record.id))) continue
+    for (;;) {
+      const record = await this.poolLock.run(async () => {
+        const records = await profile.measure('records', () => listRecords())
+        if (input.name && (records.some((r) => !r.pool && r.name === input.name) || this.claimingNames.has(input.name))) {
+          throw new HttpError(409, `a VM named ${input.name} already exists`)
+        }
+        for (const r of records) {
+          if (!r.pool || this.retiring.has(r.id) || this.claiming.has(r.id) || this.transitions.has(r.id) || r.bootMs === null || r.lastError ||
+            r.image !== image.version || !fits(r, input) || !(await firecracker.isRunning(r.id))) continue
+          this.claiming.add(r.id)
+          if (input.name) this.claimingNames.add(input.name)
+          return r
+        }
+        return null
+      })
+      if (!record) return null
       profile.vmId = record.id
       try {
         if (want.diskGib > record.diskGib) {
@@ -263,30 +278,31 @@ export class VmManager implements VmService {
           await profile.measure('disk', () => this.growLive(record, want.diskGib))
           record.diskGib = want.diskGib
         }
-        // It booted under its ID; it takes the name it's claimed under.
-        if (input.name && input.name !== record.name) {
-          record.name = input.name
-          await profile.measure('rename', () => this.rename(record))
-        }
+        const renamed = !!input.name && input.name !== record.name
+        const now = new Date().toISOString()
+        Object.assign(record, { name: input.name ?? record.name, pool: false, claimedBy, createdAt: now, awakeSince: now, repository: input.repository ?? null, lastError: null })
+        await profile.measure('record', () => writeRecord(record))
+        // It booted under its ID. Its metadata and hostname take its name
+        // straight after, off the claim's path: a guest exec can stall for
+        // seconds when the host's disks are busy, and a name is cosmetic.
+        if (renamed) void this.rename(record).catch((error) => console.error(`rename ${record.id}: ${message(error)}`))
+        return record
       } catch (error) {
         // Not this one, then: replace it, and try the next.
         console.error(`warm pool ${record.id}: ${message(error)}`)
         void this.discardPooled(record.id)
-        continue
+      } finally {
+        this.claiming.delete(record.id)
+        if (input.name) this.claimingNames.delete(input.name)
       }
-      const now = new Date().toISOString()
-      Object.assign(record, { pool: false, claimedBy, createdAt: now, awakeSince: now, repository: input.repository ?? null, lastError: null })
-      await profile.measure('record', () => writeRecord(record))
-      return record
     }
-    return null
   }
 
   // The pool's VMs, as warm-pool.ts sees them.
   private async pooled(): Promise<Pooled[]> {
     const pooled: Pooled[] = []
     for (const record of await listRecords()) {
-      if (!record.pool || this.retiring.has(record.id)) continue
+      if (!record.pool || this.retiring.has(record.id) || this.claiming.has(record.id)) continue
       const state = this.transitions.has(record.id) ? 'booting'
         : record.bootMs !== null && !record.lastError && (await firecracker.isRunning(record.id)) ? 'ready' : 'dead'
       pooled.push({ id: record.id, vcpus: record.vcpus, memMib: record.memMib, diskGib: record.diskGib, image: record.image, state })
@@ -297,7 +313,7 @@ export class VmManager implements VmService {
   // Takes a pool VM down, unless a claim got it first.
   private async discardPooled(id: string) {
     const ours = await this.poolLock.run(async () => {
-      if (!(await readRecord(id))?.pool) return false
+      if (this.claiming.has(id) || !(await readRecord(id))?.pool) return false
       this.retiring.add(id)
       return true
     })
@@ -324,7 +340,7 @@ export class VmManager implements VmService {
     for (const vm of candidates) {
       if (free >= memMib) break
       const ours = await this.poolLock.run(async () => {
-        if (!(await readRecord(vm.id))?.pool) return false
+        if (this.claiming.has(vm.id) || !(await readRecord(vm.id))?.pool) return false
         this.retiring.add(vm.id)
         return true
       })
