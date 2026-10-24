@@ -100,8 +100,8 @@ export function WorkspacesTable() {
             {(close) => (
               <>
                 <MenuItem icon={<Rocket />} hint="your defaults" disabled={launching || !!vmsUnavailable} onClick={() => { close(); void quickLaunch() }}>Quick launch</MenuItem>
-                <MenuItem icon={<SlidersHorizontal />} disabled={!!vmsUnavailable} onClick={() => { close(); configure() }}>Configure & launch</MenuItem>
-                {windows && <MenuItem icon={<Plus />} hint="16 vCPU · 64 GB" onClick={() => { close(); navigate('windows', 'new') }}>Windows workspace</MenuItem>}
+                <MenuItem icon={<SlidersHorizontal />} disabled={!!vmsUnavailable} onClick={() => { close(); configure() }}>Launch…</MenuItem>
+                {windows && <MenuItem icon={<Plus />} hint="16 vCPU · 64 GB" onClick={() => { close(); configure({ os: 'windows' }) }}>Windows workspace</MenuItem>}
               </>
             )}
           </Menu>

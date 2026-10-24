@@ -117,11 +117,32 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
   return (
     <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="heading text-3xl sm:text-4xl">{title}</h1>
-        {subtitle && <p className="text-muted mt-1.5 text-sm">{subtitle}</p>}
+        <h1 className="heading text-3xl sm:text-4xl">{typeof title === 'string' ? <Reveal text={title} /> : title}</h1>
+        {subtitle && <p className="text-muted mt-1.5 text-sm">{typeof subtitle === 'string' ? <Reveal text={subtitle} /> : subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </header>
+  )
+}
+
+// Text that fades in from a blur, a letter at a time from the left, when it
+// appears (a page change) or changes. Letters stay grouped in their words so
+// it wraps between words; screen readers get the text itself.
+export function Reveal({ text }: { text: string }) {
+  // The whole sweep takes about the same time, short text or long.
+  const stagger = Math.min(28, 320 / Math.max(1, text.length))
+  let n = 0
+  return (
+    <span key={text}>
+      <span aria-hidden>
+        {text.split(/(\s+)/).map((part, w) => /^\s+$/.test(part) ? (n += part.length, part) : (
+          <span key={w} className="reveal-word">
+            {[...part].map((ch, c) => <span key={c} className="reveal-ch" style={{ animationDelay: `${Math.round(n++ * stagger)}ms` }}>{ch}</span>)}
+          </span>
+        ))}
+      </span>
+      <span className="sr-only">{text}</span>
+    </span>
   )
 }
 
@@ -256,6 +277,34 @@ export function Sheet({ open, title, onClose, children }: { open: boolean; title
           <Button variant="ghost" size="sm" aria-label="Close" icon={<X />} onClick={onClose} />
         </div>
         {open && children}
+      </div>
+    </div>
+  )
+}
+
+// A dialog in the middle of the window, over a scrim; Escape or the scrim
+// closes it, and focus goes back where it was. Its children lay out the body
+// (.modal-body scrolls) and the footer (.modal-foot).
+export function Modal({ open, title, onClose, className = '', children }: { open: boolean; title: string; onClose: () => void; className?: string; children: ReactNode }) {
+  const panel = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const before = document.activeElement as HTMLElement | null
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    panel.current?.focus()
+    return () => { document.removeEventListener('keydown', onKey); before?.focus?.() }
+  }, [open, onClose])
+  if (!open) return null
+  return (
+    <div className="modal">
+      <div className="modal-scrim" onClick={onClose} />
+      <div ref={panel} className={`modal-panel ${className}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
+        <div className="modal-head">
+          <h2 className="modal-title">{title}</h2>
+          <Button variant="ghost" size="sm" aria-label="Close" icon={<X />} onClick={onClose} />
+        </div>
+        {children}
       </div>
     </div>
   )

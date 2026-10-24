@@ -1,4 +1,4 @@
-import type { Agent, AgentMode, VmSizeName } from '@substrate/protocol'
+import { DEFAULT_VM_SIZE, VmSizes, type Agent, type AgentMode, type VmSizeName } from '@substrate/protocol'
 import { useSyncExternalStore } from 'react'
 
 // This browser's preferences: what Quick launch starts, and how the app looks.
@@ -6,7 +6,8 @@ export type Settings = {
   // null: a plain shell.
   agent: Agent | null
   mode: AgentMode
-  size: VmSizeName
+  vcpus: number
+  memMib: number
   diskGib: number
   // For new workspaces; 'default' leaves hostd's.
   autoPauseMinutes: number | null | 'default'
@@ -19,7 +20,7 @@ export type Settings = {
 export const defaultSettings: Settings = {
   agent: 'claude',
   mode: 'ask',
-  size: 'large',
+  ...VmSizes[DEFAULT_VM_SIZE],
   diskGib: 32,
   autoPauseMinutes: 'default',
   repository: '',
@@ -34,8 +35,10 @@ const listeners = new Set<() => void>()
 // the defaults stand in.
 function read(): Settings {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<Settings> | null
-    return { ...defaultSettings, ...saved }
+    const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null') as (Partial<Settings> & { size?: VmSizeName }) | null
+    // Saved before custom sizes: a preset's name.
+    const preset = saved?.size && saved.vcpus === undefined ? VmSizes[saved.size] : undefined
+    return { ...defaultSettings, ...preset, ...saved }
   } catch {
     return defaultSettings
   }

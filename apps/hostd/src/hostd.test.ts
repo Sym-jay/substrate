@@ -195,6 +195,18 @@ describe('hostd API', () => {
     expect(created.at(-1)).toEqual({ name: 'demo', size: 'small' })
   })
 
+  test('custom sizes are whole vCPUs and memory within bounds', async () => {
+    const create = (body: unknown) => call('/vms', { method: 'POST', body: JSON.stringify(body) })
+    expect((await create({ vcpus: 0 })).status).toBe(400)
+    expect((await create({ vcpus: 32 })).status).toBe(400)
+    expect((await create({ vcpus: 2.5 })).status).toBe(400)
+    expect((await create({ memMib: 1_024 })).status).toBe(400)
+    expect((await create({ memMib: 131_072 })).status).toBe(400)
+    expect((await create({ memMib: 3_000 })).status).toBe(400)
+    expect((await create({ vcpus: 3, memMib: 6_144 })).status).toBe(201)
+    expect(created.at(-1)).toEqual({ vcpus: 3, memMib: 6_144 })
+  })
+
   test('disk sizes are whole GiB within bounds', async () => {
     const create = (diskGib: unknown) => call('/vms', { method: 'POST', body: JSON.stringify({ diskGib }) })
     expect((await create(4)).status).toBe(400)

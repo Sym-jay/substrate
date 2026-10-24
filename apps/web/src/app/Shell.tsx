@@ -1,4 +1,4 @@
-import { Activity, AppWindow, Camera, Layers, PanelLeftClose, PanelLeftOpen, Rocket, ScrollText, Search, Settings, SquareTerminal } from 'lucide-react'
+import { Activity, Camera, UserRound, Layers, PanelLeftClose, PanelLeftOpen, Rocket, ScrollText, Search, Settings, SquareTerminal } from 'lucide-react'
 import { useSyncExternalStore, type ReactNode } from 'react'
 import { openPalette, paletteShortcut } from './CommandPalette.tsx'
 import { useData } from './data.tsx'
@@ -24,15 +24,14 @@ const isNarrow = () => window.matchMedia?.(narrowQuery).matches ?? false
 // changes.
 export function Shell({ account, children }: { account?: ReactNode; children: ReactNode }) {
   const { page, params } = useRoute()
-  const { windows, sessions } = useData()
+  const { sessions } = useData()
   const { launching, configure } = useLauncher()
   const agentsWorking = Object.values(sessions).flat().filter((s) => s.agent && s.state === 'running').length
   const workspaces: Item = { page: 'workspaces', label: 'Workspaces', icon: <SquareTerminal /> }
-  const windowsItem: Item[] = windows ? [{ page: 'windows', label: 'Windows', icon: <AppWindow /> }] : []
   const jobs: Item = { page: 'jobs', label: 'Jobs', icon: <Activity />, badge: agentsWorking || undefined }
   const settings: Item = { page: 'settings', label: 'Settings', icon: <Settings /> }
-  const main: Item[] = [workspaces, ...windowsItem, { page: 'snapshots', label: 'Snapshots', icon: <Camera /> }, jobs, { page: 'logs', label: 'Logs', icon: <ScrollText /> }]
-  const setup: Item[] = [{ page: 'environment', label: 'Environment', icon: <Layers /> }, settings]
+  const main: Item[] = [workspaces, { page: 'snapshots', label: 'Snapshots', icon: <Camera /> }, jobs, { page: 'logs', label: 'Logs', icon: <ScrollText /> }]
+  const setup: Item[] = [{ page: 'environment', label: 'Environment', icon: <Layers /> }, settings, { page: 'profile', label: 'Profile', icon: <UserRound /> }]
   const { sidebar } = useSettings()
   const narrow = useSyncExternalStore(subscribeNarrow, isNarrow)
   const collapsed = narrow || sidebar === 'collapsed'
@@ -75,16 +74,21 @@ export function Shell({ account, children }: { account?: ReactNode; children: Re
           <WorkspaceSidebar vmId={nested ? params[0] : undefined} collapsed={collapsed} narrow={narrow} />
         </div>
         </div>
-        <div className="sidebar-foot">
-          <Button variant="primary" className="sidebar-launch" icon={<Rocket />} live disabled={launching} onClick={() => configure()} title="Launch a VM">
-            <span className="sidebar-text">{launching ? 'Launching…' : 'Launch VM'}</span>
-          </Button>
-          {account && <div className="sidebar-account">{account}</div>}
-        </div>
+        {/* In a workspace's panel there's no launching; the panel is that workspace's. */}
+        {(!nested || account) && (
+          <div className="sidebar-foot">
+            {!nested && (
+              <Button variant="primary" className="sidebar-launch" icon={<Rocket />} live disabled={launching} onClick={() => configure()} title="Launch a VM">
+                <span className="sidebar-text">{launching ? 'Launching…' : 'Launch VM'}</span>
+              </Button>
+            )}
+            {account && <div className="sidebar-account">{account}</div>}
+          </div>
+        )}
       </aside>
 
       <nav className="tabbar card" aria-label="Main">
-        <Nav items={[workspaces, ...windowsItem, jobs, settings]} active={page} orientation="horizontal">
+        <Nav items={[workspaces, jobs, settings]} active={page} orientation="horizontal">
           <li><button type="button" className="nav-item w-full" onClick={openPalette} aria-label="Search" title="Search"><Search /></button></li>
         </Nav>
       </nav>

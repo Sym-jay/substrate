@@ -93,7 +93,8 @@ export class VmManager implements VmService {
   async create(input: CreateVm, githubToken?: string, targetId?: string) {
     const image = await currentImage()
     if (!image) throw new HttpError(409, 'no VM image yet: run `bun run images:build`')
-    const size = VmSizes[input.size ?? DEFAULT_VM_SIZE]
+    const preset = VmSizes[input.size ?? DEFAULT_VM_SIZE]
+    const size = { vcpus: input.vcpus ?? preset.vcpus, memMib: input.memMib ?? preset.memMib }
     const diskGib = await this.checkDiskSize(input.diskGib ?? DEFAULT_DISK_GIB, image.rootfs)
 
     return this.lock.run(async () => {

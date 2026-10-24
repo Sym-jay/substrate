@@ -91,6 +91,8 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-body); 
   font: 10px/10px var(--font-mono); letter-spacing: 0; text-transform: none;
   color: var(--shimmer); white-space: pre; pointer-events: none;
 }
+/* A label with a trailing icon (Next →) keeps it on the same line. */
+.btn-label { display: inline-flex; align-items: center; gap: 0.5rem; }
 .btn-primary:hover:enabled .btn-label, .btn-primary:focus-visible .btn-label, .btn-live:enabled .btn-label { background: var(--bg); padding: 0 0.25rem; margin: 0 -0.25rem; }
 .btn-live:enabled > svg { background: var(--bg); box-shadow: 0 0 0 0.25rem var(--bg); }
 .btn-primary:active:enabled { background: var(--accent); color: var(--bg); }
@@ -187,6 +189,91 @@ select.input option { background: var(--bg); color: var(--ink); }
   .sheet-panel { top: auto; left: 0; width: auto; max-height: 90dvh; border-left: 0; border-top: var(--hair) solid var(--line-strong); transform: translateY(100%); }
 }
 
+/* ── Profile: the account, a credits meter, and usage tiles ── */
+.profile-head { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.25rem; }
+.profile-avatar { display: grid; place-items: center; width: 56px; height: 56px; flex-shrink: 0; object-fit: cover; border: var(--hair) solid var(--line-strong); color: var(--faint); }
+.profile-avatar svg { width: 1.5rem; height: 1.5rem; }
+.profile-name { font-family: var(--font-display); font-size: 1.75rem; line-height: 1.1; color: var(--ink); }
+.profile-credits { display: flex; flex-direction: column; gap: 0.85rem; }
+.profile-big { font-family: var(--font-display); font-size: 3.25rem; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.meter { height: 6px; background: var(--surface-3); border: var(--hair) solid var(--line); }
+.meter > span { display: block; height: 100%; background: var(--accent); transition: width 0.5s var(--ease-out); }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); gap: 0.75rem; }
+.stat { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.9rem 1rem; border: var(--hair) solid var(--line); }
+.stat-label { font: 500 0.625rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.stat-value { font-family: var(--font-display); font-size: 1.6rem; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* Titles fade in from a blur, letter by letter (ui.tsx's Reveal). */
+.reveal-word { display: inline-block; white-space: nowrap; }
+.reveal-ch { display: inline-block; white-space: pre; animation: reveal 0.55s var(--ease-out) both; }
+@keyframes reveal { from { opacity: 0; filter: blur(10px); transform: translateX(-0.12em); } }
+
+/* ── Modal: in the middle of the window, over a scrim ── */
+.modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 1rem; }
+.modal-scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 72%, transparent); animation: fade-in 0.2s ease both; }
+.modal-panel {
+  position: relative; display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100dvh - 2rem);
+  background: var(--bg); border: var(--hair) solid var(--line-strong); outline: none;
+  animation: modal-in 0.28s var(--ease-out) both;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.1rem 0.9rem 1.5rem; border-bottom: var(--hair) solid var(--line); }
+.modal-title { font-family: var(--font-display); font-weight: 400; font-size: 1.6rem; line-height: 1; color: var(--ink); }
+.modal-form { display: flex; flex-direction: column; min-height: 0; }
+.modal-body { display: flex; flex-direction: column; gap: 1.5rem; min-height: 0; padding: 1.5rem; overflow-y: auto; }
+.modal-body > .segmented { align-self: flex-start; }
+.modal-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1rem; padding: 0.9rem 1.5rem; border-top: var(--hair) solid var(--line); }
+@keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
+@keyframes fade-in { from { opacity: 0; } }
+@media (max-width: 640px) {
+  .modal { padding: 0.5rem; align-items: end; }
+  .modal-panel { max-height: calc(100dvh - 1rem); }
+  .modal-head, .modal-body, .modal-foot { padding-inline: 1rem; }
+}
+
+/* Launch, a step at a time: the steps across the top, one step's fields,
+   and Back / Next under them. The body keeps one height so steps don't jump. */
+.launch-modal { width: min(640px, 100%); }
+.launch-steps { display: flex; gap: 0.25rem; padding: 0.75rem 1.5rem 0; overflow-x: auto; scrollbar-width: none; }
+.launch-step { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 34px; padding: 0.35rem 0.6rem; font: 500 0.6875rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); border-bottom: 1px solid transparent; cursor: pointer; white-space: nowrap; }
+.launch-step:hover:enabled { color: var(--ink); }
+.launch-step:disabled { cursor: default; opacity: 0.55; }
+.launch-step[aria-current='step'] { color: var(--ink); border-bottom-color: var(--accent); }
+.launch-step-n { color: var(--accent); font-variant-numeric: tabular-nums; }
+.launch-step:disabled .launch-step-n { color: inherit; }
+.launch-body { min-height: 21rem; animation: rise 0.22s var(--ease-out) both; }
+.launch-review { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.75rem 1.5rem; font-size: 0.875rem; }
+.launch-review dt { font: 500 0.6875rem/1.6rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.launch-review dd { line-height: 1.6rem; color: var(--ink); overflow-wrap: anywhere; }
+.launch-remember { display: flex; align-items: center; gap: 0.6rem; margin-top: auto; font-size: 0.8125rem; color: var(--muted); cursor: pointer; }
+.launch-foot-end { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.75rem 1rem; margin-left: auto; }
+.launch-summary { display: inline-flex; align-items: center; gap: 0.5rem; font: 0.75rem var(--font-mono); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .launch-steps { padding-inline: 1rem; } .launch-summary { display: none; } .launch-body { min-height: 0; } }
+
+/* ── Slider (Slider.tsx): a hairline track, blue up to a square thumb, and
+   its stops under it. --fill is where the thumb's centre is. ── */
+.slider { display: flex; flex-direction: column; gap: 0.35rem; }
+.slider-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; font: 500 0.6875rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.slider-head output { font-size: 0.8125rem; letter-spacing: 0; text-transform: none; color: var(--ink); font-variant-numeric: tabular-nums; }
+.slider-input { --track: var(--line-strong); --done: var(--accent); width: 100%; height: 24px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; touch-action: pan-y; }
+.slider-input::-webkit-slider-runnable-track { height: 2px; background: linear-gradient(to right, var(--done) 0 var(--fill), var(--track) var(--fill) 100%); }
+.slider-input::-moz-range-track { height: 2px; background: var(--track); }
+.slider-input::-moz-range-progress { height: 2px; background: var(--done); }
+.slider-input::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -6px; background: var(--bg); border: 1px solid var(--ink); transition: background-color 0.15s, border-color 0.15s; }
+.slider-input::-moz-range-thumb { box-sizing: border-box; width: 14px; height: 14px; background: var(--bg); border: 1px solid var(--ink); border-radius: 0; transition: background-color 0.15s, border-color 0.15s; }
+.slider-input:hover::-webkit-slider-thumb, .slider-input:active::-webkit-slider-thumb { border-color: var(--accent); }
+.slider-input:hover::-moz-range-thumb, .slider-input:active::-moz-range-thumb { border-color: var(--accent); }
+.slider-input:active::-webkit-slider-thumb { background: var(--accent); }
+.slider-input:active::-moz-range-thumb { background: var(--accent); }
+.slider-input:focus-visible { outline: none; }
+.slider-input:focus-visible::-webkit-slider-thumb { outline: 1px solid var(--accent); outline-offset: 3px; }
+.slider-input:focus-visible::-moz-range-thumb { outline: 1px solid var(--accent); outline-offset: 3px; }
+.slider-ticks { position: relative; height: 0.9rem; font: 0.625rem var(--font-mono); color: var(--faint); }
+.slider-ticks span { position: absolute; top: 0; transform: translateX(-50%); font-variant-numeric: tabular-nums; transition: color 0.15s; }
+.slider-ticks span.is-on { color: var(--ink); }
+.slider.is-disabled .slider-input { --done: var(--faint); cursor: not-allowed; }
+.slider.is-disabled .slider-input::-webkit-slider-thumb { border-color: var(--faint); }
+.slider.is-disabled .slider-input::-moz-range-thumb { border-color: var(--faint); }
+
 .menu { position: fixed; z-index: 70; min-width: 240px; padding: 0.25rem; background: var(--bg); border: var(--hair) solid var(--line-strong); animation: rise 0.2s var(--ease-out) both; }
 .menu-item { display: flex; width: 100%; align-items: center; gap: 0.6rem; padding: 0.5rem 0.55rem; font-size: 0.875rem; cursor: pointer; color: var(--ink); border: var(--hair) solid transparent; }
 .menu-item:hover:enabled, .menu-item:focus-visible { border-color: var(--line-strong); outline: none; }
@@ -214,7 +301,8 @@ select.input option { background: var(--bg); color: var(--ink); }
 .sidebar {
   position: fixed; z-index: 30; top: 1rem; bottom: 1rem; left: 1rem; width: var(--sidebar-w);
   display: flex; flex-direction: column; gap: 1.25rem; padding: 1rem 0; overflow: hidden;
-  background: var(--bg); border: var(--hair) solid var(--line);
+  /* A full pixel and the stronger line: it frames the whole app. */
+  background: var(--bg); border: 1px solid var(--line-strong);
 }
 /* Two panels side by side: the main nav, and an open workspace's. Opening a
    workspace slides the track over to the second. */
@@ -336,7 +424,10 @@ select.input option { background: var(--bg); color: var(--ink); }
 .welcome-title { font-family: var(--font-display); font-weight: 400; font-size: clamp(3rem, 8vw, 5.5rem); line-height: 0.95; letter-spacing: -0.02em; color: var(--ink); }
 .welcome-desc { font-size: 1rem; line-height: 1.6; color: var(--muted); }
 .welcome-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.75rem; }
-.welcome-more { display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; font: 0.75rem var(--font-mono); color: var(--faint); }
+.welcome-more { display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; font: 0.75rem var(--font-mono); color: var(--faint); cursor: pointer; }
+/* Signed out, the welcome page stands alone, without the sidebar. */
+.signed-out { min-height: 100dvh; padding: 0 1.5rem; }
+@media (max-width: 767px) { .signed-out { padding: 0 1rem; } }
 .welcome-more:hover { color: var(--ink); }
 .welcome-more svg { width: 0.85rem; height: 0.85rem; }
 
@@ -414,15 +505,7 @@ select.input option { background: var(--bg); color: var(--ink); }
 .palette-enter { width: 0.9rem; height: 0.9rem; color: var(--faint); }
 .palette-foot { display: flex; gap: 1.25rem; padding: 0.5rem 1rem; border-top: var(--hair) solid var(--line); font: 0.6875rem var(--font-mono); color: var(--faint); }
 
-/* ── Windows: a grid of cards; one opens over the whole window ── */
-.win-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 1rem; }
-.win-card { border: var(--hair) solid var(--line); transition: border-color 0.2s; }
-.win-card:hover { border-color: var(--line-strong); }
-.win-card-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; aspect-ratio: 16 / 10; color: var(--faint); border-bottom: var(--hair) solid var(--line); transition: color 0.2s; }
-.win-card-screen svg { width: 1.75rem; height: 1.75rem; stroke-width: 1.25; }
-.win-card-screen:hover, .win-card-screen:focus-visible { color: var(--ink); outline: none; }
-.win-card-screen:hover .label, .win-card-screen:focus-visible .label { color: var(--ink); }
-.win-card-foot { display: flex; align-items: center; gap: 0.75rem; padding: 0.9rem 1rem; }
+/* ── Windows: an opened workspace, over the whole window ── */
 
 .win-full { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); }
 .win-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.6rem; border-bottom: var(--hair) solid var(--line); overflow-x: auto; scrollbar-width: none; }

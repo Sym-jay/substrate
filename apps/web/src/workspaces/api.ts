@@ -126,3 +126,16 @@ export const dashboardApi = {
     return VmLogs.parse(await request(`${vmPath(vmId)}/logs?lines=${lines}`, { signal }))
   },
 }
+
+// The signed-in user's quota and this month's metered use, from PR #14's
+// /api/quota and /api/usage (the protocol's QuotaStatus and UsageReport once
+// it merges). A server without them answers 404.
+export type QuotaStatus = {
+  limits: { maxVms: number; maxDiskGib: number; maxTotalDiskGib: number; maxRunningHours: number }
+  used: { vms: number; totalDiskGib: number; runningHours: number }
+}
+export type UsageReport = { month: string; totals: { runningHours: number; vcpuHours: number; gibHours: number } }
+export const accountApi = {
+  async quota(signal?: AbortSignal) { return (await request('/api/quota', { signal })) as QuotaStatus },
+  async usage(signal?: AbortSignal) { return (await request('/api/usage', { signal })) as UsageReport },
+}
