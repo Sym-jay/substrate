@@ -18,6 +18,7 @@ const retained: { id: string; size: string; sessionId: string; expectedPid: numb
 let stopped = false
 const lease = `substrate-performance-${marker}`
 let version: string | null = null
+let image: string | null = null
 await mkdir('.data', { recursive: true })
 const save = () => writeFile(path, JSON.stringify({ label, marker, hostCycle: cycle, owned: [...owned], results }, null, 2), { mode: 0o600 })
 async function call(method: 'GET' | 'POST' | 'DELETE', route: string, body?: unknown) {
@@ -28,6 +29,7 @@ async function call(method: 'GET' | 'POST' | 'DELETE', route: string, body?: unk
 async function probe(input: Record<string, unknown>) {
   const health = await call('GET', '/health')
   if (version && health.version !== version) throw new Error('host release changed during benchmark')
+  if (image && health.image !== image) throw new Error('guest image changed during benchmark')
   const source = Buffer.from(await Bun.file(new URL('./lib/vm-performance-probe.ts', import.meta.url)).text()).toString('base64')
   const remote = `/tmp/substrate-perf-${marker}.ts`, args = Buffer.from(JSON.stringify({ ...input, marker })).toString('base64')
   const response = await run(host, ['set -e', `trap 'unlink ${remote}' EXIT`, `printf %s '${source}' | base64 -d > '${remote}'`,
@@ -53,7 +55,7 @@ async function acquireLease() {
   // The regular deploy script uses this same flock. Expiration also releases
   // it if the local benchmark process is interrupted and cannot clean up.
   const response = await run(host, `set -e
-systemd-run --unit=${lease} --collect --property=RuntimeMaxSec=1800 --quiet /usr/bin/flock -n /run/lock/substrate-host-deploy.lock /bin/sleep 1800
+systemd-run --unit=${lease} --collect --property=RuntimeMaxSec=1800 --quiet /usr/bin/flock -n /run/lock/substrate-host-deploy.lock /usr/bin/flock -n /run/lock/substrate-image-build.lock /bin/sleep 1800
 sleep 1
 systemctl is-active --quiet ${lease}`, 30)
   if (!response.ok) throw new Error('another deployment owns the host; benchmark did not acquire its lease')
@@ -64,7 +66,9 @@ async function waitState(state: string) {
 }
 try {
   await acquireLease()
-  version = (await call('GET', '/health')).version
+  const initial = await call('GET', '/health')
+  version = initial.version; image = initial.image
+  results.push({ action: 'environment', version, image }); await save()
   for (const size of ['small', 'medium', 'large']) {
     for (let i = 0; i < repeats; i++) {
       const id = `vm-${randomBytes(8).toString('hex')}`
@@ -83,7 +87,6 @@ try {
     if (vms.some(vm => owned.has(vm.id) ? vm.state !== 'paused' : !baseline[vm.id] || vm.state !== 'stopped')) throw new Error('another workspace became active; refusing host restart')
     const guard = await run(host, `set -e
 systemctl is-active --quiet ${lease}
-flock -n /run/lock/substrate-image-build.lock true
 if pgrep -f '^bash .*/images/guest/build-images.sh' >/dev/null; then exit 1; fi`, 30)
     if (!guard.ok) throw new Error('a deployment/image build is active; refusing host restart')
     console.log('All test VMs durably paused; preexisting VMs stopped. Cycling EC2 host.')

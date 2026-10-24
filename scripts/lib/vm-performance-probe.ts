@@ -52,7 +52,7 @@ if (input.action === 'create') {
   const session = await call(`/vms/${input.id}/sessions`, {})
   sessionId = session.id
   const proof = await terminal(session.id, 'seed')
-  samples.push({ kind: 'create', requestMs, terminalMs: performance.now() - terminalBefore, bootMs: vm.bootMs, proof })
+  samples.push({ kind: 'create', image: vm.image, requestMs, terminalMs: performance.now() - terminalBefore, bootMs: vm.bootMs, proof })
 } else if (input.action === 'warm' || input.action === 'cold') {
   if (!sessionId) throw new Error('missing retained session ID')
   for (let i = 0; i < (input.iterations ?? 1); i++) {
