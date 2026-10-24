@@ -3,10 +3,10 @@ import { flushSync } from 'react-dom'
 
 // Pages live in the URL's hash (#/workspaces/vm-1/session-2), so links and
 // reloads work wherever the app is served from.
-export type Page = 'welcome' | 'inbox' | 'workspaces' | 'windows' | 'snapshots' | 'jobs' | 'logs' | 'environment' | 'settings'
+export type Page = 'welcome' | 'inbox' | 'workspaces' | 'windows' | 'snapshots' | 'jobs' | 'logs' | 'environment' | 'settings' | 'profile' | 'templates'
 export type Route = { page: Page; params: string[] }
 
-const pages: Page[] = ['welcome', 'inbox', 'workspaces', 'windows', 'snapshots', 'jobs', 'logs', 'environment', 'settings']
+const pages: Page[] = ['welcome', 'inbox', 'workspaces', 'windows', 'snapshots', 'jobs', 'logs', 'environment', 'settings', 'profile', 'templates']
 
 export function parse(hash: string): Route {
   const [first = '', ...params] = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent)
@@ -41,6 +41,13 @@ export function navigate(page: Page, ...params: string[]) {
   transition(update)
 }
 
+// Like navigate, but in place of the current history entry: for a page that
+// only sends you on, so Back doesn't land on it again.
+export function redirect(page: Page, ...params: string[]) {
+  history.replaceState(null, '', href(page, ...params))
+  transition(update)
+}
+
 // Page changes cross-fade where the browser has view transitions.
 let lastPage = route.page
 function transition(change: () => void) {
@@ -48,5 +55,7 @@ function transition(change: () => void) {
   const animate = nextPage !== lastPage && 'startViewTransition' in document && document.documentElement.dataset.motion !== 'reduced'
   lastPage = nextPage
   if (!animate) return change()
-  ;(document as Document & { startViewTransition: (cb: () => void) => unknown }).startViewTransition(() => flushSync(change))
+  const view = (document as Document & { startViewTransition: (cb: () => void) => { ready: Promise<void> } }).startViewTransition(() => flushSync(change))
+  // A redirect mid-transition skips this one; the page still changes.
+  view.ready.catch(() => {})
 }

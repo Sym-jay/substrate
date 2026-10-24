@@ -16,7 +16,7 @@ export type InstanceInfo = { state: string; privateIp: string | null }
 export interface WindowsCloud {
   // Starts a new instance from the newest Substrate Windows image, which runs
   // `userData` at its first boot.
-  launch(input: { id: string; name: string; userData: string }): Promise<string>
+  launch(input: { id: string; name: string; userData: string; instanceType: string }): Promise<string>
   describe(instanceIds: string[]): Promise<Map<string, InstanceInfo>>
   start(instanceId: string): Promise<void>
   stop(instanceId: string): Promise<void>
@@ -28,20 +28,19 @@ export interface WindowsCloud {
 
 type Options = {
   region: string
-  instanceType: string
   subnetId: string
   launchTemplate: string
   // Parameter Store's name for the newest image (`bun run build:windows-image`).
   imageParameter: string
 }
 
-export function awsWindowsCloud({ region, instanceType, subnetId, launchTemplate, imageParameter }: Options): WindowsCloud {
+export function awsWindowsCloud({ region, subnetId, launchTemplate, imageParameter }: Options): WindowsCloud {
   const ec2 = new EC2Client({ region })
   const ssm = new SSMClient({ region })
   const cloudwatch = new CloudWatchClient({ region })
 
   return {
-    async launch({ id, name, userData }) {
+    async launch({ id, name, userData, instanceType }) {
       const imageId = (await ssm.send(new GetParameterCommand({ Name: imageParameter })).catch(() => null))?.Parameter?.Value
       if (!imageId) throw new Error('there is no Windows image yet: run `bun run build:windows-image`')
       const tags = [

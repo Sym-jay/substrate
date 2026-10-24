@@ -168,7 +168,12 @@ export function vmRoutes(o: VmRoutesOptions) {
     if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? 'invalid workspace' }, 400)
     const quota = await quotaFor(c.var.user.id, vms)
     const diskGib = parsed.data.diskGib ?? DEFAULT_DISK_GIB
-    const refused = quota.check({ newVm: true, size: parsed.data.size ?? DEFAULT_VM_SIZE, diskGib, addDiskGib: diskGib, start: true })
+    // A custom size is checked as what it comes to; a preset, by its name.
+    const preset = VmSizes[parsed.data.size ?? DEFAULT_VM_SIZE]
+    const custom = parsed.data.vcpus !== undefined || parsed.data.memMib !== undefined
+      ? { vcpus: parsed.data.vcpus ?? preset.vcpus, memMib: parsed.data.memMib ?? preset.memMib }
+      : null
+    const refused = quota.check({ newVm: true, ...(custom ?? { size: parsed.data.size ?? DEFAULT_VM_SIZE }), diskGib, addDiskGib: diskGib, start: true })
     if (refused) return c.json({ error: refused }, 409)
     const input = { ...parsed.data }
     // A plan with allowlisted egress makes every new VM's egress allowlisted.
@@ -177,7 +182,7 @@ export function vmRoutes(o: VmRoutesOptions) {
     if (jobs) {
       const targetId = `vm-${randomBytes(8).toString('hex')}`
       await owners.add(targetId, c.var.user.id)
-      await record(c.var.user.id, 'vm.created', targetId, { size: input.size ?? DEFAULT_VM_SIZE, repository: input.repository ?? null })
+      await record(c.var.user.id, 'vm.created', targetId, { size: input.size ?? DEFAULT_VM_SIZE, ...custom, repository: input.repository ?? null })
       const job = await jobs.launch(c.var.user.id, targetId, async () => {
         const res = await callHostd('/vms', { method: 'POST', body: JSON.stringify({ ...input, githubToken: credential, targetId }) })
         if (!res) throw new Error('The host is unreachable. Refresh workspaces before creating another.')
@@ -196,7 +201,7 @@ export function vmRoutes(o: VmRoutesOptions) {
     if (res.status !== 201) return passThrough(res)
     const vm = (await res.json()) as Vm
     await owners.add(vm.id, c.var.user.id)
-    await record(c.var.user.id, 'vm.created', vm.id, { size: input.size ?? DEFAULT_VM_SIZE, repository: input.repository ?? null })
+    await record(c.var.user.id, 'vm.created', vm.id, { size: input.size ?? DEFAULT_VM_SIZE, ...custom, repository: input.repository ?? null })
     return c.json(vm, 201)
   }))
 
@@ -313,7 +318,8 @@ export function vmRoutes(o: VmRoutesOptions) {
       GET: /^(?:|\/(?:sessions|checkpoints|logs|gui))$/,
       POST: /^\/(?:start|stop|pause|resume|resize|disk|exec|sessions|ssh\/keys|gui\/setup|checkpoints\/[a-f0-9-]{36}\/restore)$/,
       PATCH: /^$/,
-      DELETE: /^$/,
+      // The VM itself, its desktop, or one of its sessions (closing a tab).
+      DELETE: /^(?:|\/gui|\/sessions\/[a-f0-9-]{36})$/,
     }
     if (!allowed[c.req.method]?.test(suffix)) return c.json({ error: 'not found' }, 404)
     const res = await callHostd(hostdPath(c), {
@@ -323,9 +329,11 @@ export function vmRoutes(o: VmRoutesOptions) {
     if (!res) return unreachable(c)
     const id = c.req.param('id') ?? ''
     if (res.ok && c.req.method !== 'GET') {
-      if (c.req.method === 'DELETE') {
+      if (c.req.method === 'DELETE' && suffix === '') {
         await owners.remove(id)
         await record(c.var.user.id, 'vm.deleted', id)
+      } else if (c.req.method === 'DELETE') {
+        await record(c.var.user.id, suffix === '/gui' ? 'desktop.closed' : 'session.closed', id)
       } else if (suffix === '/sessions' && res.status === 201) {
         const session = Session.safeParse(await res.clone().json().catch(() => null))
         if (session.success) {

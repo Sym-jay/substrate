@@ -21,3 +21,9 @@ export function AgentIcon({ agent, className = '' }: { agent: Agent; className?:
     </svg>
   )
 }
+
+// Each agent's logo in its own colours (public/agents, from the same icons;
+// opencode's is black), for where they're shown off rather than labelled.
+export function AgentLogo({ agent, className = '' }: { agent: Agent; className?: string }) {
+  return <img src={`/agents/${agent}.svg`} alt="" className={`agent-icon ${className}`} />
+}

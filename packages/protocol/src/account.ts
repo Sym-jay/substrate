@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { VmSizeName } from './vm.ts'
+import { VmSizeName, VmSizes } from './vm.ts'
 
 // A user's limits (Phase 2). The control box has defaults; an admin can set
 // any user's own.
@@ -13,8 +13,17 @@ export const Quota = z.object({
   maxRunningHours: z.number().min(0),
   // 'allowlist' makes every new VM's egress allowlisted.
   egress: z.enum(['open', 'allowlist']),
+  // The most a custom size may have, per VM. Unset: the largest of `sizes`.
+  maxVcpus: z.number().int().min(1).optional(),
+  maxMemMib: z.number().int().min(1024).optional(),
 })
 export type Quota = z.infer<typeof Quota>
+
+// The most vCPUs and memory one VM may have on a plan.
+export function sizeCeiling(limits: Quota) {
+  const largest = (key: 'vcpus' | 'memMib') => Math.max(0, ...limits.sizes.map((size) => VmSizes[size][key]))
+  return { vcpus: limits.maxVcpus ?? largest('vcpus'), memMib: limits.maxMemMib ?? largest('memMib') }
+}
 
 export const QuotaStatus = z.object({
   limits: Quota,

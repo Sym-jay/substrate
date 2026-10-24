@@ -1,9 +1,11 @@
 import type { Vm, WindowsWorkspace } from '@substrate/protocol'
-import { ChevronDown, Copy, Ellipsis, GitBranch, Pause, Play, Plus, Rocket, ScrollText, Search, SlidersHorizontal, Square, Trash } from 'lucide-react'
+import { ChevronDown, Copy, Ellipsis, GitBranch, Layers, LayoutTemplate, Pause, Play, Plus, Rocket, ScrollText, Search, SlidersHorizontal, Square, Trash } from 'lucide-react'
 import { useState } from 'react'
 import { useData } from '../app/data.tsx'
+import { gibLabel, windowsSizeOf } from '../app/launch.ts'
 import { useLauncher } from '../app/launcher.tsx'
 import { href, navigate } from '../app/router.ts'
+import { useSettings } from '../app/settings.ts'
 import { Button, Empty, Menu, MenuItem, PageHeader, Shimmer, StateBadge, gb, since, useToast } from '../app/ui.tsx'
 import { windowsApi, workspaceApi } from '../workspaces/api.ts'
 
@@ -37,6 +39,7 @@ function pauses(row: Row) {
 export function WorkspacesTable() {
   const { vms, windows, sessions, vmsUnavailable, putVm, dropVm, putWindows, refresh } = useData()
   const { launching, quickLaunch, configure } = useLauncher()
+  const settings = useSettings()
   const toast = useToast()
   const [query, setQuery] = useState('')
   const [stateFilter, setStateFilter] = useState<StateFilter>('all')
@@ -99,9 +102,10 @@ export function WorkspacesTable() {
           <Menu align="end" button={({ toggle }) => <Button variant="secondary" icon={<ChevronDown />} aria-label="More ways to create" onClick={toggle} />}>
             {(close) => (
               <>
-                <MenuItem icon={<Rocket />} hint="your defaults" disabled={launching || !!vmsUnavailable} onClick={() => { close(); void quickLaunch() }}>Quick launch</MenuItem>
-                <MenuItem icon={<SlidersHorizontal />} disabled={!!vmsUnavailable} onClick={() => { close(); configure() }}>Configure & launch</MenuItem>
-                {windows && <MenuItem icon={<Plus />} hint="16 vCPU · 64 GB" onClick={() => { close(); navigate('windows', 'new') }}>Windows workspace</MenuItem>}
+                {/* Quick launch starts what the Environment page says. */}
+                <MenuItem icon={<Rocket />} hint={`${settings.vcpus} vCPU · ${gibLabel(settings.memMib / 1024)}`} disabled={launching || !!vmsUnavailable} onClick={() => { close(); void quickLaunch() }}>Quick launch</MenuItem>
+                <MenuItem icon={<SlidersHorizontal />} disabled={!!vmsUnavailable} onClick={() => { close(); configure() }}>Launch…</MenuItem>
+                <MenuItem icon={<Layers />} onClick={() => { close(); navigate('environment') }}>Edit defaults…</MenuItem>
               </>
             )}
           </Menu>
@@ -168,7 +172,7 @@ export function WorkspacesTable() {
                   </button>
                   <span role="cell" className="text-muted">{r.kind === 'linux' ? 'Linux' : 'Windows'}</span>
                   <span role="cell"><StateBadge state={r.state} /></span>
-                  <span role="cell" className="text-muted">{r.kind === 'linux' ? `${r.vm.vcpus} vCPU · ${gb(r.vm.memMib)}` : '16 vCPU · 64 GB'}</span>
+                  <span role="cell" className="text-muted">{r.kind === 'linux' ? `${r.vm.vcpus} vCPU · ${gb(r.vm.memMib)}` : `${windowsSizeOf(r.w).vcpus} vCPU · ${windowsSizeOf(r.w).memGib} GB`}</span>
                   <span role="cell" className="ws-created text-faint truncate" title={new Date(r.createdAt).toLocaleString()}>{since(r.createdAt)}</span>
                   <span role="cell" className="min-w-0">{timer ? <><span className="block truncate">{timer.main}</span>{timer.sub && <span className="text-faint block truncate text-xs">{timer.sub}</span>}</> : <span className="text-faint">—</span>}</span>
                   <span role="cell" className="flex items-center justify-end gap-1">
@@ -183,6 +187,7 @@ export function WorkspacesTable() {
                           {r.kind === 'linux' && running && <MenuItem icon={<Pause />} disabled={!!busy} onClick={() => { close(); void run([r], 'pause', 'Paused') }}>Pause</MenuItem>}
                           {(running || (r.kind === 'linux' && r.state === 'paused')) && <MenuItem icon={<Square />} disabled={!!busy} onClick={() => { close(); void run([r], 'stop', 'Stopped') }}>Stop</MenuItem>}
                           {r.kind === 'linux' && <MenuItem icon={<GitBranch />} hint="a copy, as it is now" disabled={!!busy || (r.state !== 'running' && r.state !== 'paused')} onClick={() => { close(); void fork(r.vm) }}>Fork</MenuItem>}
+                          {r.kind === 'linux' && <MenuItem icon={<LayoutTemplate />} hint="soon" onClick={() => { close(); toast('Saving a workspace as a template is on the way.') }}>Save as template</MenuItem>}
                           {r.kind === 'linux' && <MenuItem icon={<ScrollText />} onClick={() => { close(); navigate('logs', r.id) }}>Logs</MenuItem>}
                           <MenuItem icon={<Trash />} disabled={!!busy} onClick={() => { close(); void run([r], 'delete', 'Deleted') }}>Delete</MenuItem>
                         </>
