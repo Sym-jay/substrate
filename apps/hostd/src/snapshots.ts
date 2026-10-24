@@ -9,10 +9,12 @@ import { deleteTap, slotAddresses } from './network.ts'
 import { vmDir, writeRecord, type Checkpoint, type VmRecord } from './state.ts'
 import * as vmm from './vmm.ts'
 import * as zfs from './zfs.ts'
+import { captureWorkingSet, prefetchWorkingSet, saveWorkingSet } from './resume-prefetch.ts'
 
 export const snapshotDependencies = {
   firecracker, zfs, mkdir, readdir, rm, vmDir, writeRecord, deleteTap, guestClient, waitForGuest,
   startNetwork: vmm.startNetwork, launchForRestore: vmm.launchForRestore, ownSnapshotDir: vmm.ownSnapshotDir,
+  captureWorkingSet, prefetchWorkingSet, saveWorkingSet,
 }
 
 // VmManager holds its lifecycle mutex around these operations. Each generation
@@ -53,11 +55,13 @@ export class Snapshots {
     try {
       await api('PATCH /vm', { state: 'Paused' })
       frozen = true
+      const workingSet = previous ? await d.captureWorkingSet(record.id, this.paths(record, previous).memory) : null
       // Firecracker also drains and fsyncs the block device before returning.
       await api('PUT /snapshot/create', {
         snapshot_type: 'Full', snapshot_path: files.load.state, mem_file_path: files.load.memory,
         sync_snapshot_files: true,
       }, 300_000)
+      await d.saveWorkingSet(`${files.dir}/working-set.json`, workingSet)
       await d.zfs.snapshot(files.disk)
       diskSaved = true
       await d.zfs.syncPool(config.pool)
@@ -104,6 +108,9 @@ export class Snapshots {
       const prepared = await Promise.allSettled([
         profile.measure('diskRollback', () => d.zfs.rollback(files.disk)),
         profile.measure('network', () => d.startNetwork(record)),
+        profile.measure('prefetch', async () => {
+          profile.counters.prefetchedBytes = await d.prefetchWorkingSet(files.memory, `${files.dir}/working-set.json`)
+        }),
       ])
       for (const result of prepared) if (result.status === 'rejected') throw result.reason
       await profile.measure('firecrackerLaunch', () => d.launchForRestore(record))

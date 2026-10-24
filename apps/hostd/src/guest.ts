@@ -86,13 +86,17 @@ export async function waitForGuest(
   { timeoutMs, alive, probeTimeoutMs = 250 }: { timeoutMs: number; alive: () => Promise<boolean>; probeTimeoutMs?: number },
 ) {
   const deadline = Date.now() + timeoutMs
-  for (let i = 0; ; i++) {
+  let checkedAliveAt = Date.now()
+  for (;;) {
     try {
       return await client.health(Math.max(1, Math.min(probeTimeoutMs, deadline - Date.now())))
     } catch {
       if (Date.now() > deadline) throw new Error(`guest didn't answer within ${timeoutMs / 1000} s`)
       // Checking the unit costs a process spawn, so only every ~0.5 s.
-      if (i % 20 === 19 && !(await alive())) throw new Error('the VM exited during boot')
+      if (Date.now() - checkedAliveAt >= 500) {
+        if (!(await alive())) throw new Error('the VM exited during boot')
+        checkedAliveAt = Date.now()
+      }
       await Bun.sleep(25)
     }
   }
