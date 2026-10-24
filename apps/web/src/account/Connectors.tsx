@@ -76,7 +76,7 @@ export function Connectors() {
           </p>
           {error && <p role="alert" className="mt-1 text-xs text-[var(--bad)]">{error}</p>}
         </div>
-        <div className="shrink-0">
+        <div className="connector-action shrink-0">
           {github === undefined ? <span className="text-faint text-xs">Checking…</span>
             : github?.connected ? <Button size="sm" disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>
             : <ConnectGitHubButton size="sm" status={github} returnTo="settings" label="Connect" onError={setError} />}

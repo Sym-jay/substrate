@@ -246,6 +246,7 @@ select.input option { background: var(--bg); color: var(--ink); }
 .template-card { position: relative; display: flex; flex-direction: column; justify-content: space-between; aspect-ratio: 4 / 5; padding: 1.6rem 1.5rem 1.4rem; color: #fff; overflow: hidden; isolation: isolate; }
 .template-card.is-blue { background: linear-gradient(180deg, #17196b 0%, #2d36c9 62%, #4b5bff 100%); }
 .template-card.is-black { background: #151515; }
+@media (max-width: 640px) { .template-card { aspect-ratio: auto; min-height: 330px; } }
 .streak-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
 .streak-source { display: none; }
 .template-top { position: relative; z-index: 1; display: flex; align-items: flex-start; gap: 0.6rem; pointer-events: none; }
@@ -271,7 +272,7 @@ select.input option { background: var(--bg); color: var(--ink); }
 .repo-option[aria-selected='true'] { box-shadow: inset 2px 0 0 var(--accent); background: var(--surface-2); }
 
 /* ── Modal: in the middle of the window, over a scrim ── */
-.modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 1rem; }
+.modal { position: fixed; inset: 0; z-index: 60; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 1rem; }
 .modal-scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 72%, transparent); animation: fade-in 0.2s ease both; }
 .modal-panel {
   position: relative; display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100dvh - 2rem);
@@ -294,7 +295,8 @@ select.input option { background: var(--bg); color: var(--ink); }
 
 /* Launch, a step at a time: the steps across the top, one step's fields,
    and Back / Next under them. The body keeps one height so steps don't jump. */
-.launch-modal { width: min(640px, 100%); }
+.launch-modal { width: min(640px, 100%); min-width: 0; }
+.launch-modal .modal-form, .launch-modal .launch-steps { min-width: 0; }
 .launch-steps { display: flex; gap: 0.25rem; padding: 0.75rem 1.5rem 0; overflow-x: auto; scrollbar-width: none; }
 .launch-step { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 34px; padding: 0.35rem 0.6rem; font: 500 0.6875rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); border-bottom: 1px solid transparent; cursor: pointer; white-space: nowrap; }
 .launch-step:hover:enabled { color: var(--ink); }
@@ -336,9 +338,23 @@ select.input option { background: var(--bg); color: var(--ink); }
 .slider.is-disabled .slider-input::-webkit-slider-thumb { border-color: var(--faint); }
 .slider.is-disabled .slider-input::-moz-range-thumb { border-color: var(--faint); }
 
-.menu { position: fixed; z-index: 70; min-width: 240px; padding: 0.25rem; background: var(--bg); border: var(--hair) solid var(--line-strong); animation: rise 0.2s var(--ease-out) both; }
+.menu { position: fixed; z-index: 70; min-width: min(240px, calc(100vw - 1rem)); max-width: calc(100vw - 1rem); padding: 0.25rem; background: var(--bg); border: var(--hair) solid var(--line-strong); animation: rise 0.2s var(--ease-out) both; }
 .menu-item { display: flex; width: 100%; align-items: center; gap: 0.6rem; padding: 0.5rem 0.55rem; font-size: 0.875rem; cursor: pointer; color: var(--ink); border: var(--hair) solid transparent; }
-.menu-item:hover:enabled, .menu-item:focus-visible { border-color: var(--line-strong); outline: none; }
+/* Hovered, like the sidebar: a blue tint with the ASCII wave (MenuItem in
+   ui.tsx), its words and icon on a patch of the tint. Current: solid blue.
+   Danger: red. */
+.menu-item { position: relative; overflow: hidden; isolation: isolate; --item-fill: transparent; transition: background-color 0.15s, color 0.15s; }
+.menu-item:hover:enabled, .menu-item:focus-visible { --item-fill: color-mix(in srgb, var(--accent) 7%, var(--bg)); background: var(--item-fill); outline: none; }
+.menu-item.is-current { --item-fill: var(--accent); color: #fff; background: var(--item-fill); border-color: var(--accent); }
+.menu-item.is-danger { color: var(--bad); }
+.menu-item.is-danger:hover:enabled, .menu-item.is-danger:focus-visible { --item-fill: color-mix(in srgb, var(--bad) 8%, var(--bg)); }
+.menu-icon, .menu-hint { color: var(--faint); }
+.menu-item.is-current .menu-icon, .menu-item.is-current .menu-hint { color: rgba(255, 255, 255, 0.8); }
+.menu-item.is-danger .menu-icon { color: var(--bad); }
+.menu-item.is-current .nav-flow { color: rgba(255, 255, 255, 0.3); }
+.menu-item.is-danger .nav-flow { color: color-mix(in srgb, var(--bad) 32%, transparent); }
+.menu-item:hover .menu-text, .menu-item:hover .menu-hint { background: var(--item-fill); padding-inline: 0.25rem; margin-inline: -0.25rem; }
+.menu-item:hover .menu-icon > svg { background: var(--item-fill); box-shadow: 0 0 0 0.25rem var(--item-fill); }
 .menu-item:disabled { opacity: 0.4; cursor: default; }
 .menu-label { padding: 0.5rem 0.55rem 0.25rem; font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
 
@@ -508,6 +524,17 @@ select.input option { background: var(--bg); color: var(--ink); }
 .ws-tab-wrap { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
 .ws-tab-wrap .ws-tab { padding-right: 1.9rem; }
 .ws-tab-wrap.no-close .ws-tab { padding-right: 0.65rem; }
+/* Phones: the tabs get a row of their own under the workspace's buttons,
+   and everything grows to a size a thumb can hit. */
+@media (max-width: 767px) {
+  .ws-tabs { flex-wrap: wrap; row-gap: 0.4rem; }
+  .ws-tab-list { order: 1; flex-basis: 100%; }
+  .ws-tabs .btn { min-height: 38px; }
+  .ws-tabs .btn-icon, .ws-tabs .btn-sm:not(:has(.btn-label)) { min-width: 38px; }
+  .ws-tab { min-height: 38px; }
+  .ws-tab-wrap .ws-tab { padding-right: 2.4rem; }
+  .ws-tab-wrap .ws-tab-close { min-width: 30px; height: 30px; right: 0.2rem; }
+}
 .ws-tab-close { position: absolute; right: 0.3rem; display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 0.2rem; font: 500 0.625rem var(--font-mono); text-transform: uppercase; color: var(--faint); opacity: 0; cursor: pointer; transition: opacity 0.15s, color 0.15s; }
 .ws-tab-close svg { width: 0.8rem; height: 0.8rem; }
 .ws-tab-wrap:hover .ws-tab-close, .ws-tab-wrap.is-current .ws-tab-close, .ws-tab-close:focus-visible, .ws-tab-close.is-confirming { opacity: 1; }
@@ -588,7 +615,24 @@ select.input option { background: var(--bg); color: var(--ink); }
 }
 @container (max-width: 931px) {
   .ws-table { --cols: 16px minmax(150px, 1fr) 70px 110px 120px 120px 112px; min-width: 826px; }
-  .ws-id { display: none; }
+  .ws-id { display: none !important; }
+}
+/* Phones: a row is the name and its actions, with state, type and size
+   under the name, and no header (Pauses is in the workspace itself). */
+@container (max-width: 600px) {
+  .ws-table { min-width: 0; }
+  .ws-table .data-head, .ws-table .ws-created, .ws-table .ws-pauses { display: none; }
+  .ws-table .data-row:not(.data-head) {
+    grid-template-columns: 16px auto auto minmax(0, 1fr) auto;
+    grid-template-areas: 'check name name name actions' '. state type size size';
+    gap: 0.35rem 0.75rem; padding-block: 0.75rem;
+  }
+  .ws-check { grid-area: check; }
+  .ws-name { grid-area: name; }
+  .ws-state { grid-area: state; }
+  .ws-type { grid-area: type; }
+  .ws-size { grid-area: size; }
+  .ws-actions { grid-area: actions; }
 }
 .data-row { display: grid; grid-template-columns: var(--cols); align-items: center; gap: 0 1rem; min-height: 52px; padding: 0.55rem 1rem; border-top: var(--hair) solid var(--line); font-size: 0.8125rem; }
 .data-row > * { min-width: 0; }
@@ -655,3 +699,15 @@ select.input option { background: var(--bg); color: var(--ink); }
 /* GitHub's own look, for connecting it (Connectors.tsx). */
 .btn-github { color: #fff; background: #1f2328; border-color: #1f2328; }
 .btn-github:hover:enabled { color: #fff; background: #000; border-color: #000; }
+
+/* Phones: the logo top left, across from the inbox and account (Shell.tsx). */
+.mobile-brand { display: none; }
+@media (max-width: 767px) {
+  .mobile-brand { position: absolute; top: 0.85rem; left: 1rem; z-index: 25; display: flex; align-items: center; height: 44px; }
+  .mobile-brand .logo-word { font-size: 19px; }
+}
+/* Settings' connectors: on phones, the button goes under the words. */
+@media (max-width: 640px) {
+  .connector { flex-wrap: wrap; }
+  .connector-action { flex-basis: 100%; padding-left: calc(2.25rem + 0.875rem); }
+}

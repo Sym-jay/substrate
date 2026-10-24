@@ -3,7 +3,7 @@ import type { Profile } from '../pages/ProfilePage.tsx'
 import { useData } from './data.tsx'
 import { DitherFrame } from './DitherFrame.tsx'
 import { DitherMeter } from './DitherMeter.tsx'
-import { navigate } from './router.ts'
+import { navigate, useRoute } from './router.ts'
 import { Menu, MenuItem } from './ui.tsx'
 
 const hours = (n: number) => `${Math.round(n * 10) / 10}`
@@ -12,6 +12,7 @@ const hours = (n: number) => `${Math.round(n * 10) / 10}`
 // are what's left), and a menu for your account.
 export function AccountCorner({ profile }: { profile?: Profile }) {
   const { quota } = useData()
+  const { page } = useRoute()
   const total = quota?.limits.maxRunningHours ?? 0
   const left = quota ? Math.max(0, total - quota.used.runningHours) : 0
   // Null when this server has no credits to show.
@@ -37,10 +38,10 @@ export function AccountCorner({ profile }: { profile?: Profile }) {
               </div>
             )}
           </div>
-          <MenuItem icon={<UserRound />} onClick={() => { close(); navigate('profile') }}>Profile</MenuItem>
+          <MenuItem icon={<UserRound />} current={page === 'profile'} onClick={() => { close(); navigate('profile') }}>Profile</MenuItem>
           {profile && <MenuItem icon={<SlidersHorizontal />} onClick={() => { close(); profile.manage() }}>Manage account</MenuItem>}
-          <MenuItem icon={<Settings />} onClick={() => { close(); navigate('settings') }}>Settings</MenuItem>
-          {profile && <MenuItem icon={<LogOut />} onClick={() => { close(); profile.signOut() }}>Sign out</MenuItem>}
+          <MenuItem icon={<Settings />} current={page === 'settings'} onClick={() => { close(); navigate('settings') }}>Settings</MenuItem>
+          {profile && <MenuItem icon={<LogOut />} danger onClick={() => { close(); profile.signOut() }}>Sign out</MenuItem>}
         </>
       )}
     </Menu>
