@@ -1,6 +1,7 @@
-import type { CreateWindowsWorkspace, UpdateWindowsWorkspace, WindowsWorkspaceState } from '@substrate/protocol'
+import { DEFAULT_WINDOWS_SIZE, type CreateWindowsWorkspace, type UpdateWindowsWorkspace, type WindowsWorkspaceState } from '@substrate/protocol'
 import { randomBytes, randomInt } from 'node:crypto'
 import type { WindowsCloud } from './cloud.ts'
+import { instanceTypeFor } from './sizes.ts'
 import type { WindowsSsh } from './ssh.ts'
 import { toWorkspace, type WindowsRow, type WindowsStore } from './store.ts'
 import type { WindowsTerminals } from './terminals.ts'
@@ -11,6 +12,7 @@ export type WindowsWorkspacesOptions = {
   cloud: WindowsCloud
   ssh: Pick<WindowsSsh, 'publicKey' | 'ready' | 'forget' | 'argv'>
   terminals: WindowsTerminals
+  // The instance type configured; its family gives each size's (sizes.ts).
   instanceType: string
   // How many may be on at once: the account's vCPUs are shared with the host.
   maxRunning: number
@@ -88,7 +90,7 @@ export class WindowsWorkspaces {
     return row
   }
 
-  create(owner: string, { name }: CreateWindowsWorkspace) {
+  create(owner: string, { name, size = DEFAULT_WINDOWS_SIZE }: CreateWindowsWorkspace) {
     return this.exclusive(async () => {
       const { store, cloud, ssh } = this.o
       const mine = await store.of(owner)
@@ -102,7 +104,7 @@ export class WindowsWorkspaces {
         id: `win-${randomBytes(6).toString('hex')}`,
         owner, name,
         instanceId: null,
-        instanceType: this.o.instanceType,
+        instanceType: instanceTypeFor(this.o.instanceType, size),
         state: 'creating',
         privateIp: null,
         password: makePassword(),
@@ -115,7 +117,7 @@ export class WindowsWorkspaces {
       await store.add(row)
       try {
         const userData = windowsUserData({ password: row.password, vncPassword: row.vncPassword, publicKey: await ssh.publicKey() })
-        const instanceId = await cloud.launch({ id: row.id, name, userData })
+        const instanceId = await cloud.launch({ id: row.id, name, userData, instanceType: row.instanceType })
         await store.update(row.id, { instanceId })
         this.o.log(`windows: created ${name} (${row.id}) as ${instanceId}`)
       } catch (err) {

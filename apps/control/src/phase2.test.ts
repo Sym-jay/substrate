@@ -46,6 +46,19 @@ describe('quota rules', () => {
   })
 })
 
+describe('custom sizes', () => {
+  const used = { vms: 1, totalDiskGib: 60, runningHours: 3 }
+  test('are capped at the largest size in the plan, unless it says otherwise', () => {
+    // DEFAULTS allows small and medium: 4 vCPU and 8 GiB at most.
+    expect(quotaError(DEFAULTS, used, { vcpus: 4, memMib: 8_192 })).toBeNull()
+    expect(quotaError(DEFAULTS, used, { vcpus: 3, memMib: 2_048 })).toBeNull()
+    expect(quotaError(DEFAULTS, used, { vcpus: 6, memMib: 8_192 })).toContain('up to 4 vCPU and 8 GB')
+    expect(quotaError(DEFAULTS, used, { vcpus: 2, memMib: 16_384 })).toContain('up to 4 vCPU and 8 GB')
+    expect(quotaError({ ...DEFAULTS, maxVcpus: 12, maxMemMib: 32_768 }, used, { vcpus: 12, memMib: 32_768 })).toBeNull()
+    expect(quotaError({ ...DEFAULTS, maxVcpus: 1, maxMemMib: 2_048 }, used, { vcpus: 2, memMib: 2_048 })).toContain('up to 1 vCPU')
+  })
+})
+
 describe('stores', () => {
   test('usage adds up per VM and month, and reports hours', async () => {
     const usage = new Usage(await testDatabase())

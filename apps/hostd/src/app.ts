@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { HttpError, type VmService } from './vms.ts'
 import { appHeaders, proxyHttp, tcpRelay } from './proxy.ts'
 import { vmLogs } from './logs.ts'
-import { VNC_PORT, desktopSetupCommand, desktopStateCommand, parseDesktopState, probe as probePort, sshSyncCommand } from './desktop.ts'
+import { VNC_PORT, desktopSetupCommand, desktopStateCommand, desktopStopCommand, parseDesktopState, probe as probePort, sshSyncCommand } from './desktop.ts'
 
 type Options = {
   // The current token, or a check that also takes the previous one (tokens.ts).
@@ -99,6 +99,15 @@ export function createApp({ token, version, image, pool, vms, logs = vmLogs, pro
     if (result.exitCode !== 0) return c.json({ error: `couldn't start setting up a desktop: ${result.stderr.trim() || 'unknown error'}` }, 502)
     return c.json({ state: 'setting-up', available: false } satisfies VmGui)
   })
+  // Closes it: the desktop stops, and stays off until it's set up again.
+  app.delete('/vms/:id/gui', async (c) => {
+    const vm = await vms.get(c.req.param('id'))
+    if (vm.state !== 'running') return c.json({ error: `${vm.name} isn't running` }, 409)
+    await vms.exec(vm.id, { command: desktopStopCommand, user: 'root', timeoutMs: 15_000 })
+    // One the owner set up themselves still answers.
+    if (await probe(vm.guestIp, VNC_PORT)) return c.json({ state: 'ready', available: true } satisfies VmGui)
+    return c.json({ state: 'off', available: false } satisfies VmGui)
+  })
   app.get('/vms/:id/gui/vnc', upgradeWebSocket(async (c) => {
     const vm = await vms.get(c.req.param('id')!)
     return tcpRelay(vm.guestIp, VNC_PORT, activityFor(vms, vm.id), 'this workspace has no desktop running')
@@ -144,6 +153,10 @@ export function createApp({ token, version, image, pool, vms, logs = vmLogs, pro
   app.get('/vms/:id/sessions', async (c) => c.json(await (await vms.guest(c.req.param('id'))).sessions()))
   app.post('/vms/:id/sessions', async (c) => {
     return c.json(await vms.createSession(c.req.param('id'), await body(c, CreateSession)), 201)
+  })
+  app.delete('/vms/:id/sessions/:session', async (c) => {
+    await (await vms.guest(c.req.param('id'))).closeSession(c.req.param('session'))
+    return c.body(null, 204)
   })
   app.get(
     '/vms/:id/sessions/:session/terminal',

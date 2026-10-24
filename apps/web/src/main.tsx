@@ -9,6 +9,17 @@ import './index.css'
 // The saved motion setting, before anything is drawn.
 applyAppearance()
 
+// Clerk's sign-in, sign-up and account screens in Substrate's look: square,
+// monospace, blue for the main action.
+const clerkLook = {
+  variables: {
+    colorPrimary: '#2b5cff',
+    colorText: '#0a0a0a',
+    borderRadius: '0',
+    fontFamily: "ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace",
+  },
+}
+
 // Sign-in is on when the control API has Clerk keys; /api/config says so and
 // carries the publishable key, so builds don't need it.
 async function clerkPublishableKey(): Promise<string | null> {
@@ -26,7 +37,7 @@ async function start() {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       {key ? (
-        <ClerkProvider publishableKey={key} afterSignOutUrl="/">
+        <ClerkProvider publishableKey={key} afterSignOutUrl="/" appearance={clerkLook}>
           <ClerkApp />
         </ClerkProvider>
       ) : (

@@ -58,6 +58,8 @@ fakeHostd.delete('/vms/:id', (c) => {
   hostdVms.delete(c.req.param('id'))
   return c.body(null, 204)
 })
+fakeHostd.delete('/vms/:id/sessions/:session', (c) => c.body(null, 204))
+fakeHostd.delete('/vms/:id/gui', (c) => c.json({ state: 'off', available: false }))
 const hostd = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: fakeHostd.fetch })
 afterAll(() => hostd.stop(true))
 
@@ -157,6 +159,8 @@ describe('VMs per user', () => {
       [`/api/vms/${aliceVm.id}/stop`, 'POST'],
       [`/api/vms/${aliceVm.id}`, 'PATCH'],
       [`/api/vms/${aliceVm.id}`, 'DELETE'],
+      [`/api/vms/${aliceVm.id}/sessions/0b1c2d3e-4f50-4617-8a9b-0c1d2e3f4a5b`, 'DELETE'],
+      [`/api/vms/${aliceVm.id}/gui`, 'DELETE'],
       [`/api/vms/${aliceVm.id}/sessions/s/terminal/ticket`, 'POST'],
     ] as const) {
       const res = await bob(path, { method })
@@ -165,6 +169,18 @@ describe('VMs per user', () => {
     }
     expect(hostdVms.has(aliceVm.id)).toBe(true)
     expect((await alice(`/api/vms/${aliceVm.id}`)).status).toBe(200)
+  })
+
+  test('closing a session leaves the VM, and its owner, alone', async () => {
+    const res = await alice(`/api/vms/${aliceVm.id}/sessions/0b1c2d3e-4f50-4617-8a9b-0c1d2e3f4a5b`, { method: 'DELETE' })
+    expect(res.status).toBe(204)
+    expect(hostdVms.has(aliceVm.id)).toBe(true)
+    expect((await alice(`/api/vms/${aliceVm.id}`)).status).toBe(200)
+    // Only session IDs: nothing else under a VM can be deleted this way.
+    expect((await alice(`/api/vms/${aliceVm.id}/sessions/nope`, { method: 'DELETE' })).status).toBe(404)
+    // Its desktop closes the same way.
+    expect((await alice(`/api/vms/${aliceVm.id}/gui`, { method: 'DELETE' })).status).toBe(200)
+    expect(hostdVms.has(aliceVm.id)).toBe(true)
   })
 
   test('the owner can change when their VM auto-pauses', async () => {

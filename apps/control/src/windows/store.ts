@@ -1,5 +1,6 @@
 import type { WindowsWorkspace, WindowsWorkspaceState } from '@substrate/protocol'
 import type { Db } from '../db.ts'
+import { sizeOf } from './sizes.ts'
 
 export type WindowsRow = {
   id: string
@@ -18,7 +19,7 @@ export type WindowsRow = {
 }
 
 export const toWorkspace = ({ id, name, state, instanceType, createdAt, idleStopMinutes, error }: WindowsRow): WindowsWorkspace =>
-  ({ id, name, state, instanceType, createdAt, idleStopMinutes, error })
+  ({ id, name, state, instanceType, size: sizeOf(instanceType), createdAt, idleStopMinutes, error })
 
 const columns = { name: 'name', instanceId: 'instance_id', instanceType: 'instance_type', state: 'state', privateIp: 'private_ip',
   password: 'password', vncPassword: 'vnc_password', createdAt: 'created_at', lastActiveAt: 'last_active_at', idleStopMinutes: 'idle_stop_minutes', error: 'error' } as const

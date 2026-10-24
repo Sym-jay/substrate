@@ -68,12 +68,17 @@ export const workspaceApi = {
   async sessions(vmId: string, signal?: AbortSignal) {
     return Session.array().parse(await request(`${vmPath(vmId)}/sessions`, { signal }))
   },
+  // Ends a session (closing its tab). A workspace from before this answers 404.
+  async closeSession(vmId: string, sessionId: string) { await request(`${vmPath(vmId)}/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' }) },
   // The VM's desktop: whether it has one, setting one up, and VNC to it.
   async gui(vmId: string, signal?: AbortSignal) {
     return VmGui.parse(await request(`${vmPath(vmId)}/gui`, { signal }))
   },
   async setupGui(vmId: string) {
     return VmGui.parse(await request(`${vmPath(vmId)}/gui/setup`, post({})))
+  },
+  async closeGui(vmId: string) {
+    return VmGui.parse(await request(`${vmPath(vmId)}/gui`, { method: 'DELETE' }))
   },
   async guiConnection(vmId: string) {
     const { ticket } = (await request(`${vmPath(vmId)}/gui/ticket`, post({}))) as { ticket: string }

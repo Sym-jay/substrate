@@ -33,12 +33,11 @@ export const accountApi = {
   async github() { return GitHubStatus.parse(await request('/api/github')) },
   // Where to send the browser for "Connect with GitHub".
   async githubAuthorizeUrl() { return ((await request('/api/github/connect', send('POST', {}))) as { url: string }).url },
-  async setGitHubToken(token: string) { return (await request('/api/github/token', send('PUT', { token }))) as { login: string } },
   async disconnectGitHub() { await request('/api/github', { method: 'DELETE' }) },
   async repos(query: string, signal?: AbortSignal) {
     return GitHubRepoInfo.array().parse(await request(`/api/github/repos?q=${encodeURIComponent(query)}`, { signal }))
   },
 
-  async quota() { return QuotaStatus.parse(await request('/api/quota')) },
-  async usage() { return UsageReport.parse(await request('/api/usage')) },
+  async quota(signal?: AbortSignal) { return QuotaStatus.parse(await request('/api/quota', { signal })) },
+  async usage(signal?: AbortSignal) { return UsageReport.parse(await request('/api/usage', { signal })) },
 }

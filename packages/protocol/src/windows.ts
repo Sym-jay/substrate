@@ -10,11 +10,25 @@ import { VmName } from './vm.ts'
 export const WindowsWorkspaceState = z.enum(['creating', 'starting', 'running', 'stopping', 'stopped', 'failed'])
 export type WindowsWorkspaceState = z.infer<typeof WindowsWorkspaceState>
 
+// The sizes a Windows workspace comes in. They're one instance family, so
+// vCPUs and memory go up together; large is the original size, and the default.
+export const WindowsSizes = {
+  small: { vcpus: 4, memGib: 16 },
+  medium: { vcpus: 8, memGib: 32 },
+  large: { vcpus: 16, memGib: 64 },
+} as const
+export const WindowsSizeName = z.enum(['small', 'medium', 'large'])
+export type WindowsSizeName = z.infer<typeof WindowsSizeName>
+export const DEFAULT_WINDOWS_SIZE: WindowsSizeName = 'large'
+
 export const WindowsWorkspace = z.object({
   id: z.string(),
   name: z.string(),
   state: WindowsWorkspaceState,
   instanceType: z.string(),
+  // Null when its instance isn't one of the sizes (made by hand, or an old
+  // setting); optional for servers from before sizes.
+  size: WindowsSizeName.nullable().optional(),
   createdAt: z.string(),
   // Stops itself after this long without anyone typing and with the CPU
   // quiet. Null never stops it.
@@ -23,7 +37,7 @@ export const WindowsWorkspace = z.object({
 })
 export type WindowsWorkspace = z.infer<typeof WindowsWorkspace>
 
-export const CreateWindowsWorkspace = z.object({ name: VmName })
+export const CreateWindowsWorkspace = z.object({ name: VmName, size: WindowsSizeName.optional() })
 export type CreateWindowsWorkspace = z.infer<typeof CreateWindowsWorkspace>
 
 export const UpdateWindowsWorkspace = z.object({

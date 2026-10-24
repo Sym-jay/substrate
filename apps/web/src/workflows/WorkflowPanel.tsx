@@ -3,6 +3,7 @@ import { TaskSpec, taskIsPending, type Comparison, type Task, type TaskRunner, t
 import { navigate, parse } from '../app/router.ts'
 import { workspaceApi } from '../workspaces/api.ts'
 import { workflowApi } from './api.ts'
+import { Reveal } from '../app/ui.tsx'
 import '../workspaces/workspaces.css'
 import './workflows.css'
 
@@ -79,7 +80,7 @@ export function WorkflowPanel({ onOpenWorkspace }: { onOpenWorkspace: (vmId: str
 
   return <section className="workspaces workflow-panel" aria-labelledby="inbox-title">
     <div className="workspace-heading workflow-heading">
-      <div><h2 id="inbox-title">Tasks & results</h2><p>Start work, leave it running, and return to the result.</p></div>
+      <div><h1 id="inbox-title" className="heading text-3xl sm:text-4xl"><Reveal text="Inbox" /></h1><p><Reveal text="Start work, leave it running, and return to the result." /></p></div>
       <div className="workflow-actions">
         <button className="workspace-button secondary" type="button" disabled={!vms.length} aria-expanded={form === 'comparison'} onClick={() => setForm(form === 'comparison' ? null : 'comparison')}>Compare approaches</button>
         <button className="workspace-button" type="button" disabled={!vms.length} aria-expanded={form === 'task'} onClick={() => setForm(form === 'task' ? null : 'task')}>New task</button>
