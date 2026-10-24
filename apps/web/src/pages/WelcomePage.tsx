@@ -1,5 +1,5 @@
-import { ArrowRight, BookOpen } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { ArrowRight, BookOpen, Check, Copy } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { AgentLogo } from '../app/AgentIcon.tsx'
 import { agentCatalog } from '../app/agents.ts'
 import { IsoHost } from '../app/IsoHost.tsx'
@@ -55,8 +55,51 @@ export function WelcomeHero({ launch, more }: { launch: ReactNode; more?: ReactN
           <Button size="lg" icon={<BookOpen />} onClick={() => toast('Docs are on the way.')}>Docs</Button>
         </div>
         {more}
+        <CliInstall />
       </div>
       <IsoHost className="welcome-art" />
     </div>
+  )
+}
+
+// The CLI, by package manager. None of these packages is published yet, so the
+// block says so; the second line is a real command once it's installed.
+const installs = [
+  { id: 'npm', label: 'npm', command: 'npm install -g substrate-cli' },
+  { id: 'brew', label: 'Homebrew', command: 'brew install harryfrzz/tap/substrate' },
+  { id: 'pip', label: 'pip', command: 'pip install substrate-cli' },
+] as const
+
+function CliInstall() {
+  const toast = useToast()
+  const [chosen, setChosen] = useState<(typeof installs)[number]['id']>('npm')
+  const [copied, setCopied] = useState(false)
+  const install = installs.find((i) => i.id === chosen)!
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(install.command)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { toast('Couldn’t copy. Select the command instead.') }
+  }
+  return (
+    <section className="welcome-cli" aria-labelledby="welcome-cli-title">
+      <div className="welcome-cli-head">
+        <h2 className="welcome-agents-label" id="welcome-cli-title">Or from your terminal</h2>
+        <span className="welcome-cli-soon">Coming soon</span>
+      </div>
+      <div className="welcome-cli-tabs" role="tablist" aria-label="Install with">
+        {installs.map((i) => (
+          <button key={i.id} type="button" role="tab" id={`welcome-cli-${i.id}`} aria-selected={i.id === chosen} aria-controls="welcome-cli-panel"
+            onClick={() => { setChosen(i.id); setCopied(false) }}>{i.label}</button>
+        ))}
+      </div>
+      <div className="welcome-cli-code" role="tabpanel" id="welcome-cli-panel" aria-labelledby={`welcome-cli-${chosen}`}>
+        <pre><code><span className="welcome-cli-prompt">$ </span>{install.command}{'\n'}<span className="welcome-cli-prompt">$ </span>substrate workspace create --name demo</code></pre>
+        <button type="button" className="welcome-cli-copy" aria-label={copied ? 'Copied' : `Copy the ${install.label} command`} onClick={() => void copy()}>
+          {copied ? <Check /> : <Copy />}
+        </button>
+      </div>
+    </section>
   )
 }
