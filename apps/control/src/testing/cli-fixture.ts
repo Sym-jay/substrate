@@ -65,6 +65,6 @@ export async function fixture(options: { webDir?: string; browserUser?: string; 
     vms: { owners, jobs, workflows, authenticate, tickets: new Tickets(), maxVmsPerUser: 8, hostd: { url: `http://127.0.0.1:${hostServer.port}`, token: 'fixture' } } })
   const server = Bun.serve({ hostname: '127.0.0.1', port: options.port ?? 0, fetch: app.fetch })
   const token = async (user: 'alice' | 'bob', name = 'CLI test') => { const grant = (await credentials.begin(name)); (await credentials.decide(grant.userCode, user, true)); return (await credentials.poll(grant.deviceCode))! }
-  return { directory, credentials, token, disabled, calls, app, workflows, records, folders, url: `http://127.0.0.1:${server.port}`,
+  return { db, store, directory, credentials, token, disabled, calls, app, workflows, records, folders, url: `http://127.0.0.1:${server.port}`,
     async close() { server.stop(true); hostServer.stop(true); clearInterval(workflowTimer); for (const guest of guests.values()) await guest.close(); await db.close(); await rm(directory, { recursive: true, force: true }) } }
 }

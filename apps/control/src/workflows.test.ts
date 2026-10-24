@@ -209,3 +209,22 @@ test('comparisons and task starts honor Phase 2 disk and monthly runtime quotas 
   await expect(workflows.createTask('alice', 'vm-source', makeSpec('printf blocked'))).rejects.toThrow('running hours')
   expect(r.calls.filter((call) => call.startsWith('POST'))).toEqual([])
 })
+
+test('background reconciliation queues an owner notification after a real command completes without an inbox request', async () => {
+  const r = await rig()
+  await r.db`insert into notification_settings (user_id, enabled, successes, failures, attention, chat_id, chat_label, generation, updated_at)
+    values ('alice', 1, 1, 1, 1, '123', '@alice', 'fixture-generation', ${new Date().toISOString()})`
+  const timer = r.workflows.start()
+  try {
+    const task = await r.workflows.createTask('alice', 'vm-source', makeSpec('printf private-notification-test', 'test 1 = 1'))
+    let rows: { user_id: string; task_id: string; kind: string }[] = []
+    for (let i = 0; i < 100; i++) {
+      rows = await r.db`select user_id, task_id, kind from notification_outbox`
+      if (rows.length) break
+      await Bun.sleep(50)
+    }
+    expect(rows).toEqual([{ user_id: 'alice', task_id: task.id, kind: 'success' }])
+    expect((await r.workflows.task('alice', task.id)).run?.result).toBe('private-notification-test')
+    expect(JSON.stringify(await r.db`select * from notification_outbox`)).not.toContain('private-notification-test')
+  } finally { clearInterval(timer) }
+}, 10_000)

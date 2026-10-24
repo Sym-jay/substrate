@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { region } from './lib/aws.ts'
 import { readSecret } from './lib/read-secret.ts'
+import { Telegram } from '../apps/control/src/telegram.ts'
 
 // The Clerk application Substrate signs users in with. An ID, not a secret.
 const CLERK_APP = 'app_3KhDR11hpqRLdJHJVORK4UDj6PK'
@@ -113,7 +114,24 @@ if (process.argv.includes('--github-oauth')) {
   console.log(`stored the GitHub OAuth app in ${GITHUB_CLIENT_ID} and ${GITHUB_CLIENT_SECRET}`)
 }
 
-console.log('To use them: `bun run deploy:host` and `bun run deploy:control`.')
+if (process.argv.includes('--telegram')) {
+  console.log('Create a dedicated bot with @BotFather in Telegram. Its token is entered privately below.')
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim() || await readSecret('Telegram bot token')
+  if (!/^\d{5,20}:[A-Za-z0-9_-]{30,100}$/.test(token)) throw new Error('That does not look like a Telegram bot token.')
+  const bot = await new Telegram(token).call<{ is_bot: boolean; username: string }>('getMe', {})
+  if (!bot.is_bot || !/^[A-Za-z0-9_]{5,32}$/.test(bot.username)) throw new Error('Telegram did not return a bot username.')
+  const name = '/substrate/telegram/webhook-secret'
+  const webhookSecret = await ssm.send(new GetParameterCommand({ Name: name, WithDecryption: true }))
+    .then((result) => result.Parameter!.Value!, (error: Error) => { if (error.name === 'ParameterNotFound') return randomBytes(32).toString('hex'); throw error })
+  await put('/substrate/telegram/bot-token', token, 'SecureString')
+  await put('/substrate/telegram/bot-username', bot.username, 'String')
+  await put(name, webhookSecret, 'SecureString')
+  console.log(`Stored Telegram configuration for @${bot.username}. No token was printed.`)
+}
+
+console.log(process.argv.includes('--telegram')
+  ? 'Next: `bun run deploy:control`, then `bun run telegram:setup`. No host deployment is needed for Telegram.'
+  : 'To use them: `bun run deploy:host` and `bun run deploy:control`.')
 
 function parseEnv(text: string) {
   const vars: Record<string, string> = {}

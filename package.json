@@ -36,7 +36,9 @@
     "check:workflows": "bun scripts/check-workflows.ts",
     "generate:firecracker": "bun scripts/generate-firecracker.ts",
     "github:token": "bun scripts/github-token.ts",
-    "secrets": "bun scripts/secrets.ts"
+    "secrets": "bun scripts/secrets.ts",
+    "telegram:setup": "bun scripts/setup-telegram.ts",
+    "telegram:install": "bun scripts/install-telegram.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-budgets": "^3.1156.0",

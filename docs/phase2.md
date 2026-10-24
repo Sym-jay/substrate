@@ -2,8 +2,10 @@
 
 This branch builds the Data, Isolation and Secrets parts of Phase 2 in
 [plan.md](plan.md), plus connecting GitHub so a new workspace can start from
-one of the user's own repositories. Billing (Stripe), notifications and the
-custom domain are still to do.
+one of the user's own repositories. Billing (Stripe), the custom domain and
+additional notification channels are still to do. Per-user Telegram task
+notifications are implemented separately; see [task-notifications.md](task-notifications.md)
+for bot setup, delivery semantics and validation.
 
 ## What's in it
 

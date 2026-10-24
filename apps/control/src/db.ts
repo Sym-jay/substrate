@@ -85,6 +85,22 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
       'create table if not exists database_imports (id text primary key, completed_at text not null)',
     ],
   },
+  {
+    version: 3,
+    statements: [
+      `create table notification_settings (user_id text primary key, enabled integer not null,
+        successes integer not null, failures integer not null, attention integer not null,
+        chat_id text unique, chat_label text, generation text not null, updated_at text not null)`,
+      `create table telegram_links (hash text primary key, user_id text not null unique,
+        expires double precision not null, chat_id text, chat_label text)`,
+      `create table notification_outbox (id text primary key, event_key text not null unique,
+        user_id text not null, task_id text, title text not null, kind text not null, generation text not null,
+        state text not null, attempts integer not null, available_at double precision not null,
+        lease_token text, lease_until double precision, created_at text not null, delivered_at text, error_code text)`,
+      'create index notification_due on notification_outbox(state, available_at, lease_until)',
+      'create index notification_owner on notification_outbox(user_id, created_at)',
+    ],
+  },
 ]
 
 export async function migrate(db: Db) {
