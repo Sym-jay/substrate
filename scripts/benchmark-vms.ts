@@ -10,7 +10,9 @@ import { hostd, errorMessage } from './lib/hostd.ts'
 const cycle = process.argv.includes('--host-cycle')
 const option = (name: string, fallback: string) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1]! : fallback
 const label = option('--label', 'sample'), repeats = Number(option('--repeats', '3')), warm = Number(option('--warm', '5'))
-if (!/^[a-z0-9-]+$/.test(label) || !Number.isInteger(repeats) || repeats < 1 || repeats > 10 || !Number.isInteger(warm) || warm < 1 || warm > 20) throw new Error('invalid benchmark options')
+const leaseMinutes = Number(option('--lease-minutes', '90'))
+if (!/^[a-z0-9-]+$/.test(label) || !Number.isInteger(repeats) || repeats < 1 || repeats > 10 || !Number.isInteger(warm) || warm < 1 || warm > 20 ||
+  !Number.isInteger(leaseMinutes) || leaseMinutes < 5 || leaseMinutes > 180) throw new Error('invalid benchmark options')
 const out = await stackOutputs(), host = out.HostInstanceId, marker = randomUUID().slice(0, 8)
 if (await instanceState(host) !== 'running') throw new Error('host must already be running')
 const path = `.data/performance-${label}-${marker}.json`, owned = new Set<string>(), results: unknown[] = []
@@ -20,7 +22,7 @@ const lease = `substrate-performance-${marker}`
 let version: string | null = null
 let image: string | null = null
 await mkdir('.data', { recursive: true })
-const save = () => writeFile(path, JSON.stringify({ label, marker, hostCycle: cycle, owned: [...owned], results }, null, 2), { mode: 0o600 })
+const save = () => writeFile(path, JSON.stringify({ label, marker, hostCycle: cycle, leaseMinutes, owned: [...owned], results }, null, 2), { mode: 0o600 })
 async function call(method: 'GET' | 'POST' | 'DELETE', route: string, body?: unknown) {
   const response = await hostd<any>(host, method, route, body)
   if (response.status >= 400) throw new Error(errorMessage(response))
@@ -55,7 +57,7 @@ async function acquireLease() {
   // The regular deploy script uses this same flock. Expiration also releases
   // it if the local benchmark process is interrupted and cannot clean up.
   const response = await run(host, `set -e
-systemd-run --unit=${lease} --collect --property=RuntimeMaxSec=1800 --quiet /usr/bin/flock -n /run/lock/substrate-host-deploy.lock /usr/bin/flock -n /run/lock/substrate-image-build.lock /bin/sleep 1800
+systemd-run --unit=${lease} --collect --property=RuntimeMaxSec=${leaseMinutes * 60} --quiet /usr/bin/flock -n /run/lock/substrate-host-deploy.lock /usr/bin/flock -n /run/lock/substrate-image-build.lock /bin/sleep ${leaseMinutes * 60}
 sleep 1
 systemctl is-active --quiet ${lease}`, 30)
   if (!response.ok) throw new Error('another deployment owns the host; benchmark did not acquire its lease')
@@ -86,9 +88,9 @@ try {
     const vms = await call('GET', '/vms') as { id: string; state: string }[]
     if (vms.some(vm => owned.has(vm.id) ? vm.state !== 'paused' : !baseline[vm.id] || vm.state !== 'stopped')) throw new Error('another workspace became active; refusing host restart')
     const guard = await run(host, `set -e
-systemctl is-active --quiet ${lease}
-if pgrep -f '^bash .*/images/guest/build-images.sh' >/dev/null; then exit 1; fi`, 30)
-    if (!guard.ok) throw new Error('a deployment/image build is active; refusing host restart')
+systemctl is-active --quiet ${lease} || { echo 'Benchmark deployment lock expired' >&2; exit 1; }
+if pgrep -f '^bash .*/images/guest/build-images.sh' >/dev/null; then echo 'Image build active' >&2; exit 1; fi`, 30)
+    if (!guard.ok) throw new Error(`${guard.stderr.trim() || 'deployment/image guard failed'}; refusing host restart`)
     console.log('All test VMs durably paused; preexisting VMs stopped. Cycling EC2 host.')
     const before = Date.now()
     await ec2.send(new StopInstancesCommand({ InstanceIds: [host] })); stopped = true

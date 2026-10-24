@@ -15,6 +15,7 @@ export const snapshotDependencies = {
   firecracker, zfs, mkdir, readdir, rm, vmDir, writeRecord, deleteTap, guestClient, waitForGuest,
   startNetwork: vmm.startNetwork, launchForRestore: vmm.launchForRestore, ownSnapshotDir: vmm.ownSnapshotDir,
   captureWorkingSet, prefetchWorkingSet, saveWorkingSet,
+  resumePrefetch: () => config.resumePrefetch,
 }
 
 // VmManager holds its lifecycle mutex around these operations. Each generation
@@ -55,7 +56,7 @@ export class Snapshots {
     try {
       await api('PATCH /vm', { state: 'Paused' })
       frozen = true
-      const workingSet = previous ? await d.captureWorkingSet(record.id, this.paths(record, previous).memory) : null
+      const workingSet = previous && d.resumePrefetch() ? await d.captureWorkingSet(record.id, this.paths(record, previous).memory) : null
       // Firecracker also drains and fsyncs the block device before returning.
       await api('PUT /snapshot/create', {
         snapshot_type: 'Full', snapshot_path: files.load.state, mem_file_path: files.load.memory,
@@ -109,7 +110,8 @@ export class Snapshots {
         profile.measure('diskRollback', () => d.zfs.rollback(files.disk)),
         profile.measure('network', () => d.startNetwork(record)),
         profile.measure('prefetch', async () => {
-          profile.counters.prefetchedBytes = await d.prefetchWorkingSet(files.memory, `${files.dir}/working-set.json`)
+          profile.counters.prefetchedBytes = d.resumePrefetch()
+            ? await d.prefetchWorkingSet(files.memory, `${files.dir}/working-set.json`) : 0
         }),
       ])
       for (const result of prepared) if (result.status === 'rejected') throw result.reason

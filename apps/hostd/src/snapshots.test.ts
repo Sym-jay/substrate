@@ -89,6 +89,19 @@ async function rig() {
 }
 
 describe('snapshot lifecycle', () => {
+  test('disabled experimental prefetch never captures or reads hints, including later checkpoints', async () => {
+    const r = await rig()
+    r.dependencies.resumePrefetch = () => false
+    r.dependencies.captureWorkingSet = async () => { throw new Error('unexpected capture') }
+    r.dependencies.prefetchWorkingSet = async () => { throw new Error('unexpected prefetch') }
+    await r.snapshots.pause(r.record)
+    await r.snapshots.resume(r.record)
+    await r.snapshots.pause(r.record)
+    await r.snapshots.resume(r.record)
+    expect(r.running).toBe(true)
+    expect(r.record.paused).toBe(false)
+  })
+
   test('failed disk preparation waits for network setup before cleanup and never launches', async () => {
     const r = await rig()
     await r.snapshots.pause(r.record)

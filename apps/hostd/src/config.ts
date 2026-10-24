@@ -20,6 +20,9 @@ export const config = {
   memReserveMib: 4_096,
   // How long a VM may take from launch to its guest agent answering.
   bootTimeoutMs: 60_000,
+  // Experimental: the bounded working-set read did not consistently beat
+  // parallel preparation across all sizes. Keep normal restore as the default.
+  resumePrefetch: process.env.SUBSTRATE_RESUME_PREFETCH === '1',
   memory: { floorMib: 4096, pollMs: 2000, reclaimAfterMs: 30_000 },
   // Agent alerts and auto-pause notices go to this ntfy topic (`bun run
   // secrets --ntfy`). Without one they're only logged.

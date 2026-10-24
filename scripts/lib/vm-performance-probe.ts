@@ -62,7 +62,7 @@ if (input.action === 'create') {
     if (vm.state !== 'running' || vm.lastError) throw new Error('restored VM is not healthy')
     const terminalBefore = performance.now(), proof = await terminal(sessionId, 'verify')
     if (!proof.retained || (input.expectedPid && proof.pid !== input.expectedPid)) throw new Error('saved process or scrollback was lost')
-    samples.push({ kind: input.action, requestMs, terminalMs: performance.now() - terminalBefore, resumeMs: vm.resumeMs, proof })
+    samples.push({ kind: input.action, requestMs, terminalMs: performance.now() - terminalBefore, resumeMs: vm.resumeMs, pauseMs: vm.pauseMs, proof })
   }
 } else {
   const result = await call(`/vms/${input.id}/exec`, { user: 'root', timeoutMs: 20_000,
