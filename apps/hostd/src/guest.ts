@@ -1,4 +1,4 @@
-import { ExecResult, GUESTD_PORT, GuestActivity, GuestHealth, GuestTask, Session, type StartGuestTask, type TaskSpec, type CreateSession, type ExecRequest } from '@substrate/protocol'
+import { type AgentEnv, ExecResult, GUESTD_PORT, GuestActivity, GuestHealth, GuestTask, Session, type StartGuestTask, type TaskSpec, type CreateSession, type ExecRequest } from '@substrate/protocol'
 import { HttpError } from './errors.ts'
 
 export function guestClient(guestIp: string, token: string, port = GUESTD_PORT) {
@@ -48,6 +48,11 @@ export function guestClient(guestIp: string, token: string, port = GUESTD_PORT) 
     async repository(repository: string, token?: string) {
       const res = await fetch(`${base}/repository`, { method: 'POST', headers, body: JSON.stringify({ repository, token }), signal: AbortSignal.timeout(180_000) })
       if (!res.ok) throw new Error('Repository setup failed; verify its name and token access')
+    },
+    // The user's agent keys, for its sessions (the control box sends them).
+    async agentEnv(env: AgentEnv) {
+      const res = await fetch(`${base}/agent-env`, { method: 'PUT', headers, body: JSON.stringify(env), signal: AbortSignal.timeout(15_000) })
+      if (!res.ok) throw new Error(`couldn't set the agent keys (${res.status})`)
     },
     async authorizeSsh(publicKey: string) {
       const res = await fetch(`${base}/ssh/keys`, { method: 'POST', headers, body: JSON.stringify({ publicKey }), signal: AbortSignal.timeout(15_000) })

@@ -1,4 +1,4 @@
-import type { Capacity, Session, Status, Vm, WindowsWorkspace } from '@substrate/protocol'
+import type { Session, Status, Vm, WindowsWorkspace } from '@substrate/protocol'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useStatus } from '../useStatus.ts'
 import { dashboardApi, windowsApi, workspaceApi, WorkspaceApiError, type Job } from '../workspaces/api.ts'
@@ -11,7 +11,6 @@ type Data = {
   vmsUnavailable: string | null
   status: Status | null
   statusError: string | null
-  capacity: Capacity | null
   jobs: Job[]
   // Each running VM's sessions.
   sessions: Record<string, Session[]>
@@ -61,7 +60,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [vms, setVms] = useState<Vm[] | null>(null)
   const [vmsError, setVmsError] = useState<string | null>(null)
   const [vmsUnavailable, setVmsUnavailable] = useState<string | null>(null)
-  const [capacity, setCapacity] = useState<Capacity | null>(null)
   const [jobs, setJobs] = useState<Job[]>([])
   const [sessions, setSessions] = useState<Record<string, Session[]>>({})
   const [windows, setWindows] = useState<WindowsWorkspace[] | null>(null)
@@ -81,11 +79,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   usePoll(async (signal) => {
     setJobs(await dashboardApi.jobs(signal).catch(() => []))
   }, 5_000, tick)
-
-  usePoll(async (signal) => {
-    const next = await dashboardApi.capacity(signal).catch(() => null)
-    if (!signal.aborted) setCapacity(next)
-  }, 15_000, tick)
 
   usePoll(async (signal) => {
     try { setWindows(await windowsApi.list(signal)) }
@@ -115,7 +108,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     vms: vms ? [...vms].sort((a, b) => a.createdAt.localeCompare(b.createdAt)) : null,
     vmsError, vmsUnavailable, status,
     statusError: statusState.kind === 'error' ? statusState.message : null,
-    capacity, jobs, sessions, windows, refresh, putVm, dropVm, putWindows,
+    jobs, sessions, windows, refresh, putVm, dropVm, putWindows,
   }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }

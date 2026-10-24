@@ -10,6 +10,9 @@ import { Owners } from './owners.ts'
 import { Jobs } from './jobs.ts'
 import { Tickets } from './tickets.ts'
 import { Workflows, WorkflowStore } from './workflows.ts'
+import { testDatabase } from './db.ts'
+import { Quotas } from './quotas.ts'
+import { Usage, monthOf } from './usage.ts'
 
 const cleanups: (() => Promise<void>)[] = []
 afterAll(async () => { for (const cleanup of cleanups.reverse()) await cleanup() })
@@ -21,7 +24,8 @@ async function eventually<T>(read: () => T | Promise<T>, ready: (value: T) => bo
 }
 async function rig() {
   const directory = await mkdtemp(join(tmpdir(), 'substrate-workflows-'))
-  const owner = new Owners(':memory:'), jobs = new Jobs(':memory:'), store = new WorkflowStore(join(directory, 'control.db'))
+  const db = await testDatabase()
+  const owner = new Owners(db), jobs = new Jobs(db), store = new WorkflowStore(db)
   const records = new Map<string, Vm>(), guests = new Map<string, GuestTasks>(), folders = new Map<string, string>()
   const calls: string[] = []
   let forks = 0, failFork = false, loseStart = false, loseReads = false
@@ -36,7 +40,7 @@ async function rig() {
     records.set(id, vm)
     return vm
   }
-  await addVm('vm-source'); owner.add('vm-source', 'alice')
+  await addVm('vm-source'); await owner.add('vm-source', 'alice')
   await writeFile(join(folders.get('vm-source')!, 'seed'), 'same starting state')
   const host = new Hono()
   host.use('*', async (c, next) => { if (c.req.header('authorization') !== 'Bearer host-token') return c.json({ error: 'no' }, 401); calls.push(`${c.req.method} ${c.req.path}`); await next() })
@@ -68,8 +72,8 @@ async function rig() {
   const app = createApp({ version: 'test', region: 'test', webDir: 'missing', clerkPublishableKey: null,
     readHost: async () => ({ configured: false }), vms: { ...options, authenticate: async (req) => req.headers.get('x-user') ? { id: req.headers.get('x-user')! } : null, tickets: new Tickets(), workflows } })
   const call = (user: string | null, path: string, init: RequestInit = {}) => app.request(path, { ...init, headers: { ...init.headers, ...(user ? { 'x-user': user } : {}) } })
-  cleanups.push(async () => { server.stop(true); for (const guest of guests.values()) await guest.close(); store.close(); await rm(directory, { recursive: true, force: true }) })
-  return { directory, workflows, store, options, call, records, folders, guests, calls, checkpointId, get forks() { return forks }, failFork: () => { failFork = true }, loseResponses: () => { loseStart = loseReads = true }, restoreReads: () => { loseReads = false } }
+  cleanups.push(async () => { server.stop(true); for (const guest of guests.values()) await guest.close(); await db.close(); await rm(directory, { recursive: true, force: true }) })
+  return { db, directory, workflows, store, options, call, records, folders, guests, calls, checkpointId, get forks() { return forks }, failFork: () => { failFork = true }, loseResponses: () => { loseStart = loseReads = true }, restoreReads: () => { loseReads = false } }
 }
 
 test('task endpoints enforce authentication and owner isolation, including output and review', async () => {
@@ -79,7 +83,7 @@ test('task endpoints enforce authentication and owner isolation, including outpu
   const created = await r.call('alice', '/api/tasks', post({ vmId: 'vm-source', spec: makeSpec('printf private-output', 'printf tested') }))
   expect(created.status).toBe(202)
   const task = await created.json() as Task
-  await eventually(async () => { await r.workflows.refresh('alice'); return r.workflows.task('alice', task.id) }, (task) => task.run?.state === 'succeeded')
+  await eventually(async () => { await r.workflows.refresh('alice'); return (await r.workflows.task('alice', task.id)) }, (task) => task.run?.state === 'succeeded')
   expect((await r.call('bob', `/api/tasks/${task.id}`)).status).toBe(404)
   expect((await r.call('bob', `/api/tasks/${task.id}`, { ...post({ reviewed: true }), method: 'PATCH' })).status).toBe(404)
   expect((await r.call('bob', `/api/tasks/${task.id}/cancel`, post({}))).status).toBe(404)
@@ -87,7 +91,7 @@ test('task endpoints enforce authentication and owner isolation, including outpu
   const detail = await (await r.call('alice', `/api/tasks/${task.id}`)).json() as Task
   expect(detail.run?.result).toBe('private-output')
   expect(detail.run?.verification?.output).toBe('tested')
-  const summary = r.workflows.list('alice').find((item) => item.id === task.id)!
+  const summary = (await r.workflows.list('alice')).find((item) => item.id === task.id)!
   expect(summary.run?.stdout).toBe('')
   expect(summary.run?.verification?.output).toBe('')
   expect(summary.run?.result).toBe('private-output')
@@ -108,12 +112,12 @@ test('comparisons reserve both quota places, request one fork generation, and ru
   const responses = await Promise.all([r.call('alice', '/api/comparisons', post(input)), r.call('alice', '/api/comparisons', post(input))])
   expect(responses.map((response) => response.status).sort()).toEqual([202, 409])
   const comparison = await responses.find((response) => response.status === 202)!.json() as Comparison
-  expect(r.workflows.pendingVms('alice')).toHaveLength(2)
+  expect((await r.workflows.pendingVms('alice'))).toHaveLength(2)
   expect((await r.call('alice', '/api/vms', post({ name: 'racing-create' }))).status).toBe(409)
-  const ready = await eventually(async () => { await r.workflows.refresh('alice'); return r.workflows.comparison('alice', comparison.id) }, (item) => item.state === 'ready')
+  const ready = await eventually(async () => { await r.workflows.refresh('alice'); return (await r.workflows.comparison('alice', comparison.id)) }, (item) => item.state === 'ready')
   expect(r.forks).toBe(1)
   expect(ready.sourceCheckpointId).toBe(r.checkpointId)
-  const tasks = await eventually(async () => { await r.workflows.refresh('alice'); return comparison.taskIds.map((id) => r.workflows.task('alice', id)) }, (tasks) => tasks.every((task) => !!task.run?.finishedAt))
+  const tasks = await eventually(async () => { await r.workflows.refresh('alice'); return await Promise.all(comparison.taskIds.map((id) => r.workflows.task('alice', id))) }, (tasks) => tasks.every((task) => !!task.run?.finishedAt))
   expect(tasks.map((task) => task.run?.stdout)).toEqual(['same starting state', 'same starting state'])
   expect(tasks.map((task) => task.run?.state)).toEqual(['succeeded', 'failed'])
   expect(await readFile(join(r.folders.get(comparison.vmIds[0])!, 'result'), 'utf8')).toBe('alpha')
@@ -122,23 +126,23 @@ test('comparisons reserve both quota places, request one fork generation, and ru
   expect((await r.call('bob', `/api/comparisons/${comparison.id}`)).status).toBe(404)
   expect((await r.call('alice', `/api/comparisons/${comparison.id}/select`, post({ taskId: crypto.randomUUID() }))).status).toBe(400)
   expect((await r.call('alice', `/api/comparisons/${comparison.id}/select`, post({ taskId: tasks[0]!.id }))).status).toBe(200)
-  expect(r.workflows.comparison('alice', comparison.id).selectedTaskId).toBe(tasks[0]!.id)
+  expect((await r.workflows.comparison('alice', comparison.id)).selectedTaskId).toBe(tasks[0]!.id)
   expect(r.records.size).toBe(3) // Choosing never deletes the other approach.
-  const recoveredStore = new WorkflowStore(join(r.directory, 'control.db'))
-  expect(recoveredStore.comparison('alice', comparison.id)?.selectedTaskId).toBe(tasks[0]!.id)
-  expect(recoveredStore.task('alice', tasks[0]!.id)?.run?.result).toBe('same starting state')
-  expect(recoveredStore.comparisons('bob')).toEqual([])
-  recoveredStore.close()
+  const recoveredStore = new WorkflowStore(r.db)
+  expect((await recoveredStore.comparison('alice', comparison.id))?.selectedTaskId).toBe(tasks[0]!.id)
+  expect((await recoveredStore.task('alice', tasks[0]!.id))?.run?.result).toBe('same starting state')
+  expect((await recoveredStore.comparisons('bob'))).toEqual([])
+
 })
 
 test('preparation failures are retained for review and do not dispatch either task', async () => {
   const r = await rig(); r.failFork()
   const comparison = await (await r.call('alice', '/api/comparisons', post({ sourceVmId: 'vm-source', title: 'Storage failure', approaches: [makeSpec('printf a'), makeSpec('printf b')] }))).json() as Comparison
-  const failed = await eventually(() => r.workflows.comparison('alice', comparison.id), (item) => item.state === 'failed')
+  const failed = await eventually(async () => (await r.workflows.comparison('alice', comparison.id)), (item) => item.state === 'failed')
   expect(failed.error).toContain('not enough storage')
   expect(r.calls.filter((path) => /^POST \/vms\/[^/]+\/tasks$/.test(path))).toEqual([])
-  expect(r.workflows.pendingVms('alice')).toEqual([])
-  expect(comparison.taskIds.map((id) => r.workflows.task('alice', id).error)).toEqual([
+  expect((await r.workflows.pendingVms('alice'))).toEqual([])
+  expect((await Promise.all(comparison.taskIds.map((id) => r.workflows.task('alice', id)))).map((task) => task.error)).toEqual([
     'The comparison was not prepared. Inspect its workspaces before retrying.', 'The comparison was not prepared. Inspect its workspaces before retrying.',
   ])
 })
@@ -146,7 +150,7 @@ test('preparation failures are retained for review and do not dispatch either ta
 test('a new control service reconciles ongoing guest work without replaying it, and GET does not wake a paused VM', async () => {
   const r = await rig()
   const created = await r.workflows.createTask('alice', 'vm-source', makeSpec('sleep 0.2; printf survived'))
-  await eventually(() => r.workflows.task('alice', created.id), (task) => !!task.run)
+  await eventually(async () => (await r.workflows.task('alice', created.id)), (task) => !!task.run)
   const recovered = new Workflows(r.options)
   const starts = r.calls.filter((path) => path === 'POST /vms/vm-source/tasks').length
   r.records.get('vm-source')!.state = 'paused'
@@ -157,21 +161,21 @@ test('a new control service reconciles ongoing guest work without replaying it, 
   const result = await eventually(async () => { await recovered.refresh('alice'); return recovered.task('alice', created.id) }, (task) => task.run?.state === 'succeeded')
   expect(result.run?.result).toBe('survived')
   expect(r.calls.filter((path) => path === 'POST /vms/vm-source/tasks')).toHaveLength(starts)
-  const database = new WorkflowStore(':memory:')
-  const saved = r.store.task('alice', created.id)!
-  database.saveTask('alice', saved)
-  expect(database.task('bob', saved.id)).toBeNull()
-  database.close()
+  const database = new WorkflowStore(await testDatabase())
+  const saved = (await r.store.task('alice', created.id))!
+  await database.saveTask('alice', saved)
+  expect((await database.task('bob', saved.id))).toBeNull()
+
 })
 
 test('uncertain dispatch blocks duplicate work and recovers by reading the same ID', async () => {
   const r = await rig(); r.loseResponses()
   const task = await r.workflows.createTask('alice', 'vm-source', makeSpec('sleep .15; printf once >> counter; cat counter'))
-  await eventually(() => r.workflows.task('alice', task.id), (task) => task.dispatchUncertain)
-  expect(r.workflows.hasActiveTask('alice', 'vm-source')).toBe(true)
+  await eventually(async () => (await r.workflows.task('alice', task.id)), (task) => task.dispatchUncertain)
+  expect((await r.workflows.hasActiveTask('alice', 'vm-source'))).toBe(true)
   expect((await r.call('alice', '/api/tasks', post({ vmId: 'vm-source', spec: makeSpec('printf duplicated') }))).status).toBe(409)
   r.restoreReads()
-  const result = await eventually(async () => { await r.workflows.refresh('alice'); return r.workflows.task('alice', task.id) }, (task) => task.run?.state === 'succeeded')
+  const result = await eventually(async () => { await r.workflows.refresh('alice'); return (await r.workflows.task('alice', task.id)) }, (task) => task.run?.state === 'succeeded')
   expect(result.dispatchUncertain).toBe(false)
   expect(result.error).toBeNull()
   expect(result.run?.result).toBe('once')
@@ -181,12 +185,27 @@ test('uncertain dispatch blocks duplicate work and recovers by reading the same 
 test('a stopped workspace interrupts known work without claiming preparation never completed', async () => {
   const r = await rig()
   const task = await r.workflows.createTask('alice', 'vm-source', makeSpec('printf started; sleep 1'))
-  await eventually(() => r.workflows.task('alice', task.id), (task) => !!task.run?.startedAt)
+  await eventually(async () => (await r.workflows.task('alice', task.id)), (task) => !!task.run?.startedAt)
   await r.guests.get('vm-source')!.cancel(task.id)
   r.records.get('vm-source')!.state = 'stopped'
   await r.workflows.refresh('alice')
-  const interrupted = r.workflows.task('alice', task.id)
+  const interrupted = (await r.workflows.task('alice', task.id))
   expect(interrupted.run?.state).toBe('interrupted')
   expect(interrupted.error).toBeNull()
   expect(interrupted.run?.error).toContain('stopped')
+})
+
+test('comparisons and task starts honor Phase 2 disk and monthly runtime quotas before dispatch', async () => {
+  const r = await rig(), usage = new Usage(r.db)
+  const quotas = new Quotas(r.db, { maxVms: 3, sizes: ['small', 'medium', 'large'], maxDiskGib: 128, maxTotalDiskGib: 16, maxRunningHours: 1, egress: 'open' })
+  const workflows = new Workflows({ ...r.options, quotas, usage })
+  const input = { sourceVmId: 'vm-source', title: 'Limited', approaches: [makeSpec('printf a'), makeSpec('printf b')] as [TaskSpec, TaskSpec] }
+  await expect(workflows.createComparison('alice', input)).rejects.toThrow('24 GiB')
+  expect(r.forks).toBe(0)
+  expect(await workflows.list('alice')).toEqual([])
+  await quotas.set('alice', { maxTotalDiskGib: 128 })
+  await usage.add({ userId: 'alice', vmId: 'vm-source', month: monthOf(Date.now()), seconds: 3600, vcpus: 2, memMib: 4096 })
+  await expect(workflows.createComparison('alice', input)).rejects.toThrow('running hours')
+  await expect(workflows.createTask('alice', 'vm-source', makeSpec('printf blocked'))).rejects.toThrow('running hours')
+  expect(r.calls.filter((call) => call.startsWith('POST'))).toEqual([])
 })

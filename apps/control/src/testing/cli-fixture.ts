@@ -1,3 +1,4 @@
+import { testDatabase } from '../db.ts'
 import { Hono } from 'hono'
 import { mkdtemp, mkdir, cp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -15,8 +16,9 @@ import { cliRoutes } from '../cli-routes.ts'
 
 export async function fixture(options: { webDir?: string; browserUser?: string; port?: number } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'substrate-cli-fixture-'))
-  const owners = new Owners(':memory:'), jobs = new Jobs(':memory:')
-  const credentials = new CliCredentials(join(directory, 'credentials.db')), store = new WorkflowStore(join(directory, 'workflows.db'))
+  const db = await testDatabase()
+  const owners = new Owners(db), jobs = new Jobs(db)
+  const credentials = new CliCredentials(db), store = new WorkflowStore(db)
   const records = new Map<string, Vm>(), guests = new Map<string, Tasks>(), folders = new Map<string, string>(), calls: string[] = []
   const add = async (id: string, name: string, source?: string) => {
     const cwd = join(directory, id); await mkdir(cwd, { recursive: true })
@@ -26,8 +28,8 @@ export async function fixture(options: { webDir?: string; browserUser?: string; 
     const vm: Vm = { id, name, state: 'running', vcpus: 2, memMib: 4096, diskGib: 8, image: 'local-fixture', guestIp: '172.30.0.2', createdAt: new Date().toISOString(), startedAt: null, bootMs: 1, lastError: null }
     records.set(id, vm); return vm
   }
-  await add('vm-alice', 'demo'); owners.add('vm-alice', 'alice')
-  await add('vm-bob', 'private'); owners.add('vm-bob', 'bob')
+  await add('vm-alice', 'demo'); await owners.add('vm-alice', 'alice')
+  await add('vm-bob', 'private'); await owners.add('vm-bob', 'bob')
   await writeFile(join(folders.get('vm-alice')!, 'seed'), 'same seed')
   const host = new Hono()
   host.use('*', async (c, next) => { calls.push(`${c.req.method} ${c.req.path}`); await next() })
@@ -62,7 +64,7 @@ export async function fixture(options: { webDir?: string; browserUser?: string; 
     cli: cliRoutes({ credentials, browserAuthenticate: browser, authenticate, requireBrowserBearer: !options.browserUser }),
     vms: { owners, jobs, workflows, authenticate, tickets: new Tickets(), maxVmsPerUser: 8, hostd: { url: `http://127.0.0.1:${hostServer.port}`, token: 'fixture' } } })
   const server = Bun.serve({ hostname: '127.0.0.1', port: options.port ?? 0, fetch: app.fetch })
-  const token = (user: 'alice' | 'bob', name = 'CLI test') => { const grant = credentials.begin(name); credentials.decide(grant.userCode, user, true); return credentials.poll(grant.deviceCode)! }
+  const token = async (user: 'alice' | 'bob', name = 'CLI test') => { const grant = (await credentials.begin(name)); (await credentials.decide(grant.userCode, user, true)); return (await credentials.poll(grant.deviceCode))! }
   return { directory, credentials, token, disabled, calls, app, workflows, records, folders, url: `http://127.0.0.1:${server.port}`,
-    async close() { server.stop(true); hostServer.stop(true); clearInterval(workflowTimer); for (const guest of guests.values()) await guest.close(); store.close(); credentials.close(); await rm(directory, { recursive: true, force: true }) } }
+    async close() { server.stop(true); hostServer.stop(true); clearInterval(workflowTimer); for (const guest of guests.values()) await guest.close(); await db.close(); await rm(directory, { recursive: true, force: true }) } }
 }

@@ -1,7 +1,5 @@
-import { Database } from 'bun:sqlite'
 import type { WindowsWorkspace, WindowsWorkspaceState } from '@substrate/protocol'
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import type { Db } from '../db.ts'
 
 export type WindowsRow = {
   id: string
@@ -11,7 +9,6 @@ export type WindowsRow = {
   instanceType: string
   state: WindowsWorkspaceState
   privateIp: string | null
-  // Administrator's, for the desktop's sign-in, and TightVNC's (8 characters).
   password: string
   vncPassword: string
   createdAt: string
@@ -23,48 +20,34 @@ export type WindowsRow = {
 export const toWorkspace = ({ id, name, state, instanceType, createdAt, idleStopMinutes, error }: WindowsRow): WindowsWorkspace =>
   ({ id, name, state, instanceType, createdAt, idleStopMinutes, error })
 
-// Windows workspaces, in the control box's SQLite database. Their passwords
-// are here too: the database is the control box's alone.
+const columns = { name: 'name', instanceId: 'instance_id', instanceType: 'instance_type', state: 'state', privateIp: 'private_ip',
+  password: 'password', vncPassword: 'vnc_password', createdAt: 'created_at', lastActiveAt: 'last_active_at', idleStopMinutes: 'idle_stop_minutes', error: 'error' } as const
+const selectColumns = 'id, owner, name, instance_id as "instanceId", instance_type as "instanceType", state, private_ip as "privateIp", password, vnc_password as "vncPassword", created_at as "createdAt", last_active_at as "lastActiveAt", idle_stop_minutes as "idleStopMinutes", error'
+
+// Windows records share the control database: encrypted RDS in production,
+// local SQLite in development. Passwords are never included in list responses.
 export class WindowsStore {
-  private db: Database
-
-  constructor(path: string) {
-    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
-    this.db = new Database(path, { create: true, strict: true })
-    this.db.run('pragma journal_mode = wal')
-    this.db.run(`create table if not exists windows_workspaces (
-      id text primary key, owner text not null, name text not null, instanceId text, instanceType text not null,
-      state text not null, privateIp text, password text not null, vncPassword text not null,
-      createdAt text not null, lastActiveAt text not null, idleStopMinutes integer, error text
-    )`)
+  constructor(private db: Db) {}
+  async all(): Promise<WindowsRow[]> {
+    return this.db.unsafe(`select ${selectColumns} from windows_records order by created_at`)
   }
-
-  all(): WindowsRow[] {
-    return this.db.query('select * from windows_workspaces order by createdAt').all() as WindowsRow[]
+  async get(id: string): Promise<WindowsRow | null> {
+    const [row] = await this.db.unsafe(`select ${selectColumns} from windows_records where id = $1`, [id])
+    return row ?? null
   }
-
-  get(id: string) {
-    return this.db.query('select * from windows_workspaces where id = ?').get(id) as WindowsRow | null
+  async of(owner: string): Promise<WindowsRow[]> {
+    return this.db.unsafe(`select ${selectColumns} from windows_records where owner = $1 order by created_at`, [owner])
   }
-
-  of(owner: string) {
-    return this.db.query('select * from windows_workspaces where owner = ? order by createdAt').all(owner) as WindowsRow[]
+  async add(row: WindowsRow) {
+    await this.db`insert into windows_records (id, owner, name, instance_id, instance_type, state, private_ip, password, vnc_password, created_at, last_active_at, idle_stop_minutes, error)
+      values (${row.id}, ${row.owner}, ${row.name}, ${row.instanceId}, ${row.instanceType}, ${row.state}, ${row.privateIp}, ${row.password}, ${row.vncPassword}, ${row.createdAt}, ${row.lastActiveAt}, ${row.idleStopMinutes}, ${row.error})`
   }
-
-  add(row: WindowsRow) {
-    this.db
-      .query(`insert into windows_workspaces values ($id, $owner, $name, $instanceId, $instanceType, $state, $privateIp,
-        $password, $vncPassword, $createdAt, $lastActiveAt, $idleStopMinutes, $error)`)
-      .run(row)
-  }
-
-  update(id: string, fields: Partial<Omit<WindowsRow, 'id' | 'owner'>>) {
-    for (const [key, value] of Object.entries(fields)) {
-      this.db.query(`update windows_workspaces set ${key} = ? where id = ?`).run(value as string | number | null, id)
+  async update(id: string, fields: Partial<Omit<WindowsRow, 'id' | 'owner'>>) {
+    const changes: Record<string, string | number | null> = {}
+    for (const key of Object.keys(columns) as (keyof typeof columns)[]) {
+      if (fields[key] !== undefined) changes[columns[key]] = fields[key]!
     }
+    if (Object.keys(changes).length) await this.db`update windows_records set ${this.db(changes)} where id = ${id}`
   }
-
-  remove(id: string) {
-    this.db.query('delete from windows_workspaces where id = ?').run(id)
-  }
+  async remove(id: string) { await this.db`delete from windows_records where id = ${id}` }
 }

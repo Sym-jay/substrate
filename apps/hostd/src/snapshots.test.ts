@@ -54,14 +54,15 @@ async function rig() {
     ...snapshotDependencies,
     vmDir: () => dir,
     writeRecord: async (next) => { step('commit'); saved = structuredClone(next) },
-    createTap: async () => { step('tap:create') },
+    startNetwork: async () => { step('tap:create') },
+    launchForRestore: async () => { step('launch'); running = true; state = 'Not started' },
+    ownSnapshotDir: async () => {},
     deleteTap: async () => { step('tap:delete') },
     firecracker: {
       ...snapshotDependencies.firecracker,
       api: () => api,
       isRunning: async () => running,
       kill: async () => { step('kill'); running = false },
-      launchForRestore: async () => { step('launch'); running = true; state = 'Not started' },
       waitForApi: async () => ({ state: 'Not started', vmm_version: '1.17.0', app_name: 'Firecracker', id: 'test' }),
     },
     zfs: {

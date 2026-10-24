@@ -5,6 +5,9 @@
 //                            application; run `bunx clerk@latest auth login` first
 //   bun run secrets --ntfy   also creates the ntfy topic for alerts (docs/m4.md),
 //                            and prints it so you can subscribe
+//   bun run secrets --github-oauth
+//                            also asks for the GitHub OAuth app's client ID and
+//                            secret, for "Connect GitHub" (docs/phase2.md)
 import { GetParameterCommand, PutParameterCommand, SSMClient } from '@aws-sdk/client-ssm'
 import { $ } from 'bun'
 import { randomBytes } from 'node:crypto'
@@ -12,6 +15,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { region } from './lib/aws.ts'
+import { readSecret } from './lib/read-secret.ts'
 
 // The Clerk application Substrate signs users in with. An ID, not a secret.
 const CLERK_APP = 'app_3KhDR11hpqRLdJHJVORK4UDj6PK'
@@ -23,6 +27,11 @@ const CLERK_PUBLISHABLE_KEY = '/substrate/clerk-publishable-key'
 const CLERK_SECRET_KEY = '/substrate/clerk-secret-key'
 // Read by install-hostd.sh. Anyone who knows the topic can read its alerts.
 const NTFY_TOPIC = '/substrate/ntfy-topic'
+// Read by setup-control.sh, for users connecting GitHub (Phase 2).
+const GITHUB_CLIENT_ID = '/substrate/github-oauth/client-id'
+const GITHUB_CLIENT_SECRET = '/substrate/github-oauth/client-secret'
+// Written by the stack: where GitHub sends users back to.
+const PUBLIC_URL = '/substrate/public-url'
 
 const ssm = new SSMClient({ region })
 
@@ -83,6 +92,25 @@ if (process.argv.includes('--ntfy')) {
   }
   const topic = (await ssm.send(new GetParameterCommand({ Name: NTFY_TOPIC, WithDecryption: true }))).Parameter?.Value
   console.log(`Alerts go to https://ntfy.sh/${topic}. Subscribe to "${topic}" in the ntfy app, and keep the name private.`)
+}
+
+if (process.argv.includes('--github-oauth')) {
+  const publicUrl = await ssm.send(new GetParameterCommand({ Name: PUBLIC_URL })).then((res) => res.Parameter?.Value, () => undefined)
+  console.log('Create an OAuth app at https://github.com/settings/applications/new with')
+  console.log(`  Authorization callback URL: ${publicUrl ?? 'https://<the dashboard>'}/api/github/callback`)
+  const clientId = prompt('Client ID:')?.trim() ?? ''
+  if (!/^[A-Za-z0-9._-]{8,}$/.test(clientId)) {
+    console.error("that doesn't look like a client ID")
+    process.exit(1)
+  }
+  const clientSecret = await readSecret('Client secret')
+  if (!/^[A-Za-z0-9_]{20,}$/.test(clientSecret)) {
+    console.error("that doesn't look like a client secret")
+    process.exit(1)
+  }
+  await put(GITHUB_CLIENT_ID, clientId, 'String')
+  await put(GITHUB_CLIENT_SECRET, clientSecret, 'SecureString')
+  console.log(`stored the GitHub OAuth app in ${GITHUB_CLIENT_ID} and ${GITHUB_CLIENT_SECRET}`)
 }
 
 console.log('To use them: `bun run deploy:host` and `bun run deploy:control`.')

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { TaskSpec, taskIsPending, type Comparison, type Task, type TaskRunner, type Vm } from '@substrate/protocol'
+import { navigate, parse } from '../app/router.ts'
 import { workspaceApi } from '../workspaces/api.ts'
-import { parse, navigate, useRoute } from '../app/router.ts'
 import { workflowApi } from './api.ts'
 import '../workspaces/workspaces.css'
 import './workflows.css'
@@ -14,14 +14,13 @@ const needsReview = (task: Task) => !active(task) && !task.reviewedAt
 const message = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Try again.'
 const newSpec = (title = ''): TaskSpec => ({ title, runner: 'command', input: '', mode: 'ask', verificationCommand: '', timeoutSeconds: 3600 })
 type Selection = { kind: 'task' | 'comparison'; id: string } | null
+// The open task or comparison, from the route: #/inbox/task/<id>.
 function selection(): Selection {
-  const { page, params } = parse(window.location.hash)
-  return page === 'inbox' && (params[0] === 'task' || params[0] === 'comparison') && params[1]
-    ? { kind: params[0], id: params[1] } : null
+  const { page, params: [kind, id] } = parse(window.location.hash)
+  return page === 'inbox' && id && (kind === 'task' || kind === 'comparison') ? { kind, id } : null
 }
 
 export function WorkflowPanel({ onOpenWorkspace }: { onOpenWorkspace: (vmId: string) => void }) {
-  const route = useRoute()
   const [tasks, setTasks] = useState<Task[]>([])
   const [comparisons, setComparisons] = useState<Comparison[]>([])
   const [vms, setVms] = useState<Vm[]>([])
@@ -36,8 +35,10 @@ export function WorkflowPanel({ onOpenWorkspace }: { onOpenWorkspace: (vmId: str
   const [refresh, setRefresh] = useState(0)
 
   useEffect(() => {
-    setSelected(selection()); setDetail(null); setComparison(null); setBranches([])
-  }, [route])
+    const change = () => { setSelected(selection()); setDetail(null); setComparison(null); setBranches([]) }
+    window.addEventListener('hashchange', change)
+    return () => window.removeEventListener('hashchange', change)
+  }, [])
   useEffect(() => {
     const controller = new AbortController()
     let pending = false

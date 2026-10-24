@@ -32,7 +32,10 @@
       "dependencies": {
         "@aws-sdk/client-cloudwatch": "^3.1156.0",
         "@aws-sdk/client-ec2": "^3.1156.0",
+        "@aws-sdk/client-kms": "^3.1156.0",
+        "@aws-sdk/client-secrets-manager": "^3.1156.0",
         "@aws-sdk/client-ssm": "^3.1156.0",
+        "@aws-sdk/rds-signer": "^3.1156.0",
         "@clerk/backend": "^3.26.1",
         "@substrate/protocol": "workspace:*",
         "hono": "^4.13.13",
@@ -109,13 +112,19 @@
 
     "@aws-sdk/client-ec2": ["@aws-sdk/client-ec2@3.1156.0", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/credential-provider-node": "^3.972.88", "@aws-sdk/middleware-sdk-ec2": "^3.972.64", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/fetch-http-handler": "^5.8.0", "@smithy/node-http-handler": "^4.12.1", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-xyaQO4AkRm22lmaXU3d2/xBifUxe709ASEtwCHc7raiUL/iFQhMZ/nns+L+w5yMX5XDryNegC95Mm8g6gd5g3g=="],
 
+    "@aws-sdk/client-kms": ["@aws-sdk/client-kms@3.1156.0", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/credential-provider-node": "^3.972.88", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/fetch-http-handler": "^5.8.0", "@smithy/node-http-handler": "^4.12.1", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-dXzmgG3FIZsLD5L+IVntcZW0BBuNBBqq9kImu2kjr4EX/x3yNT4JzNIFb3vUYq2i/URQKbP1vHnN2dksw3TqMw=="],
+
     "@aws-sdk/client-s3": ["@aws-sdk/client-s3@3.1156.0", "", { "dependencies": { "@aws-sdk/checksums": "^3.1001.5", "@aws-sdk/core": "^3.978.5", "@aws-sdk/credential-provider-node": "^3.972.88", "@aws-sdk/middleware-sdk-s3": "^3.972.81", "@aws-sdk/signature-v4-multi-region": "^3.996.49", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/fetch-http-handler": "^5.8.0", "@smithy/node-http-handler": "^4.12.1", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-Z2PqQqKMDVX56tNZ6ggmjoI5o/8+4+8ArmjLwE5ktYsEzs1BrvklBT1ZzI+s0Vcf3wfPguoEMD7EkMswmEta/A=="],
+
+    "@aws-sdk/client-secrets-manager": ["@aws-sdk/client-secrets-manager@3.1156.0", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/credential-provider-node": "^3.972.88", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/fetch-http-handler": "^5.8.0", "@smithy/node-http-handler": "^4.12.1", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-poP++IuNmZZ6e79fesFn9qTy/IScNiH9I9bCWyevlOFQMI+ZfZQ0Sfz3dsc+c0uMtYVpofRIAd1WO7lCAKhxxg=="],
 
     "@aws-sdk/client-ssm": ["@aws-sdk/client-ssm@3.1156.0", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/credential-provider-node": "^3.972.88", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/fetch-http-handler": "^5.8.0", "@smithy/node-http-handler": "^4.12.1", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-bDLjYr1TVJNQXjHdKBEWlYyk+kqTlcicNJ4BylHA3M6SFO5Ji/xsGOrrU4AfcPRG+yob7KZ8V72giyrab0P1Ew=="],
 
     "@aws-sdk/client-sts": ["@aws-sdk/client-sts@3.1156.0", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/credential-provider-node": "^3.972.88", "@aws-sdk/signature-v4-multi-region": "^3.996.49", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/fetch-http-handler": "^5.8.0", "@smithy/node-http-handler": "^4.12.1", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-emJli57W8F9wPykDPhYRvXTpiI13/IsZOqXnCOoODhBpY/El/HoZDWIoQNzN9N9UOMILVh3T86EOjfI/6bqumA=="],
 
     "@aws-sdk/core": ["@aws-sdk/core@3.978.5", "", { "dependencies": { "@aws-sdk/types": "^3.975.0", "@aws-sdk/xml-builder": "^3.972.41", "@aws/lambda-invoke-store": "^0.3.0", "@smithy/core": "^3.36.1", "@smithy/signature-v4": "^5.7.4", "@smithy/types": "^4.19.0", "bowser": "^2.11.0", "tslib": "^2.6.2" } }, "sha512-ruI0AWqcrfL20XDS6SwZIJFPOBZ6N0ADa9nLzWlBhxk1aoUjbUX3JkTR9vEmk7o35XpAHi68ahZ4T6RE2U9XyA=="],
+
+    "@aws-sdk/credential-provider-cognito-identity": ["@aws-sdk/credential-provider-cognito-identity@3.972.75", "", { "dependencies": { "@aws-sdk/nested-clients": "^3.997.50", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-aJdScAJeeXC1cdMDCk8/3eDoHch8o0z+oxlqFALqBK2+hbtSz+hZQ9DhfarXJmva9+FM2gmC5PUJ8BB/HbAqXQ=="],
 
     "@aws-sdk/credential-provider-env": ["@aws-sdk/credential-provider-env@3.972.76", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-YxmL1Ar7bV9ZkJvtv+lj+MF6le76NnZnbmgySyZuxpZaCv0/1lZ3KxKy6RIj1h9ui2hWnVjZxbmTMeO0y/NrQA=="],
 
@@ -133,11 +142,15 @@
 
     "@aws-sdk/credential-provider-web-identity": ["@aws-sdk/credential-provider-web-identity@3.972.82", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/nested-clients": "^3.997.50", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-LUo46IqPTJ4xKBsrLuoaxiv/D2GTBCcFDMD1y3jKIqPR/p7Rw14RJFZ0iRWftqZtyLPQX9JMGnSi3mBu4y/pNA=="],
 
+    "@aws-sdk/credential-providers": ["@aws-sdk/credential-providers@3.1156.0", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/credential-provider-cognito-identity": "^3.972.75", "@aws-sdk/credential-provider-env": "^3.972.76", "@aws-sdk/credential-provider-http": "^3.972.78", "@aws-sdk/credential-provider-ini": "^3.973.21", "@aws-sdk/credential-provider-login": "^3.972.83", "@aws-sdk/credential-provider-node": "^3.972.88", "@aws-sdk/credential-provider-process": "^3.972.76", "@aws-sdk/credential-provider-sso": "^3.973.20", "@aws-sdk/credential-provider-web-identity": "^3.972.82", "@aws-sdk/nested-clients": "^3.997.50", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/credential-provider-imds": "^4.5.2", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-WNHNe8ZNWoiDVabLNKPVY7zybzO/DaBkV0cBDs/kJOLUXvXOsEeYeWYId3j27538Q66Wh49Xle1c4M24aoKgpw=="],
+
     "@aws-sdk/middleware-sdk-ec2": ["@aws-sdk/middleware-sdk-ec2@3.972.64", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/signature-v4": "^5.7.4", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-hNWGvwCbfn+93ZOIUV3VL1oN0WHHzPAgBX+T9+DLksyEf3onwnxNrifXL/yLuaHPHc8P5BuVTPThj0ecXzOfUA=="],
 
     "@aws-sdk/middleware-sdk-s3": ["@aws-sdk/middleware-sdk-s3@3.972.81", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/signature-v4-multi-region": "^3.996.49", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-jfanv1pV0sJFZw6/DPiNjvK7B478god0zOum5yIWo+/+1Gy+CSXWpGBWx+3nBJyDvjcu/2kUMr4ADUp9BHH34Q=="],
 
     "@aws-sdk/nested-clients": ["@aws-sdk/nested-clients@3.997.50", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/signature-v4-multi-region": "^3.996.49", "@aws-sdk/types": "^3.975.0", "@smithy/core": "^3.36.1", "@smithy/fetch-http-handler": "^5.8.0", "@smithy/node-http-handler": "^4.12.1", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-nKb8qu4QsnpZTq/6JIXc72mzuzfh7BK4sUQkpQznPec2z4W7Ob2xYkcM4i5e1yGTBnbJVeFv/0sf3jcz85hclA=="],
+
+    "@aws-sdk/rds-signer": ["@aws-sdk/rds-signer@3.1156.0", "", { "dependencies": { "@aws-sdk/core": "^3.978.5", "@aws-sdk/credential-providers": "3.1156.0", "@smithy/core": "^3.36.1", "@smithy/signature-v4": "^5.7.4", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-m7N2/+qnSJzkbJkxXtk2dyFIpg0FCirCE0sBeGkWJFH70zUoXZm1EvPYGt67WPsd3kpra1Xi45wz46E14iicqw=="],
 
     "@aws-sdk/signature-v4-multi-region": ["@aws-sdk/signature-v4-multi-region@3.996.49", "", { "dependencies": { "@aws-sdk/types": "^3.975.0", "@smithy/signature-v4": "^5.7.4", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-nvuAZNRrRRVCiARRKsYlQ0VnXiEQiq7vXPH+UA+LSo+kN3Djl9eo/V2r0udkw85PnsNshmv2Em1clld5M3j67w=="],
 

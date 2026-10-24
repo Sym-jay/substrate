@@ -40,11 +40,11 @@ export function windowsRoutes({ authenticate, workspaces, tickets }: { authentic
     }
   }))
   app.get('/windows/:id/desktop', redeem('id', DESKTOP), async (c, next) => {
-    try { workspaces.desktop(c.var.user.id, c.req.param('id')) } catch (err) { return c.json({ error: (err as Error).message }, 409) }
+    try { await workspaces.desktop(c.var.user.id, c.req.param('id')) } catch (err) { return c.json({ error: (err as Error).message }, 409) }
     await next()
-  }, upgradeWebSocket((c) => {
+  }, upgradeWebSocket(async (c) => {
     const id = c.req.param('id')!
-    const { host, port } = workspaces.desktop((c.var as Env['Variables']).user.id, id)
+    const { host, port } = await workspaces.desktop((c.var as Env['Variables']).user.id, id)
     return desktopRelay({ host, port, onInput: () => workspaces.touch(id) })
   }))
 
@@ -58,7 +58,7 @@ export function windowsRoutes({ authenticate, workspaces, tickets }: { authentic
   app.use('/windows', signedIn)
   app.use('/windows/*', signedIn)
 
-  app.get('/windows', (c) => c.json(workspaces.list(c.var.user.id)))
+  app.get('/windows', async (c) => c.json(await workspaces.list(c.var.user.id)))
   app.post('/windows', async (c) => {
     const input = CreateWindowsWorkspace.safeParse(await c.req.json().catch(() => null))
     if (!input.success) return c.json({ error: input.error.issues[0]?.message ?? 'invalid workspace' }, 400)
@@ -67,7 +67,7 @@ export function windowsRoutes({ authenticate, workspaces, tickets }: { authentic
   app.patch('/windows/:id', async (c) => {
     const input = UpdateWindowsWorkspace.safeParse(await c.req.json().catch(() => null))
     if (!input.success) return c.json({ error: input.error.issues[0]?.message ?? 'invalid settings' }, 400)
-    return c.json(workspaces.update(c.var.user.id, c.req.param('id'), input.data))
+    return c.json(await workspaces.update(c.var.user.id, c.req.param('id'), input.data))
   })
   app.post('/windows/:id/start', async (c) => c.json(await workspaces.start(c.var.user.id, c.req.param('id'))))
   app.post('/windows/:id/stop', async (c) => c.json(await workspaces.stop(c.var.user.id, c.req.param('id'))))
@@ -75,19 +75,19 @@ export function windowsRoutes({ authenticate, workspaces, tickets }: { authentic
     await workspaces.remove(c.var.user.id, c.req.param('id'))
     return c.body(null, 204)
   })
-  app.get('/windows/:id/credentials', (c) => c.json(workspaces.credentials(c.var.user.id, c.req.param('id'))))
+  app.get('/windows/:id/credentials', async (c) => c.json(await workspaces.credentials(c.var.user.id, c.req.param('id'))))
 
-  app.get('/windows/:id/terminals', (c) => c.json(workspaces.terminals(c.var.user.id, c.req.param('id'))))
-  app.post('/windows/:id/terminals', (c) => c.json(workspaces.createTerminal(c.var.user.id, c.req.param('id')).info, 201))
-  app.post('/windows/:id/terminals/:terminal/ticket', (c) => {
+  app.get('/windows/:id/terminals', async (c) => c.json(await workspaces.terminals(c.var.user.id, c.req.param('id'))))
+  app.post('/windows/:id/terminals', async (c) => c.json((await workspaces.createTerminal(c.var.user.id, c.req.param('id'))).info, 201))
+  app.post('/windows/:id/terminals/:terminal/ticket', async (c) => {
     const id = c.req.param('id')
-    workspaces.own(c.var.user.id, id)
+    await workspaces.own(c.var.user.id, id)
     return c.json({ ticket: tickets.issue({ userId: c.var.user.id, vmId: id, sessionId: c.req.param('terminal') }) })
   })
   // The VNC password goes to the browser: noVNC signs in with it.
-  app.post('/windows/:id/desktop/ticket', (c) => {
+  app.post('/windows/:id/desktop/ticket', async (c) => {
     const id = c.req.param('id')
-    const { password } = workspaces.desktop(c.var.user.id, id)
+    const { password } = await workspaces.desktop(c.var.user.id, id)
     return c.json({ ticket: tickets.issue({ userId: c.var.user.id, vmId: id, sessionId: DESKTOP }), password })
   })
 

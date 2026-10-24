@@ -3,22 +3,14 @@ import { flushSync } from 'react-dom'
 
 // Pages live in the URL's hash (#/workspaces/vm-1/session-2), so links and
 // reloads work wherever the app is served from.
-export type Page = 'home' | 'inbox' | 'workspaces' | 'windows' | 'jobs' | 'compute' | 'logs' | 'settings' | 'cli'
+export type Page = 'welcome' | 'inbox' | 'workspaces' | 'windows' | 'snapshots' | 'jobs' | 'logs' | 'environment' | 'settings' | 'cli'
 export type Route = { page: Page; params: string[] }
 
-const pages: Page[] = ['home', 'inbox', 'workspaces', 'windows', 'jobs', 'compute', 'logs', 'settings', 'cli']
+const pages: Page[] = ['welcome', 'inbox', 'workspaces', 'windows', 'snapshots', 'jobs', 'logs', 'environment', 'settings', 'cli']
 
 export function parse(hash: string): Route {
-  // Keep links from the original task inbox and terminal UI usable.
-  if (!hash.startsWith('#/')) {
-    const legacy = new URLSearchParams(hash.replace(/^#/, ''))
-    if (legacy.has('vm')) return { page: 'workspaces', params: [legacy.get('vm')!, ...(legacy.get('session') ? [legacy.get('session')!] : [])].filter(Boolean) }
-    if (legacy.has('task')) return { page: 'inbox', params: ['task', legacy.get('task')!] }
-    if (legacy.has('comparison')) return { page: 'inbox', params: ['comparison', legacy.get('comparison')!] }
-    if (legacy.get('view') === 'inbox') return { page: 'inbox', params: [] }
-  }
   const [first = '', ...params] = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent)
-  const page = pages.includes(first as Page) ? (first as Page) : 'home'
+  const page = pages.includes(first as Page) ? (first as Page) : 'welcome'
   return { page, params: page === first ? params : [] }
 }
 

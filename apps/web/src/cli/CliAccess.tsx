@@ -32,7 +32,7 @@ export function CliAuthorize({ code, account }: { code?: string; account?: React
   }
   const answered = info && info.state !== 'pending'
   return <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-6 px-5 py-10">
-    <header className="flex items-center justify-between gap-4"><a className="flex items-center gap-3 font-semibold" href="#/home"><img src="/favicon.svg" alt="" className="size-9" />Substrate</a>{account}</header>
+    <header className="flex items-center justify-between gap-4"><a className="flex items-center gap-3 font-semibold" href="#/welcome"><img src="/favicon.svg" alt="" className="size-9" />Substrate</a>{account}</header>
     <Card>
       <h1 className="text-xl font-semibold tracking-tight">{answered ? info.state === 'denied' ? 'CLI access declined' : 'CLI access approved' : 'Authorize your CLI'}</h1>
       {loading && <p role="status" className="text-muted mt-4 text-sm">Loading the login request…</p>}
@@ -45,7 +45,7 @@ export function CliAuthorize({ code, account }: { code?: string; account?: React
         {!answered && <>
           <p className="text-muted mt-5 text-sm leading-relaxed">This grants access to your Substrate account, including creating and deleting workspaces, running commands, and reading task results. Access lasts 30 days. Revoke it at any time in Settings.</p>
           <p className="text-muted mt-3 text-xs">This request expires {new Date(info.expiresAt).toLocaleTimeString()}.</p>
-          <div className="mt-6 flex flex-wrap gap-3"><Button variant="chrome" disabled={busy} onClick={() => void decide(true)}>{busy ? 'Saving…' : 'Approve CLI access'}</Button><Button disabled={busy} onClick={() => void decide(false)}>Decline</Button></div>
+          <div className="mt-6 flex flex-wrap gap-3"><Button variant="primary" disabled={busy} onClick={() => void decide(true)}>{busy ? 'Saving…' : 'Approve CLI access'}</Button><Button disabled={busy} onClick={() => void decide(false)}>Decline</Button></div>
         </>}
       </>}
       <Button className="mt-5" variant="ghost" onClick={() => navigate('settings')}>Manage CLI sessions</Button>

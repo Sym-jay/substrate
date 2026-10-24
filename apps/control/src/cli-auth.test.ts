@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { Hono } from 'hono'
 import { CliCredentials, withCliAuthentication } from './cli-auth.ts'
 import { cliRoutes } from './cli-routes.ts'
+import { testDatabase, sqliteDatabase, migrate } from './db.ts'
 import { createApp } from './app.ts'
 
 const cleanups: (() => Promise<void>)[] = []
@@ -14,56 +15,58 @@ const browser = async (request: Request) => ['alice', 'bob'].includes(request.he
 
 test('device approval is explicit, secret-bound, single-use, durable, and stores only hashes', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'substrate-cli-auth-')), path = join(directory, 'state.db')
-  let now = 10_000, store = new CliCredentials(path, () => now)
-  cleanups.push(async () => { store.close(); await rm(directory, { recursive: true, force: true }) })
-  const grant = store.begin('My laptop')
-  expect(store.inspect(grant.userCode).state).toBe('pending')
-  expect(store.poll(grant.deviceCode)).toBeNull()
-  expect(() => store.poll(grant.deviceCode)).toThrow('two seconds')
-  expect(() => store.poll(grant.userCode)).toThrow('not found')
-  store.decide(grant.userCode, 'alice', true)
-  expect(() => store.decide(grant.userCode, 'bob', true)).toThrow('already been answered')
-  const token = store.poll(grant.deviceCode)!
+  let db = sqliteDatabase(path); await migrate(db)
+  let now = 10_000, store = new CliCredentials(db, () => now)
+  cleanups.push(async () => { await db.close(); await rm(directory, { recursive: true, force: true }) })
+  const grant = (await store.begin('My laptop'))
+  expect((await store.inspect(grant.userCode)).state).toBe('pending')
+  expect((await store.poll(grant.deviceCode))).toBeNull()
+  await expect(store.poll(grant.deviceCode)).rejects.toThrow('two seconds')
+  await expect(store.poll(grant.userCode)).rejects.toThrow('not found')
+  await store.decide(grant.userCode, 'alice', true)
+  await expect(store.decide(grant.userCode, 'bob', true)).rejects.toThrow('already been answered')
+  const token = (await store.poll(grant.deviceCode))!
   expect(token.userId).toBe('alice')
-  expect(() => store.poll(grant.deviceCode)).toThrow('already redeemed')
-  expect(store.list('bob')).toEqual([])
-  expect(store.list('alice')[0]?.id).toBe(token.session.id)
-  store.close(); store = new CliCredentials(path, () => now)
-  expect(store.identify(token.token)?.userId).toBe('alice')
+  await expect(store.poll(grant.deviceCode)).rejects.toThrow('already redeemed')
+  expect((await store.list('bob'))).toEqual([])
+  expect((await store.list('alice'))[0]?.id).toBe(token.session.id)
+  await db.close(); db = sqliteDatabase(path); await migrate(db)
+  store = new CliCredentials(db, () => now)
+  expect((await store.identify(token.token))?.userId).toBe('alice')
   for (const file of [path, path + '-wal']) {
     const contents = await readFile(file).catch(() => Buffer.from(''))
     expect(contents.includes(token.token)).toBe(false)
     expect(contents.includes(grant.deviceCode)).toBe(false)
   }
-  expect(store.revoke('bob', token.session.id)).toBe(false)
-  expect(store.revoke('alice', token.session.id)).toBe(true)
-  expect(store.identify(token.token)).toBeNull()
-  const denied = store.begin('Declined'); store.decide(denied.userCode, 'alice', false)
-  expect(() => store.poll(denied.deviceCode)).toThrow('declined')
-  const expired = store.begin('Expired'); now += 10 * 60_000
-  expect(() => store.inspect(expired.userCode)).toThrow('expired')
-  expect(() => store.poll(expired.deviceCode)).toThrow('expired')
-  const last = store.begin('Session expiry'); store.decide(last.userCode, 'alice', true)
-  const long = store.poll(last.deviceCode)!; now += 30 * 24 * 60 * 60_000
-  expect(store.identify(long.token)).toBeNull()
+  expect((await store.revoke('bob', token.session.id))).toBe(false)
+  expect((await store.revoke('alice', token.session.id))).toBe(true)
+  expect((await store.identify(token.token))).toBeNull()
+  const denied = (await store.begin('Declined')); (await store.decide(denied.userCode, 'alice', false))
+  await expect(store.poll(denied.deviceCode)).rejects.toThrow('declined')
+  const expired = (await store.begin('Expired')); now += 10 * 60_000
+  await expect(store.inspect(expired.userCode)).rejects.toThrow('expired')
+  await expect(store.poll(expired.deviceCode)).rejects.toThrow('expired')
+  const last = (await store.begin('Session expiry')); (await store.decide(last.userCode, 'alice', true))
+  const long = (await store.poll(last.deviceCode))!; now += 30 * 24 * 60 * 60_000
+  expect((await store.identify(long.token))).toBeNull()
 })
 
 test('CLI auth preserves owner identity, checks account access, and rejects revocation during an access check', async () => {
-  const store = new CliCredentials(':memory:'); cleanups.push(async () => store.close())
-  const grant = store.begin('Test'); store.decide(grant.userCode, 'alice', true)
-  const token = store.poll(grant.deviceCode)!
+  const store = new CliCredentials(await testDatabase());
+  const grant = (await store.begin('Test')); (await store.decide(grant.userCode, 'alice', true))
+  const token = (await store.poll(grant.deviceCode))!
   let allowed = true
   const auth = withCliAuthentication(browser, store, async () => allowed)
   const request = new Request('https://test/api/vms', { headers: { authorization: `Bearer ${token.token}` } })
   expect(await auth(request)).toEqual({ id: 'alice' })
   allowed = false; expect(await auth(request)).toBeNull()
-  const revokeWhileChecking = withCliAuthentication(browser, store, async () => { store.revoke('alice', token.session.id); return true })
+  const revokeWhileChecking = withCliAuthentication(browser, store, async () => { (await store.revoke('alice', token.session.id)); return true })
   expect(await revokeWhileChecking(request)).toBeNull()
   expect(await auth(new Request('https://test', { headers: { authorization: 'Bearer alice' } }))).toEqual({ id: 'alice' })
 })
 
 test('CLI routes reject cookie-only approval, credential self-approval, foreign revocation, and replay', async () => {
-  const credentials = new CliCredentials(':memory:'); cleanups.push(async () => credentials.close())
+  const credentials = new CliCredentials(await testDatabase());
   const authenticate = withCliAuthentication(browser, credentials, async () => true)
   const app = new Hono().route('/api', cliRoutes({ credentials, browserAuthenticate: browser, authenticate }))
   const call = (path: string, init: RequestInit = {}, token?: string) => app.request('/api/cli' + path, { ...init, headers: { ...init.headers, ...(token ? { authorization: `Bearer ${token}` } : {}) } })
@@ -78,7 +81,7 @@ test('CLI routes reject cookie-only approval, credential self-approval, foreign 
   expect((await call('/device/token', post({ deviceCode: grant.deviceCode }))).status).toBe(409)
   expect((await call('/whoami', {}, token.token)).status).toBe(200)
   expect((await call('/sessions', {}, token.token)).status).toBe(401)
-  const other = credentials.begin('Another login')
+  const other = (await credentials.begin('Another login'))
   expect((await call(`/device/${other.userCode}/approve`, post(), token.token)).status).toBe(401)
   expect((await call('/sessions/' + token.session.id, { method: 'DELETE' }, 'bob')).status).toBe(404)
   expect((await call('/sessions/' + token.session.id, { method: 'DELETE' }, 'alice')).status).toBe(204)
@@ -87,17 +90,17 @@ test('CLI routes reject cookie-only approval, credential self-approval, foreign 
 })
 
 test('anonymous login creation and outstanding device records are bounded', async () => {
-  const credentials = new CliCredentials(':memory:'); cleanups.push(async () => credentials.close())
+  const credentials = new CliCredentials(await testDatabase());
   const app = new Hono().route('/api', cliRoutes({ credentials, browserAuthenticate: browser, authenticate: browser }))
   for (let i = 0; i < 10; i++) expect((await app.request('/api/cli/device', post({ name: 'test' }))).status).toBe(201)
   const limited = await app.request('/api/cli/device', post({ name: 'test' }))
   expect(limited.status).toBe(429); expect(limited.headers.get('retry-after')).toBe('60')
-  for (let i = 10; i < 1024; i++) credentials.begin('test')
-  expect(() => credentials.begin('overflow')).toThrow('Too many pending')
+  for (let i = 10; i < 1024; i++) (await credentials.begin('test'))
+  expect(async () => (await credentials.begin('overflow'))).toThrow('Too many pending')
 })
 
 test('the preview origin cannot initialize, redeem, or inspect CLI credentials', async () => {
-  const credentials = new CliCredentials(':memory:'); cleanups.push(async () => credentials.close())
+  const credentials = new CliCredentials(await testDatabase());
   const app = createApp({ version: 'test', region: 'test', webDir: 'missing', readHost: async () => ({ configured: false }), clerkPublishableKey: null,
     vms: { unavailable: 'test' }, cli: cliRoutes({ credentials, browserAuthenticate: browser, authenticate: browser }) })
   for (const path of ['/api/cli/device', '/api/cli/device/token', '/api/cli/sessions', '/api/cli/whoami']) {

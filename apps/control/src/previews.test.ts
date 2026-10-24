@@ -5,6 +5,7 @@ import { createApp as createHostd } from '../../hostd/src/app.ts'
 import type { VmService } from '../../hostd/src/vms.ts'
 import { createApp } from './app.ts'
 import { Capabilities } from './capabilities.ts'
+import { testDatabase } from './db.ts'
 import { Owners } from './owners.ts'
 import { previewRoutes } from './previews.ts'
 import { Tickets } from './tickets.ts'
@@ -37,10 +38,11 @@ const vms: VmService = {
 }
 const host = serve(createHostd({ token: 'host-secret', version: 'test', image: async () => null, vms }))
 const hostd = { url: `http://127.0.0.1:${host.port}`, token: 'host-secret' }
-const owners = new Owners(':memory:')
-owners.add(vmId, 'alice')
+const db = await testDatabase()
+const owners = new Owners(db)
+await owners.add(vmId, 'alice')
 const tickets = new Tickets()
-const capabilities = new Capabilities(':memory:')
+const capabilities = new Capabilities(db)
 const controlApp = createApp({ version: 'test', region: 'test', webDir: 'missing', clerkPublishableKey: null,
   readHost: async () => ({ configured: false }), previews: previewRoutes({ hostd, owners, tickets, capabilities }),
   vms: { hostd, owners, tickets, capabilities, previewOrigin: 'https://preview.example', maxVmsPerUser: 3,
@@ -51,7 +53,7 @@ const base = `http://127.0.0.1:${control.port}`
 const previewHeaders = { 'x-substrate-preview': '1' }
 const prefix = `/p/${vmId}/${dev.port}`
 
-afterAll(() => { servers.forEach((server) => server.stop(true)); capabilities.close() })
+afterAll(() => { servers.forEach((server) => server.stop(true)) })
 
 async function openPreview() {
   const response = await fetch(`${base}/api/vms/${vmId}/previews`, { method: 'POST', headers: { 'x-test-user': 'alice' }, body: JSON.stringify({ port: dev.port }) })
@@ -122,15 +124,14 @@ test('even an authenticated owner cannot serve guest app content on the control 
   expect(wakes).toBe(before)
 })
 
-test('capabilities expire and cannot be reused for a different VM, port or kind', () => {
+test('capabilities expire and cannot be reused for a different VM, port or kind', async () => {
   let now = 1000
-  const caps = new Capabilities(':memory:', () => now)
-  const grant = caps.issue({ userId: 'alice', vmId, port: 22, kind: 'ssh' }, 100)
-  expect(caps.read(grant.token, 'ssh', vmId, 22)?.userId).toBe('alice')
-  expect(caps.read(grant.token, 'preview', vmId, 22)).toBeNull()
-  expect(caps.read(grant.token, 'ssh', 'vm-other', 22)).toBeNull()
-  expect(caps.read(grant.token, 'ssh', vmId, 23)).toBeNull()
+  const caps = new Capabilities(await testDatabase(), () => now)
+  const grant = await caps.issue({ userId: 'alice', vmId, port: 22, kind: 'ssh' }, 100)
+  expect((await caps.read(grant.token, 'ssh', vmId, 22))?.userId).toBe('alice')
+  expect(await caps.read(grant.token, 'preview', vmId, 22)).toBeNull()
+  expect(await caps.read(grant.token, 'ssh', 'vm-other', 22)).toBeNull()
+  expect(await caps.read(grant.token, 'ssh', vmId, 23)).toBeNull()
   now = 1100
-  expect(caps.read(grant.token, 'ssh', vmId, 22)).toBeNull()
-  caps.close()
+  expect(await caps.read(grant.token, 'ssh', vmId, 22)).toBeNull()
 })

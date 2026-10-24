@@ -19,7 +19,7 @@ async function rig() {
     const [stdout, stderr] = await Promise.all([new Response(process.stdout).text(), new Response(process.stderr).text()])
     return { code: await process.exited, stdout, stderr, json: () => JSON.parse(stdout) }
   }
-  const importLogin = async (user: 'alice' | 'bob' = 'alice') => { const grant = api.token(user); const result = await invoke(['login', '--url', api.url, '--token-stdin', '--json'], grant.token); expect(result.code).toBe(0); return grant }
+  const importLogin = async (user: 'alice' | 'bob' = 'alice') => { const grant = (await api.token(user)); const result = await invoke(['login', '--url', api.url, '--token-stdin', '--json'], grant.token); expect(result.code).toBe(0); return grant }
   return { ...api, configDir, env, spawn, invoke, importLogin }
 }
 async function until(read: () => boolean, limit = 5000) { const end = Date.now() + limit; while (!read()) { if (Date.now() > end) throw new Error('condition timed out'); await Bun.sleep(10) } }
@@ -32,7 +32,7 @@ test('browser login completes only after approval and saves an origin-bound priv
   const stderrDone = (async () => { for await (const chunk of process.stderr) stderr += new TextDecoder().decode(chunk) })()
   await until(() => /cli\/([A-Z2-9]{4}-[A-Z2-9]{4})/.test(stderr))
   const code = /cli\/([A-Z2-9]{4}-[A-Z2-9]{4})/.exec(stderr)![1]!
-  expect(r.credentials.list('alice')).toHaveLength(0)
+  expect((await r.credentials.list('alice'))).toHaveLength(0)
   const approved = await fetch(r.url + '/api/cli/device/' + code + '/approve', { method: 'POST', headers: { authorization: 'Bearer alice' } })
   expect(approved.status).toBe(204)
   const stdout = await new Response(process.stdout).text(); expect(await process.exited).toBe(0); await stderrDone
@@ -91,7 +91,7 @@ test('task results survive CLI restarts, verification controls wait exit status,
   const chosen = await r.invoke(['compare', 'choose', output.comparison.id, '--task', output.tasks[0]!.id, '--json'])
   expect(chosen.code).toBe(0); expect(chosen.json().selectedTaskId).toBe(output.tasks[0]!.id)
   expect(r.records.has(ids[0])).toBe(true); expect(r.records.has(ids[1])).toBe(true)
-  const foreignToken = r.token('bob').token
+  const foreignToken = (await r.token('bob')).token
   const denied = await fetch(r.url + '/api/tasks/' + saved.id, { headers: { authorization: `Bearer ${foreignToken}` } })
   expect(denied.status).toBe(404)
 }, 30_000)
@@ -105,8 +105,8 @@ test('Ctrl+C detaches a waiting CLI without cancelling or replaying remote work'
   const id = /Task ([a-f0-9-]{36})/.exec(stderr)![1]!
   process.kill('SIGINT'); expect(await process.exited).toBe(130); await read
   await Bun.sleep(1200); await r.workflows.refresh('alice')
-  expect(r.workflows.task('alice', id).run?.state).toBe('succeeded')
-  expect(r.workflows.task('alice', id).run?.result).toBe('survived')
+  expect((await r.workflows.task('alice', id)).run?.state).toBe('succeeded')
+  expect((await r.workflows.task('alice', id)).run?.result).toBe('survived')
   expect(r.calls.filter((call) => call.endsWith('/cancel'))).toEqual([])
   expect(r.calls.filter((call) => call === 'POST /vms/vm-alice/tasks')).toHaveLength(1)
 }, 15_000)
@@ -118,13 +118,13 @@ test('logout and website revocation invalidate CLI access; failed imports preser
   expect(invalid.code).toBe(1); expect(await readFile(path, 'utf8')).toBe(before)
   expect((await r.invoke(['whoami', '--json'])).json().userId).toBe('alice')
   expect((await r.invoke(['logout', '--json'])).code).toBe(0)
-  expect(r.credentials.identify(grant.token)).toBeNull()
+  expect((await r.credentials.identify(grant.token))).toBeNull()
   expect((await r.invoke(['whoami', '--json'])).code).toBe(1)
-  const another = await r.importLogin(); r.credentials.revoke('alice', another.session.id)
+  const another = await r.importLogin(); (await r.credentials.revoke('alice', another.session.id))
   const revoked = await r.invoke(['workspace', 'list', '--json']); expect(revoked.code).toBe(1); expect(revoked.stderr).toContain('revoked')
   const disabled = await r.importLogin(); r.disabled.add('alice')
   expect((await r.invoke(['whoami', '--json'])).code).toBe(1)
-  expect(r.credentials.identify(disabled.token)).not.toBeNull()
+  expect((await r.credentials.identify(disabled.token))).not.toBeNull()
 }, 15_000)
 
 test('credentials never follow redirects, mutation transport failures are not retried, and remote HTTP is refused', async () => {

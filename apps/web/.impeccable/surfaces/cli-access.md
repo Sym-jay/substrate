@@ -19,3 +19,20 @@ Rendered evidence is in `.impeccable/review/cli/`: `authorize-desktop.png`, `aut
 The review's sole initial finding was the missing retry for an initial request failure. The corrected state offers “Try again” for network, server, and rate-limit failures and retries only the preview GET; unavailable requests still instruct the user to rerun login. The reviewer accepted that correction with a ship verdict limited to the reported fix scope.
 
 Validation supplied for this implementation: 156 tests, typecheck, and web build passed; the macOS ARM binary executed and Linux x64 cross-compilation succeeded. Browser validation used mock identity and a local API with real isolated shell tasks. Live Clerk authentication and AWS behavior remain unverified by this evidence.
+
+
+## Current-main integration (2026-10-24)
+
+CLI access now inherits `main` at `0fded18`: the light monospace/ASCII dashboard,
+its shared Card/Button components and current Settings/account panels. The prior
+graphite/platinum evidence above documents the initial release; it is not the
+visual authority for this integration. No global tokens or dashboard layout changed.
+The approval action uses the incumbent primary button, and the brand link goes
+to the current welcome route. Account, SSH, agent keys, GitHub and usage remain.
+
+Current local captures are under `.impeccable/review/phase2-cli/`: approval at
+1440/390 px, approved mobile, and Settings at both sizes. Native browser input
+verified explicit approval against real local API routes. No horizontal overflow
+was detected. Mock identity is used; this is not evidence of real Clerk login.
+The manual Impeccable detector returned no findings. Closed incumbent launch
+sheets are hidden only for full-page capture, as in the original review.

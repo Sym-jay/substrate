@@ -31,48 +31,48 @@ export function cliRoutes({ credentials, browserAuthenticate, authenticate, requ
     if (bucket.count >= 10 || (!starts.has(source) && starts.size >= 2048)) { c.header('retry-after', '60'); return c.json({ error: 'Too many login requests. Wait a minute before trying again.' }, 429) }
     bucket.count++; starts.set(source, bucket)
     const input = CliDeviceRequest.safeParse(await c.req.json().catch(() => null))
-    return input.success ? c.json(credentials.begin(input.data.name), 201) : c.json({ error: 'Provide a CLI device name (1–80 characters).' }, 400)
+    return input.success ? c.json(await credentials.begin(input.data.name), 201) : c.json({ error: 'Provide a CLI device name (1–80 characters).' }, 400)
   })
   app.post('/cli/device/token', async (c) => {
     const input = await c.req.json().catch(() => null) as { deviceCode?: unknown } | null
     if (typeof input?.deviceCode !== 'string' || input.deviceCode.length > 128) return c.json({ error: 'Provide the device secret.' }, 400)
-    const grant = credentials.poll(input.deviceCode)
+    const grant = await credentials.poll(input.deviceCode)
     if (!grant) { c.header('retry-after', '2'); return c.json({ state: 'pending' }, 202) }
     return c.json(grant)
   })
   app.get('/cli/device/:code', async (c) => {
     if (!await browser(c.req.raw)) return c.json({ error: 'Sign in through the website to approve CLI access.' }, 401)
     const code = CliDeviceCode.safeParse(c.req.param('code'))
-    return code.success ? c.json(credentials.inspect(code.data)) : c.json({ error: 'Invalid login code.' }, 400)
+    return code.success ? c.json(await credentials.inspect(code.data)) : c.json({ error: 'Invalid login code.' }, 400)
   })
   for (const action of ['approve', 'deny'] as const) app.post(`/cli/device/:code/${action}`, async (c) => {
     const user = await browser(c.req.raw)
     if (!user) return c.json({ error: 'Sign in through the website to approve CLI access.' }, 401)
     const code = CliDeviceCode.safeParse(c.req.param('code'))
     if (!code.success) return c.json({ error: 'Invalid login code.' }, 400)
-    credentials.decide(code.data, user.id, action === 'approve')
+    await credentials.decide(code.data, user.id, action === 'approve')
     return c.body(null, 204)
   })
   app.get('/cli/sessions', async (c) => {
     const user = await browser(c.req.raw)
-    return user ? c.json(credentials.list(user.id)) : c.json({ error: 'Sign in through the website to manage CLI sessions.' }, 401)
+    return user ? c.json(await credentials.list(user.id)) : c.json({ error: 'Sign in through the website to manage CLI sessions.' }, 401)
   })
   app.delete('/cli/sessions/:id', async (c) => {
     const user = await browser(c.req.raw)
     if (!user) return c.json({ error: 'Sign in through the website to manage CLI sessions.' }, 401)
-    return credentials.revoke(user.id, c.req.param('id')) ? c.body(null, 204) : c.json({ error: 'CLI session not found.' }, 404)
+    return await credentials.revoke(user.id, c.req.param('id')) ? c.body(null, 204) : c.json({ error: 'CLI session not found.' }, 404)
   })
   app.get('/cli/whoami', async (c) => {
     const user = await authenticate(c.req.raw)
     if (!user) return c.json({ error: 'CLI login is missing, expired, or revoked. Run substrate login.' }, 401)
     const token = cliBearer(c.req.raw)
-    return c.json({ userId: user.id, session: token ? credentials.identify(token)?.session ?? null : null })
+    return c.json({ userId: user.id, session: token ? (await credentials.identify(token))?.session ?? null : null })
   })
   app.post('/cli/logout', async (c) => {
     const user = await authenticate(c.req.raw), token = cliBearer(c.req.raw)
-    const identity = token ? credentials.identify(token) : null
+    const identity = token ? await credentials.identify(token) : null
     if (!user || !identity) return c.json({ error: 'CLI login is missing, expired, or revoked.' }, 401)
-    credentials.revoke(user.id, identity.session.id)
+    await credentials.revoke(user.id, identity.session.id)
     return c.body(null, 204)
   })
   return app

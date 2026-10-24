@@ -5,6 +5,8 @@ declare module '@novnc/novnc' {
     scaleViewport: boolean
     resizeSession: boolean
     focusOnClick: boolean
+    // CSS for the area around the remote screen.
+    background: string
     disconnect(): void
     sendCtrlAltDel(): void
     focus(): void

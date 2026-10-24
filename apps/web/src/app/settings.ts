@@ -10,8 +10,10 @@ export type Settings = {
   diskGib: number
   // For new workspaces; 'default' leaves hostd's.
   autoPauseMinutes: number | null | 'default'
-  theme: 'dark' | 'light' | 'system'
+  // A GitHub repository new workspaces clone; empty for none.
+  repository: string
   motion: 'system' | 'reduced'
+  sidebar: 'expanded' | 'collapsed'
 }
 
 export const defaultSettings: Settings = {
@@ -20,8 +22,9 @@ export const defaultSettings: Settings = {
   size: 'large',
   diskGib: 32,
   autoPauseMinutes: 'default',
-  theme: 'dark',
+  repository: '',
   motion: 'system',
+  sidebar: 'expanded',
 }
 
 const KEY = 'substrate:settings'
@@ -65,18 +68,8 @@ export function useSettings() {
   }, getSettings)
 }
 
-const systemDark = () => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true
-
-// Sets <html data-theme> (and data-motion) from the settings; run before the
-// first render so there's no flash of the wrong theme.
+// Sets <html data-motion> from the settings; run before the first render so
+// nothing animates that shouldn't. (Light only for now: no theme to set.)
 export function applyAppearance() {
-  const { theme, motion } = current
-  const root = document.documentElement
-  root.dataset.theme = theme === 'system' ? (systemDark() ? 'dark' : 'light') : theme
-  root.dataset.motion = motion
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', root.dataset.theme === 'dark' ? '#000000' : '#e9ebef')
+  document.documentElement.dataset.motion = current.motion
 }
-
-window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  if (current.theme === 'system') applyAppearance()
-})

@@ -1,4 +1,5 @@
-import { Activity, Bot, GitBranch, Plus } from 'lucide-react'
+import { Activity, Bot, GitBranch, Plus, SquareTerminal } from 'lucide-react'
+import { AgentIcon } from '../app/AgentIcon.tsx'
 import { agentCatalog, agentName } from '../app/agents.ts'
 import { useData } from '../app/data.tsx'
 import { href } from '../app/router.ts'
@@ -15,7 +16,7 @@ export function JobsPage() {
   const paused = (vms ?? []).filter((vm) => vm.state === 'paused')
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-5">
+    <div className="page-body">
       <PageHeader title="Jobs" subtitle={`${working.length} agent${working.length === 1 ? '' : 's'} working · ${jobs.filter((j) => j.state === 'running').length} background operation${jobs.filter((j) => j.state === 'running').length === 1 ? '' : 's'}`} />
 
       <Card title="Agents" className="rise">
@@ -23,7 +24,7 @@ export function JobsPage() {
           <ul>
             {[...working, ...ended].map(({ vm, session }) => (
               <li key={session.id} className="list-row">
-                <span className="monogram is-sm">{agentCatalog.find((a) => a.id === session.agent)?.monogram}</span>
+                {session.agent ? <AgentIcon agent={session.agent} className="size-4" /> : <SquareTerminal className="size-4" />}
                 <a href={href('workspaces', vm.id, session.id)} className="min-w-0 flex-1">
                   <p className="truncate font-medium">{agentName(session.agent)} <span className="text-muted font-normal">in {vm.name}</span></p>
                   <p className="text-faint text-xs">{session.mode === 'auto' ? 'Full auto' : 'Asks first'} · started {since(session.createdAt)} ago{session.checkpointId ? ' · checkpoint saved before it started' : ''}</p>
