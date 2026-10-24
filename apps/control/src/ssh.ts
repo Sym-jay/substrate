@@ -39,7 +39,7 @@ export function sshRoutes({ hostd, authenticate, owners, access }: Options) {
   // Puts the account's keys on each of the user's running VMs, so a removed
   // key stops working now rather than at the next connection.
   const pushKeys = async (userId: string) => {
-    const publicKeys = access.keys(userId).map((k) => k.publicKey)
+    const publicKeys = (await access.keys(userId)).map((k) => k.publicKey)
     for (const vm of (await ownVms(userId)) ?? []) {
       if (vm.state !== 'running') continue
       await callHostd(`/vms/${vm.id}/ssh/keys`, { method: 'PUT', body: JSON.stringify({ publicKeys }) })
@@ -67,13 +67,13 @@ export function sshRoutes({ hostd, authenticate, owners, access }: Options) {
       state = 'connecting'
       clearTimeout(timer)
       const fail = (code: number, reason: string) => { state = 'closed'; client.close(code, reason) }
-      const userId = access.userForToken(token)
+      const userId = await access.userForToken(token)
       if (!userId) return fail(4401, 'invalid or revoked SSH token')
       const vms = await ownVms(userId)
       if (!vms) return fail(1011, "can't reach the sandbox host")
       const vm = vms.find((v) => v.id === target) ?? vms.find((v) => v.name === target)
       if (!vm) return fail(4404, `you have no workspace called ${target}`)
-      const publicKeys = access.keys(userId).map((k) => k.publicKey)
+      const publicKeys = (await access.keys(userId)).map((k) => k.publicKey)
       if (!publicKeys.length) return fail(4409, 'add an SSH key to your account first')
       // Starts (or resumes) it if need be, and makes sure it trusts your keys.
       const synced = await callHostd(`/vms/${vm.id}/ssh/keys`, { method: 'PUT', body: JSON.stringify({ publicKeys, start: true }) })
@@ -123,29 +123,29 @@ export function sshRoutes({ hostd, authenticate, owners, access }: Options) {
   }
   for (const path of ['/ssh/keys', '/ssh/keys/*', '/ssh/tokens', '/ssh/tokens/*']) app.use(path, signedIn)
 
-  app.get('/ssh/keys', (c) => c.json(access.keys(c.var.user.id)))
+  app.get('/ssh/keys', async (c) => c.json(await access.keys(c.var.user.id)))
   app.post('/ssh/keys', async (c) => {
     const input = AddAccountSshKey.safeParse(await c.req.json().catch(() => null))
     if (!input.success) return c.json({ error: input.error.issues[0]?.message ?? 'Use an OpenSSH public key' }, 400)
-    const key = access.addKey(c.var.user.id, input.data)
+    const key = await access.addKey(c.var.user.id, input.data)
     void pushKeys(c.var.user.id)
     return c.json(key, 201)
   })
-  app.delete('/ssh/keys/:id', (c) => {
-    access.removeKey(c.var.user.id, c.req.param('id'))
+  app.delete('/ssh/keys/:id', async (c) => {
+    await access.removeKey(c.var.user.id, c.req.param('id'))
     void pushKeys(c.var.user.id)
     return c.body(null, 204)
   })
 
-  app.get('/ssh/tokens', (c) => c.json(access.tokens(c.var.user.id)))
+  app.get('/ssh/tokens', async (c) => c.json(await access.tokens(c.var.user.id)))
   app.post('/ssh/tokens', async (c) => {
     const input = CreateSshToken.safeParse(await c.req.json().catch(() => null))
     if (!input.success) return c.json({ error: 'Name the token (where it will be used)' }, 400)
     c.header('cache-control', 'no-store')
-    return c.json(access.createToken(c.var.user.id, input.data.name), 201)
+    return c.json(await access.createToken(c.var.user.id, input.data.name), 201)
   })
-  app.delete('/ssh/tokens/:id', (c) => {
-    access.revokeToken(c.var.user.id, c.req.param('id'))
+  app.delete('/ssh/tokens/:id', async (c) => {
+    await access.revokeToken(c.var.user.id, c.req.param('id'))
     return c.body(null, 204)
   })
 

@@ -151,7 +151,7 @@ describe('stores', () => {
     const db = sqliteDatabase(':memory:')
     await migrate(db)
     await migrate(db)
-    expect((await db`select version from schema_migrations`).length).toBe(1)
+    expect((await db`select version from schema_migrations`).length).toBe(2)
   })
 })
 

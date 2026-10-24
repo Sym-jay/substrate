@@ -152,7 +152,7 @@ export function vmRoutes(o: VmRoutesOptions) {
     const limits = o.quotas ? await o.quotas.of(userId) : openQuota(o.maxVmsPerUser)
     const mineIds = new Set(await owners.vmsOf(userId))
     const mine = vms.filter((vm) => mineIds.has(vm.id))
-    const pending = [...(await jobs?.pending(userId)) ?? [], ...workflows?.pendingVms(userId) ?? []]
+    const pending = [...(await jobs?.pending(userId)) ?? [], ...await workflows?.pendingVms(userId) ?? []]
     const used = {
       vms: new Set([...mine.map((vm) => vm.id), ...pending]).size,
       totalDiskGib: mine.reduce((total, vm) => total + vm.diskGib, 0),
@@ -217,7 +217,7 @@ export function vmRoutes(o: VmRoutesOptions) {
 
   app.post('/vms/:id/fork', (c) => exclusive(c.var.user.id, async () => {
     if (!jobs) return c.json({ error: 'Fork jobs are not configured' }, 503)
-    if (workflows?.hasActiveTask(c.var.user.id, c.req.param('id'))) return c.json({ error: 'Finish or cancel the running task before forking this workspace' }, 409)
+    if (await workflows?.hasActiveTask(c.var.user.id, c.req.param('id'))) return c.json({ error: 'Finish or cancel the running task before forking this workspace' }, 409)
     const input = ForkVm.safeParse(await c.req.json().catch(() => null))
     if (!input.success) return c.json({ error: 'Invalid fork name' }, 400)
     const vms = await allVms()

@@ -20,8 +20,9 @@ custom domain are still to do.
   password. RDS keeps the master password in Secrets Manager and rotates it; the
   control box uses it once, to create its own `substrate_app` role
   (`apps/control/src/database.ts`).
-- On its first start against Postgres, the control box copies VM owners and jobs
-  from the old SQLite file (`/var/lib/substrate/control.db`, left in place).
+- On its first start with migration 2, the control box atomically imports all
+  legacy stores (owners, jobs, tasks/comparisons, Windows records, SSH access,
+  and CLI grants/credentials) from the old SQLite file (`/var/lib/substrate/control.db`, left in place).
 
 ### Isolation between users (hostd)
 
@@ -81,9 +82,10 @@ hostd's environment turns jailing off for new boots.
 
 ## Deploying
 
-**Order matters: deploy this after M9.** This branch started before M9, so its
-stack has no Windows resources; deploying it as is would delete them. Rebase it
-onto `main` once M9 is merged, then:
+**Use the integrated code based on current `main`.** Windows, the dashboard,
+workflows and CLI are reconciled there. Never deploy the original Phase 2 branch
+over the integrated application. See [database-migration.md](database-migration.md)
+for migration behavior and rollback limits. Then:
 
 1. `cd infra && bunx cdk diff Substrate`. Expect only additions (database,
    subnets, KMS key, Lambda, parameters) and a changed control role policy.
@@ -125,18 +127,24 @@ Verified:
   routes (fake KMS and GitHub).
 - `cdk diff` against the live stack: no replacements.
 
-Not yet (needs the deploy):
-- x86_64 on the real host, and hostd's full snapshot flow under the jailer with
-  ZFS.
-- RDS IAM sign-in and the first-start bootstrap.
-- KMS encryption and decryption.
-- The rotation Lambda.
-- GitHub OAuth against GitHub itself.
+Current live results are in [the integration deployment record](deployments/2026-10-24-phase2.md):
+RDS IAM/TLS and bootstrap evidence, KMS, x86 jailed boots, ZFS snapshots,
+pause/resume and running-state forks passed. Real Lambda invocation/token
+handoff and GitHub OAuth consent still require external access/configuration.
 
-## Notes for merging
+## Integrated data stores
 
-- M9's Windows workspace records use `bun:sqlite` directly; move them onto
-  `apps/control/src/db.ts` so they live in Postgres too.
-- The control box's `jobs.ts` and `vms.ts` changed here (async stores, quotas)
-  and on the dashboard branch; merge by hand.
-- hostd's `GET /vms/:id/logs` exists here and on the dashboard branch; keep one.
+Tasks/comparisons, Windows records, SSH keys/tokens and CLI approvals/credentials
+now use the same asynchronous `Bun.SQL` adapter as owners and jobs. No live store
+opens its own SQLite connection. `bun:sqlite` is used only by the read-only legacy
+importer. Local development also runs that import, preserving existing local data.
+
+Run `bun run check:phase2:data` for live RDS IAM/TLS, migrated-store and KMS checks,
+and `bun run check:phase2:host` for jailed boots, namespace/egress isolation,
+ZFS snapshots, terminal restoration and forks. Both clean up their own records.
+The host checker never restarts the host or hostd and never changes existing VMs.
+`bun run check:phase2:data --backup` saves a protected pre-deployment RDS data
+snapshot on the control box without applying migrations.
+
+Historical verification above predates the integration. Current deployment results
+are recorded in [deployments/2026-10-24-phase2.md](deployments/2026-10-24-phase2.md).

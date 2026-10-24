@@ -1,5 +1,6 @@
 import { Show, SignInButton, SignUpButton, UserButton, useAuth, useClerk, useUser } from '@clerk/react'
 import { ArrowRight } from 'lucide-react'
+import { useRoute } from './app/router.ts'
 import { App } from './App.tsx'
 import { Button, Toasts } from './app/ui.tsx'
 import { WelcomeHero } from './pages/WelcomePage.tsx'
@@ -38,12 +39,17 @@ export function ClerkApp() {
 
 // The welcome page, before signing in: launching starts there.
 function SignedOut() {
+  const route = useRoute()
   return (
     <Toasts>
       <main className="signed-out">
         <WelcomeHero
-          launch={<SignInButton mode="modal"><Button variant="primary" size="lg" live>Launch instance</Button></SignInButton>}
-          more={<SignUpButton mode="modal"><button type="button" className="welcome-more">New here? Create an account<ArrowRight /></button></SignUpButton>}
+          launch={<SignInButton mode="modal"><Button variant="primary" size="lg" live>{route.page === 'cli' ? 'Sign in' : 'Launch instance'}</Button></SignInButton>}
+          more={<>
+            {/* A CLI asking for access: signing in only leads to the request, which is approved separately. */}
+            {route.page === 'cli' && <p className="text-muted text-sm">Sign in to review CLI request <code>{route.params[0]}</code>. Signing in alone does not authorize access.</p>}
+            <SignUpButton mode="modal"><button type="button" className="welcome-more">New here? Create an account<ArrowRight /></button></SignUpButton>
+          </>}
         />
       </main>
     </Toasts>

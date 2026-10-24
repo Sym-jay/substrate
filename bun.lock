@@ -16,6 +16,17 @@
         "typescript": "^7.0.2",
       },
     },
+    "apps/cli": {
+      "name": "@substrate/cli",
+      "version": "0.1.0",
+      "bin": {
+        "substrate": "src/index.ts",
+      },
+      "dependencies": {
+        "@substrate/protocol": "workspace:*",
+        "zod": "^4.6.7",
+      },
+    },
     "apps/control": {
       "name": "@substrate/control",
       "dependencies": {
@@ -218,6 +229,8 @@
     "@smithy/types": ["@smithy/types@4.19.0", "", { "dependencies": { "tslib": "^2.6.2" } }, "sha512-r7jh49VJxGerfAcTQA6gXcKc+98zOp/tqRwzYjgOE+iSQsP6cEU1hq2QzbuipmP68QtYdY9wKEhiCQZIzHgZ4Q=="],
 
     "@stablelib/base64": ["@stablelib/base64@1.0.1", "", {}, "sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ=="],
+
+    "@substrate/cli": ["@substrate/cli@workspace:apps/cli"],
 
     "@substrate/control": ["@substrate/control@workspace:apps/control"],
 

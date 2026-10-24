@@ -24,33 +24,33 @@ describe('SSH access store', () => {
     expect(fingerprint(publicKey)).toBe(listed!)
   })
 
-  test("keys: named by their comment, no duplicates, and only their owner's to remove", () => {
-    const access = new SshAccess(':memory:')
-    const key = access.addKey('ann', { publicKey: KEY })
+  test("keys: named by their comment, no duplicates, and only their owner's to remove", async () => {
+    const access = new SshAccess(await testDatabase())
+    const key = (await access.addKey('ann', { publicKey: KEY }))
     expect(key.name).toBe('ann@laptop')
-    expect(() => access.addKey('ann', { publicKey: KEY })).toThrow('already on your account')
-    expect(access.addKey('bob', { publicKey: KEY, name: 'work' }).name).toBe('work')
-    expect(() => access.removeKey('bob', key.id)).toThrow('No such key')
-    access.removeKey('ann', key.id)
-    expect(access.keys('ann')).toEqual([])
-    expect(access.keys('bob')).toHaveLength(1)
+    await expect(access.addKey('ann', { publicKey: KEY })).rejects.toThrow('already on your account')
+    expect((await access.addKey('bob', { publicKey: KEY, name: 'work' })).name).toBe('work')
+    await expect(access.removeKey('bob', key.id)).rejects.toThrow('No such key')
+    await access.removeKey('ann', key.id)
+    expect((await access.keys('ann'))).toEqual([])
+    expect((await access.keys('bob'))).toHaveLength(1)
   })
 
-  test('tokens: shown once, kept hashed, and revocable', () => {
-    const access = new SshAccess(':memory:')
-    const { token, id } = access.createToken('ann', 'laptop')
+  test('tokens: shown once, kept hashed, and revocable', async () => {
+    const access = new SshAccess(await testDatabase())
+    const { token, id } = (await access.createToken('ann', 'laptop'))
     expect(token).toStartWith('sbs_')
-    expect(JSON.stringify(access.tokens('ann'))).not.toContain(token)
-    expect(access.userForToken(token)).toBe('ann')
-    expect(access.tokens('ann')[0]!.lastUsedAt).toBeString()
-    expect(access.userForToken('sbs_nope')).toBeNull()
-    expect(() => access.revokeToken('bob', id)).toThrow('No such token')
-    access.revokeToken('ann', id)
-    expect(access.userForToken(token)).toBeNull()
+    expect(JSON.stringify((await access.tokens('ann')))).not.toContain(token)
+    expect((await access.userForToken(token))).toBe('ann')
+    expect((await access.tokens('ann'))[0]!.lastUsedAt).toBeString()
+    expect((await access.userForToken('sbs_nope'))).toBeNull()
+    await expect(access.revokeToken('bob', id)).rejects.toThrow('No such token')
+    await access.revokeToken('ann', id)
+    expect((await access.userForToken(token))).toBeNull()
   })
 })
 
-describe('SSH and desktop routes, end to end', () => {
+describe('SSH and desktop routes, end to end', async () => {
   const vm = (id: string, name: string, state: Vm['state'] = 'running') =>
     ({ id, name, state, vcpus: 2, memMib: 4096, diskGib: 32, image: 'x', guestIp: '172.30.0.2', createdAt: '', startedAt: null, bootMs: null, lastError: null }) as Vm
   const vms = [vm('vm-aaaaaaaaaaaaaaaa', 'demo'), vm('vm-bbbbbbbbbbbbbbbb', 'bobs', 'stopped')]
@@ -77,7 +77,7 @@ describe('SSH and desktop routes, end to end', () => {
     await owners.add('vm-aaaaaaaaaaaaaaaa', 'ann')
     await owners.add('vm-bbbbbbbbbbbbbbbb', 'bob')
   })
-  const access = new SshAccess(':memory:')
+  const access = new SshAccess(await testDatabase())
   const app = createApp({
     version: 'test', region: 'ap-south-1', webDir: 'nowhere', readHost: async () => ({ configured: false }), clerkPublishableKey: null,
     vms: {
@@ -125,7 +125,7 @@ describe('SSH and desktop routes, end to end', () => {
     if (!Bun.which('node')) return
     const proxy = join(import.meta.dir, '../../web/public/ssh-proxy.mjs')
     const home = await mkdtemp(join(tmpdir(), 'home-'))
-    const { token } = access.createToken('ann', 'proxy')
+    const { token } = (await access.createToken('ann', 'proxy'))
     const env = { PATH: process.env.PATH!, HOME: home, SUBSTRATE_URL: base, SUBSTRATE_TOKEN: token }
     const ok = Bun.spawn(['node', proxy, 'demo.substrate'], { env, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' })
     ok.stdin.write('ssh-2.0-proxy')
@@ -147,11 +147,11 @@ describe('SSH and desktop routes, end to end', () => {
 
   test("a wrong token, someone else's VM, or no keys are turned away", async () => {
     expect((await connect('demo', 'sbs_wrong')).code).toBe(4401)
-    const { token: annToken } = access.createToken('ann', 'x')
+    const { token: annToken } = (await access.createToken('ann', 'x'))
     expect((await connect('bobs', annToken)).code).toBe(4404)
-    const { token: bobToken, id } = access.createToken('bob', 'x')
+    const { token: bobToken, id } = (await access.createToken('bob', 'x'))
     expect((await connect('bobs', bobToken)).code).toBe(4409)
-    access.revokeToken('bob', id)
+    await access.revokeToken('bob', id)
     expect((await connect('bobs', bobToken)).code).toBe(4401)
   })
 

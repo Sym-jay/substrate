@@ -1,8 +1,7 @@
-import { Database } from 'bun:sqlite'
+import type { Db } from './db.ts'
+import { withStoreLock } from './store-lock.ts'
 import type { AccountSshKey, SshToken } from '@substrate/protocol'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
 
 const MAX_KEYS = 20
 const MAX_TOKENS = 10
@@ -24,70 +23,51 @@ export class SshAccessError extends Error {
 // every VM of theirs trusts, and personal tokens for the SSH proxy, which
 // reach the control box. Tokens are kept only as hashes.
 export class SshAccess {
-  private db: Database
+  constructor(private db: Db, private now = () => new Date()) {}
 
-  constructor(path: string, private now = () => new Date()) {
-    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
-    this.db = new Database(path, { create: true, strict: true })
-    this.db.run('pragma journal_mode = wal')
-    this.db.run(`create table if not exists ssh_keys (
-      id text primary key, userId text not null, name text not null, publicKey text not null,
-      fingerprint text not null, createdAt text not null, unique (userId, fingerprint)
-    )`)
-    this.db.run(`create table if not exists ssh_tokens (
-      id text primary key, userId text not null, name text not null, hash text not null unique,
-      createdAt text not null, lastUsedAt text
-    )`)
+  async keys(userId: string): Promise<AccountSshKey[]> {
+    return this.db`select id, name, fingerprint, public_key as "publicKey", created_at as "createdAt" from account_ssh_keys where user_id = ${userId} order by created_at`
   }
 
-  keys(userId: string): AccountSshKey[] {
-    return this.db.query('select id, name, fingerprint, publicKey, createdAt from ssh_keys where userId = ? order by createdAt').all(userId) as AccountSshKey[]
+  async addKey(userId: string, { name, publicKey }: { name?: string; publicKey: string }): Promise<AccountSshKey> {
+    return withStoreLock(this.db, `ssh-keys:${userId}`, async (tx) => {
+      const print = fingerprint(publicKey)
+      const existing = await tx`select fingerprint from account_ssh_keys where user_id = ${userId}`
+      if (existing.some((k: { fingerprint: string }) => k.fingerprint === print)) throw new SshAccessError(409, 'That key is already on your account')
+      if (existing.length >= MAX_KEYS) throw new SshAccessError(409, `You have ${MAX_KEYS} keys, the most an account may have. Remove one first.`)
+      const key: AccountSshKey = { id: randomUUID(), name: name || publicKey.split(' ').slice(2).join(' ') || publicKey.split(' ')[0]!, fingerprint: print, publicKey, createdAt: this.now().toISOString() }
+      await tx`insert into account_ssh_keys (id, user_id, name, public_key, fingerprint, created_at) values (${key.id}, ${userId}, ${key.name}, ${key.publicKey}, ${key.fingerprint}, ${key.createdAt})`
+      return key
+    })
   }
 
-  addKey(userId: string, { name, publicKey }: { name?: string; publicKey: string }): AccountSshKey {
-    const print = fingerprint(publicKey)
-    const existing = this.keys(userId)
-    if (existing.some((k) => k.fingerprint === print)) throw new SshAccessError(409, 'That key is already on your account')
-    if (existing.length >= MAX_KEYS) throw new SshAccessError(409, `You have ${MAX_KEYS} keys, the most an account may have. Remove one first.`)
-    const key: AccountSshKey = {
-      id: randomUUID(),
-      // The key's own comment (often user@machine) makes a fine default name.
-      name: name || publicKey.split(' ').slice(2).join(' ') || publicKey.split(' ')[0]!,
-      fingerprint: print,
-      publicKey,
-      createdAt: this.now().toISOString(),
-    }
-    this.db.query('insert into ssh_keys values (?, ?, ?, ?, ?, ?)').run(key.id, userId, key.name, key.publicKey, key.fingerprint, key.createdAt)
-    return key
+  async removeKey(userId: string, id: string) {
+    if (!(await this.db`delete from account_ssh_keys where id = ${id} and user_id = ${userId} returning id`).length) throw new SshAccessError(404, 'No such key')
   }
 
-  removeKey(userId: string, id: string) {
-    if (!this.db.query('delete from ssh_keys where id = ? and userId = ?').run(id, userId).changes) throw new SshAccessError(404, 'No such key')
+  async tokens(userId: string): Promise<SshToken[]> {
+    return this.db`select id, name, created_at as "createdAt", last_used_at as "lastUsedAt" from account_ssh_tokens where user_id = ${userId} order by created_at`
   }
 
-  tokens(userId: string): SshToken[] {
-    return this.db.query('select id, name, createdAt, lastUsedAt from ssh_tokens where userId = ? order by createdAt').all(userId) as SshToken[]
+  // The token itself is returned this once; the stored hash migrates unchanged.
+  async createToken(userId: string, name: string) {
+    return withStoreLock(this.db, `ssh-tokens:${userId}`, async (tx) => {
+      const [count] = await tx`select cast(count(*) as integer) as n from account_ssh_tokens where user_id = ${userId}`
+      if (count.n >= MAX_TOKENS) throw new SshAccessError(409, `You have ${MAX_TOKENS} SSH tokens, the most an account may have. Revoke one first.`)
+      const token = `sbs_${randomBytes(32).toString('base64url')}`
+      const info: SshToken = { id: randomUUID(), name, createdAt: this.now().toISOString(), lastUsedAt: null }
+      await tx`insert into account_ssh_tokens (id, user_id, name, hash, created_at, last_used_at) values (${info.id}, ${userId}, ${name}, ${digest(token)}, ${info.createdAt}, null)`
+      return { token, ...info }
+    })
   }
 
-  // The token itself is returned this once.
-  createToken(userId: string, name: string) {
-    if (this.tokens(userId).length >= MAX_TOKENS) throw new SshAccessError(409, `You have ${MAX_TOKENS} SSH tokens, the most an account may have. Revoke one first.`)
-    const token = `sbs_${randomBytes(32).toString('base64url')}`
-    const info: SshToken = { id: randomUUID(), name, createdAt: this.now().toISOString(), lastUsedAt: null }
-    this.db.query('insert into ssh_tokens values (?, ?, ?, ?, ?, null)').run(info.id, userId, name, digest(token), info.createdAt)
-    return { token, ...info }
+  async revokeToken(userId: string, id: string) {
+    if (!(await this.db`delete from account_ssh_tokens where id = ${id} and user_id = ${userId} returning id`).length) throw new SshAccessError(404, 'No such token')
   }
 
-  revokeToken(userId: string, id: string) {
-    if (!this.db.query('delete from ssh_tokens where id = ? and userId = ?').run(id, userId).changes) throw new SshAccessError(404, 'No such token')
-  }
-
-  // Whose token this is, if anyone's.
-  userForToken(token: string): string | null {
+  async userForToken(token: string): Promise<string | null> {
     if (!token.startsWith('sbs_')) return null
-    const row = this.db.query('select id, userId from ssh_tokens where hash = ?').get(digest(token)) as { id: string; userId: string } | null
-    if (!row) return null
-    this.db.query('update ssh_tokens set lastUsedAt = ? where id = ?').run(this.now().toISOString(), row.id)
-    return row.userId
+    const [row] = await this.db`update account_ssh_tokens set last_used_at = ${this.now().toISOString()} where hash = ${digest(token)} returning user_id`
+    return row?.user_id ?? null
   }
 }

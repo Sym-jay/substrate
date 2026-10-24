@@ -16,11 +16,14 @@ import { TemplatesPage } from './pages/TemplatesPage.tsx'
 import { WindowsPage } from './pages/WindowsPage.tsx'
 import { WelcomePage } from './pages/WelcomePage.tsx'
 import { WorkspacesPage } from './pages/WorkspacesPage.tsx'
+import { CliAuthorize } from './cli/CliAccess.tsx'
 import './workspaces/workspaces.css'
 
 // `account` is the signed-in user's menu, `userName` their first name and
 // `profile` their details, when sign-in is on.
 export function App({ account, userName, profile }: { account?: ReactNode; userName?: string | null; profile?: Profile }) {
+  const route = useRoute()
+  if (route.page === 'cli') return <CliAuthorize key={route.params[0]} code={route.params[0]} account={account} />
   return (
     <Toasts>
       <DataProvider>

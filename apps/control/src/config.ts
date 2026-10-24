@@ -65,7 +65,7 @@ export const config = {
     process.env.SUBSTRATE_GITHUB_CLIENT_ID && process.env.SUBSTRATE_GITHUB_CLIENT_SECRET
       ? { clientId: process.env.SUBSTRATE_GITHUB_CLIENT_ID, clientSecret: process.env.SUBSTRATE_GITHUB_CLIENT_SECRET }
       : null,
-  // Who owns which VM (SQLite).
+  // Local database, and the legacy SQLite source imported on migration.
   db: process.env.SUBSTRATE_DB ?? '.data/control.db',
   previewOrigin: process.env.SUBSTRATE_PREVIEW_ORIGIN || null,
   // Windows workspaces (M9): on once setup-control.sh has found their subnet

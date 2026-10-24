@@ -1,5 +1,5 @@
 import { SQL } from 'bun'
-import { existsSync, mkdirSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 export type Db = SQL
@@ -56,6 +56,35 @@ const MIGRATIONS: { version: number; statements: string[] }[] = [
       'create table if not exists oauth_states (state text primary key, user_id text not null, expires double precision not null)',
     ],
   },
+  {
+    version: 2,
+    statements: [
+      'create table if not exists store_locks (id text primary key)',
+      // Separate names keep old SQLite tables intact for import and rollback.
+      `create table if not exists tasks (id text primary key, user_id text not null, payload text not null,
+        summary text not null, created_at text not null, active integer not null, reviewed_at text)`,
+      'create index if not exists tasks_owner_created on tasks(user_id, created_at)',
+      'create index if not exists tasks_active on tasks(active, user_id)',
+      'create table if not exists comparisons (id text primary key, user_id text not null, payload text not null, created_at text not null)',
+      'create index if not exists comparisons_owner_created on comparisons(user_id, created_at)',
+      `create table if not exists windows_records (
+        id text primary key, owner text not null, name text not null, instance_id text, instance_type text not null,
+        state text not null, private_ip text, password text not null, vnc_password text not null,
+        created_at text not null, last_active_at text not null, idle_stop_minutes integer, error text)`,
+      'create index if not exists windows_records_owner on windows_records(owner, created_at)',
+      `create table if not exists account_ssh_keys (id text primary key, user_id text not null, name text not null,
+        public_key text not null, fingerprint text not null, created_at text not null, unique(user_id, fingerprint))`,
+      `create table if not exists account_ssh_tokens (id text primary key, user_id text not null, name text not null,
+        hash text not null unique, created_at text not null, last_used_at text)`,
+      'create index if not exists account_ssh_tokens_owner on account_ssh_tokens(user_id)',
+      `create table if not exists cli_auth_devices (hash text primary key, code text unique not null, name text not null,
+        expires double precision not null, state text not null, user_id text, last_poll double precision not null)`,
+      `create table if not exists cli_auth_credentials (id text primary key, hash text unique not null, user_id text not null,
+        name text not null, created double precision not null, expires double precision not null, last_used double precision)`,
+      'create index if not exists cli_auth_credentials_owner on cli_auth_credentials(user_id)',
+      'create table if not exists database_imports (id text primary key, completed_at text not null)',
+    ],
+  },
 ]
 
 export async function migrate(db: Db) {
@@ -70,37 +99,7 @@ export async function migrate(db: Db) {
   }
 }
 
-// Once, when the control box first starts on Postgres: brings over what the
-// SQLite file it used before knows (VM owners and jobs). Capabilities expire
-// within the hour, so they aren't worth it.
-export async function importSqlite(db: Db, path: string) {
-  if (!existsSync(path)) return 0
-  const [{ count } = { count: 0 }] = await db`select cast(count(*) as integer) as count from vms`
-  if (Number(count) > 0) return 0
-  const old = new SQL({ adapter: 'sqlite', filename: path, readonly: true })
-  try {
-    const tables = new Set((await old`select name from sqlite_master where type = 'table'`).map((row: { name: string }) => row.name))
-    let imported = 0
-    if (tables.has('vm_owners')) {
-      for (const row of await old`select vm_id, user_id, created_at from vm_owners`) {
-        await db`insert into vms (id, user_id, created_at) values (${row.vm_id}, ${row.user_id}, ${row.created_at}) on conflict (id) do nothing`
-        imported++
-      }
-    }
-    if (tables.has('vm_jobs')) {
-      const columns = new Set((await old.unsafe('pragma table_info(vm_jobs)')).map((c: { name: string }) => c.name))
-      for (const row of await old`select * from vm_jobs`) {
-        const createdAt = columns.has('createdAt') && row.createdAt ? row.createdAt : new Date(0).toISOString()
-        await db`insert into jobs (id, user_id, vm_id, state, error, kind, created_at)
-          values (${row.id}, ${row.userId}, ${row.vmId}, ${row.state}, ${row.error}, ${columns.has('kind') ? row.kind : null}, ${createdAt})
-          on conflict (id) do nothing`
-      }
-    }
-    return imported
-  } finally {
-    await old.close()
-  }
-}
+export { importSqlite } from './legacy-import.ts'
 
 // A fresh, migrated database for a test: SQLite in memory, or, when
 // TEST_DATABASE_URL is set, a schema of its own in that Postgres.

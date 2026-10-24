@@ -8,9 +8,7 @@ import { importSqlite, migrate, sqliteDatabase } from './db.ts'
 export async function openDatabase() {
   const db = config.database ? await openRds(config.database, config.region) : sqliteDatabase(config.db)
   await migrate(db)
-  if (config.database) {
-    const imported = await importSqlite(db, config.db)
-    if (imported) console.log(`database: brought ${imported} VM owners over from ${config.db}`)
-  }
+  const imported = await importSqlite(db, config.db)
+  if (imported) console.log(`database: imported ${imported} legacy VM owners; legacy data migration complete`)
   return db
 }

@@ -1,3 +1,4 @@
+import { CliSessions } from '../cli/CliAccess.tsx'
 import type { ReactNode } from 'react'
 import { useData } from '../app/data.tsx'
 import { resetSettings, updateSettings, useSettings } from '../app/settings.ts'
@@ -11,7 +12,7 @@ export function SettingsPage({ account, userName }: { account?: ReactNode; userN
 
   return (
     <div className="page-body">
-      <PageHeader title="Settings" subtitle="Saved in this browser" />
+      <PageHeader title="Settings" subtitle="Browser preferences and account access" />
 
       <Card title="Appearance" className="rise" style={{ '--i': 0 } as React.CSSProperties}>
         <FieldRow label="Motion" hint="Page transitions and the ASCII animations.">
@@ -33,6 +34,8 @@ export function SettingsPage({ account, userName }: { account?: ReactNode; userN
           <div className="workspaces"><SshAccessPanel /></div>
         </Card>
       )}
+
+      <CliSessions />
 
       <Card title="About" className="rise" style={{ '--i': 2 } as React.CSSProperties}>
         <FieldRow label="Version">

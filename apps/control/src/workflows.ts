@@ -1,64 +1,24 @@
-import { Database } from 'bun:sqlite'
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { Comparison, GuestTask, Task, Vm, taskIsActive, taskIsPending, type CreateComparison, type TaskSpec } from '@substrate/protocol'
 import { HTTPException } from 'hono/http-exception'
 import type { Owners } from './owners.ts'
 import type { Jobs } from './jobs.ts'
+import { quotaError, type Quotas } from './quotas.ts'
+import { monthOf, type Usage } from './usage.ts'
 
-export class WorkflowStore {
-  private db: Database
-  constructor(path: string) {
-    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
-    this.db = new Database(path, { create: true, strict: true })
-    this.db.run('pragma journal_mode = wal')
-    this.db.run('create table if not exists agent_tasks (id text primary key, user_id text not null, payload text not null, summary text)')
-    const columns = this.db.query('pragma table_info(agent_tasks)').all() as { name: string }[]
-    if (!columns.some((column) => column.name === 'summary')) this.db.run('alter table agent_tasks add column summary text')
-    for (const row of this.db.query('select id, payload from agent_tasks where summary is null').all() as { id: string; payload: string }[]) {
-      this.db.query('update agent_tasks set summary = ? where id = ?').run(JSON.stringify(taskSummary(Task.parse(JSON.parse(row.payload)))), row.id)
-    }
-    this.db.run('create index if not exists agent_tasks_owner on agent_tasks(user_id)')
-    this.db.run('create table if not exists agent_comparisons (id text primary key, user_id text not null, payload text not null)')
-    this.db.run('create index if not exists agent_comparisons_owner on agent_comparisons(user_id)')
-  }
-  saveTask(userId: string, task: Task) { this.db.query('insert into agent_tasks (id, user_id, payload, summary) values (?, ?, ?, ?) on conflict(id) do update set payload = excluded.payload, summary = excluded.summary where user_id = excluded.user_id').run(task.id, userId, JSON.stringify(task), JSON.stringify(taskSummary(task))) }
-  saveComparison(userId: string, comparison: Comparison) { this.db.query('insert into agent_comparisons values (?, ?, ?) on conflict(id) do update set payload = excluded.payload where user_id = excluded.user_id').run(comparison.id, userId, JSON.stringify(comparison)) }
-  tasks(userId: string, activeOnly = false) {
-    return (this.db.query(`select payload from agent_tasks where user_id = ? ${activeOnly ? `and ${ACTIVE_SQL}` : ''}`).all(userId) as { payload: string }[])
-      .map(({ payload }) => Task.parse(JSON.parse(payload))).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  }
-  summaries(userId: string) {
-    return (this.db.query("select summary from agent_tasks where user_id = ? order by json_extract(summary, '$.createdAt') desc limit 200").all(userId) as { summary: string }[])
-      .map(({ summary }) => Task.parse(JSON.parse(summary)))
-  }
-  task(userId: string, id: string) {
-    const row = this.db.query('select payload from agent_tasks where user_id = ? and id = ?').get(userId, id) as { payload: string } | null
-    return row ? Task.parse(JSON.parse(row.payload)) : null
-  }
-  comparisons(userId: string) {
-    return (this.db.query('select payload from agent_comparisons where user_id = ?').all(userId) as { payload: string }[])
-      .map(({ payload }) => Comparison.parse(JSON.parse(payload))).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  }
-  comparison(userId: string, id: string) { return this.comparisons(userId).find((comparison) => comparison.id === id) ?? null }
-  users() { return (this.db.query(`select distinct user_id from agent_tasks where ${ACTIVE_SQL}`).all() as { user_id: string }[]).map((row) => row.user_id) }
-  close() { this.db.close() }
-}
-
-const ACTIVE_SQL = `(coalesce(json_extract(payload, '$.dispatchUncertain'), 0) = 1 or (json_extract(payload, '$.error') is null and (json_extract(payload, '$.run.state') is null or json_extract(payload, '$.run.state') in ('queued', 'running'))))`
+import { WorkflowStore } from './workflow-store.ts'
+export { WorkflowStore } from './workflow-store.ts'
+export { taskSummary } from './task-summary.ts'
 
 type Options = {
   store: WorkflowStore; owners: Owners; jobs: Jobs; maxVmsPerUser: number; hostd: { url: string; readonly token: string }
   // The user's VM limit when quotas are on (Phase 2); otherwise maxVmsPerUser.
   maxVms?: (userId: string) => Promise<number>
+  quotas?: Quotas
+  usage?: Usage
 }
 const fail = (status: 400 | 404 | 409 | 502 | 503, message: string): never => { throw new HTTPException(status, { message }) }
 const activeTask = taskIsPending
-export const taskSummary = (task: Task): Task => ({ ...task, run: task.run ? { ...task.run,
-  stdout: '', stderr: '', changes: '', result: task.run.result.slice(0, 240),
-  verification: task.run.verification ? { ...task.run.verification, output: '' } : null } : null })
-
 // Durable intent on control; execution and bounded output live in guestd.
 // Lost responses reconcile by ID. Neither service restart nor GET retries run a
 // task again, and preparation never restarts automatically after a control crash.
@@ -87,19 +47,26 @@ export class Workflows {
   private makeTask(vmId: string, spec: TaskSpec, comparisonId: string | null = null): Task {
     return { id: randomUUID(), vmId, spec, comparisonId, createdAt: new Date().toISOString(), reviewedAt: null, run: null, error: null, dispatchUncertain: false }
   }
-  pendingVms(userId: string) { return this.store.comparisons(userId).filter((comparison) => comparison.state === 'preparing').flatMap((comparison) => comparison.vmIds) }
-  hasActiveTask(userId: string, vmId: string) { return this.store.tasks(userId, true).some((task) => task.vmId === vmId) }
+  async pendingVms(userId: string) { return (await this.store.comparisons(userId)).filter((comparison) => comparison.state === 'preparing').flatMap((comparison) => comparison.vmIds) }
+  async hasActiveTask(userId: string, vmId: string) { return (await this.store.tasks(userId, true)).some((task) => task.vmId === vmId) }
   list(userId: string) { return this.store.summaries(userId) }
   comparisons(userId: string) { return this.store.comparisons(userId) }
-  task(userId: string, id: string) { return this.store.task(userId, id) ?? fail(404, 'Task not found') }
-  comparison(userId: string, id: string) { return this.store.comparison(userId, id) ?? fail(404, 'Comparison not found') }
+  async task(userId: string, id: string) { return await this.store.task(userId, id) ?? fail(404, 'Task not found') }
+  async comparison(userId: string, id: string) { return await this.store.comparison(userId, id) ?? fail(404, 'Comparison not found') }
 
   async createTask(userId: string, vmId: string, spec: TaskSpec) {
     return this.options.jobs.exclusive(userId, async () => {
       await this.own(userId, vmId)
-      if (this.hasActiveTask(userId, vmId)) fail(409, 'A task is already running in this workspace. Wait or cancel it first.')
+      if (await this.hasActiveTask(userId, vmId)) fail(409, 'A task is already running in this workspace. Wait or cancel it first.')
+      // hostd starts a stopped/paused VM when a task is submitted.
+      if (this.options.quotas) {
+        const limits = await this.options.quotas.of(userId)
+        const runningHours = this.options.usage ? await this.options.usage.runningHours(userId, monthOf(Date.now())) : 0
+        const refused = quotaError(limits, { vms: 0, totalDiskGib: 0, runningHours }, { start: true })
+        if (refused) fail(409, refused)
+      }
       const task = this.makeTask(vmId, spec)
-      this.store.saveTask(userId, task)
+      await this.store.saveTask(userId, task)
       this.launch(userId, task)
       return task
     })
@@ -131,30 +98,35 @@ export class Workflows {
           : error instanceof Error ? error.message : 'Task preparation failed. Inspect the workspace before retrying.'
       }
     }
-    // A review action may have happened while a response was in flight.
-    task.reviewedAt = this.store.task(userId, task.id)?.reviewedAt ?? task.reviewedAt
-    this.store.saveTask(userId, task)
+    await this.store.saveTask(userId, task)
   }
 
   async createComparison(userId: string, input: CreateComparison) {
     return this.options.jobs.exclusive(userId, async () => {
       await this.own(userId, input.sourceVmId)
-      if (this.hasActiveTask(userId, input.sourceVmId)) fail(409, 'Finish or cancel the source workspace task before comparing approaches')
+      if (await this.hasActiveTask(userId, input.sourceVmId)) fail(409, 'Finish or cancel the source workspace task before comparing approaches')
       const all = Vm.array().parse(await this.requireResponse(await this.host('/vms'), 'Could not check workspace quota'))
       const source = all.find((vm) => vm.id === input.sourceVmId) ?? fail(404, 'Source workspace not found')
       if (!['running', 'paused'].includes(source.state)) fail(409, 'Start or pause the source workspace before comparing approaches')
       const owned = new Set(await this.options.owners.vmsOf(userId))
-      const used = new Set([...all.filter((vm) => owned.has(vm.id)).map((vm) => vm.id), ...await this.options.jobs.pending(userId), ...this.pendingVms(userId)])
+      const used = new Set([...all.filter((vm) => owned.has(vm.id)).map((vm) => vm.id), ...await this.options.jobs.pending(userId), ...await this.pendingVms(userId)])
       const maxVms = this.options.maxVms ? await this.options.maxVms(userId) : this.options.maxVmsPerUser
       if (used.size + 2 > maxVms) fail(409, 'A comparison needs two free workspace places. Delete unused workspaces or raise your VM quota first.')
+      if (this.options.quotas) {
+        const limits = await this.options.quotas.of(userId)
+        const runningHours = this.options.usage ? await this.options.usage.runningHours(userId, monthOf(Date.now())) : 0
+        const totalDiskGib = all.filter((vm) => owned.has(vm.id)).reduce((sum, vm) => sum + vm.diskGib, 0)
+        const refused = quotaError(limits, { vms: used.size, totalDiskGib, runningHours }, { diskGib: source.diskGib, addDiskGib: source.diskGib * 2, start: true })
+        if (refused) fail(409, refused)
+        if (limits.egress === 'allowlist' && source.egress?.mode !== 'allowlist') fail(409, 'This plan requires allowlisted egress. Update the source workspace before comparing approaches.')
+      }
       const vmIds: [string, string] = [`vm-${randomBytes(8).toString('hex')}`, `vm-${randomBytes(8).toString('hex')}`]
       const id = randomUUID()
       const tasks = input.approaches.map((spec, index) => this.makeTask(vmIds[index]!, spec, id)) as [Task, Task]
       const comparison: Comparison = { id, sourceVmId: source.id, title: input.title, vmIds,
         taskIds: [tasks[0].id, tasks[1].id], createdAt: new Date().toISOString(), state: 'preparing',
         sourceCheckpointId: null, selectedTaskId: null, error: null }
-      for (const task of tasks) { await this.options.owners.add(task.vmId, userId); this.store.saveTask(userId, task) }
-      this.store.saveComparison(userId, comparison)
+      await this.store.reserveComparison(userId, comparison, tasks)
       this.preparing.add(id)
       void this.prepare(userId, comparison, tasks).catch((error) => console.error('comparison persistence:', error)).finally(() => this.preparing.delete(id))
       return comparison
@@ -170,13 +142,13 @@ export class Workflows {
       if (vms.length !== 2 || comparison.vmIds.some((id) => !vms.some((vm) => vm.id === id)) || typeof data.checkpointId !== 'string') throw new Error('The host did not confirm both branches from one checkpoint')
       comparison.state = 'ready'
       comparison.sourceCheckpointId = data.checkpointId
-      this.store.saveComparison(userId, comparison)
+      await this.store.saveComparison(userId, comparison)
       for (const task of tasks) this.launch(userId, task)
     } catch (error) {
       comparison.state = 'failed'
       comparison.error = error instanceof Error ? error.message : 'Comparison preparation failed'
-      this.store.saveComparison(userId, comparison)
-      for (const task of tasks) { task.error = 'The comparison was not prepared. Inspect its workspaces before retrying.'; this.store.saveTask(userId, task) }
+      await this.store.saveComparison(userId, comparison)
+      for (const task of tasks) { task.error = 'The comparison was not prepared. Inspect its workspaces before retrying.'; await this.store.saveTask(userId, task) }
     }
   }
 
@@ -193,14 +165,14 @@ export class Workflows {
     const parsed = Vm.array().safeParse(await response.json().catch(() => null))
     if (!parsed.success) return
     const vms = parsed.data
-    for (const comparison of this.store.comparisons(userId)) {
+    for (const comparison of await this.store.comparisons(userId)) {
       if (comparison.state === 'preparing' && !this.preparing.has(comparison.id)) {
         comparison.state = 'failed'
         comparison.error = 'Control restarted during preparation. Existing branches were retained; tasks were not automatically replayed. Inspect the workspaces before retrying.'
-        this.store.saveComparison(userId, comparison)
+        await this.store.saveComparison(userId, comparison)
       }
     }
-    await Promise.all(this.store.tasks(userId, true).map(async (task) => {
+    await Promise.all((await this.store.tasks(userId, true)).map(async (task) => {
       if (this.dispatching.has(task.id) || (task.comparisonId && this.preparing.has(task.comparisonId))) return
       const vm = vms.find((vm) => vm.id === task.vmId)
       const owned = (await this.options.owners.owner(task.vmId)) === userId
@@ -219,19 +191,17 @@ export class Workflows {
         } else if (result?.status === 404 && !task.dispatchUncertain) task.error = 'The workspace no longer has this task, possibly after recovery or rollback. It was not replayed.'
       }
       // Paused VMs keep their last known progress; viewing the inbox won't wake them.
-      task.reviewedAt = this.store.task(userId, task.id)?.reviewedAt ?? task.reviewedAt
-      this.store.saveTask(userId, task)
+      await this.store.saveTask(userId, task)
     }))
   }
-  review(userId: string, id: string, reviewed: boolean) {
-    const task = this.task(userId, id)
+  async review(userId: string, id: string, reviewed: boolean) {
+    const task = await this.task(userId, id)
     if (activeTask(task)) fail(409, 'Wait for the task to finish before marking its result reviewed')
-    task.reviewedAt = reviewed ? new Date().toISOString() : null
-    this.store.saveTask(userId, task)
-    return task
+    await this.store.review(userId, id, reviewed ? new Date().toISOString() : null)
+    return this.task(userId, id)
   }
   async cancel(userId: string, id: string) {
-    const task = this.task(userId, id)
+    const task = await this.task(userId, id)
     await this.own(userId, task.vmId)
     if (this.dispatching.has(id) || (task.comparisonId && this.preparing.has(task.comparisonId))) fail(409, 'The task is still preparing. Wait for its workspace to be ready before cancelling.')
     if (!activeTask(task)) return task
@@ -239,21 +209,21 @@ export class Workflows {
     if (task.run.id !== task.id) fail(502, 'The workspace returned a different task ID')
     task.dispatchUncertain = false
     task.error = null
-    this.store.saveTask(userId, task)
+    await this.store.saveTask(userId, task)
     return task
   }
   async select(userId: string, id: string, taskId: string) {
-    const comparison = this.comparison(userId, id)
+    const comparison = await this.comparison(userId, id)
     if (comparison.state !== 'ready' || !comparison.taskIds.includes(taskId)) fail(400, 'Choose an approach belonging to this prepared comparison')
-    const task = this.task(userId, taskId)
+    const task = await this.task(userId, taskId)
     await this.own(userId, task.vmId)
     if (activeTask(task)) fail(409, 'Wait for this approach to finish before choosing it')
     comparison.selectedTaskId = taskId
-    this.store.saveComparison(userId, comparison)
+    await this.store.saveComparison(userId, comparison)
     return comparison
   }
   start() {
-    const timer = setInterval(() => { for (const user of this.store.users()) void this.refresh(user).catch((error) => console.error('task refresh:', error)) }, 3000)
+    const timer = setInterval(() => { void this.store.users().then((users) => Promise.all(users.map((user) => this.refresh(user)))).catch((error) => console.error('task refresh:', error)) }, 3000)
     timer.unref()
     return timer
   }

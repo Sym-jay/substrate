@@ -2,8 +2,10 @@ import { AGENT_KEY_ENV, type AgentEnv, type Vm } from '@substrate/protocol'
 import { websocket } from 'hono/bun'
 import { accountRoutes } from './account.ts'
 import { createApp } from './app.ts'
-import { clerkAuth, localDevAuth, type Authenticate } from './auth.ts'
+import { clerkAuth, clerkCliAccess, localDevAuth, type Authenticate } from './auth.ts'
 import { Capabilities } from './capabilities.ts'
+import { CliCredentials, withCliAuthentication } from './cli-auth.ts'
+import { cliRoutes } from './cli-routes.ts'
 import { config } from './config.ts'
 import { openDatabase } from './open-database.ts'
 import { GitHub, legacyGitHubTokens } from './github.ts'
@@ -28,21 +30,22 @@ import { WindowsTerminals, withControllingTerminal } from './windows/terminals.t
 import { WindowsWorkspaces } from './windows/workspaces.ts'
 import { Workflows, WorkflowStore } from './workflows.ts'
 
-const authenticate = config.clerk
+const browserAuthenticate = config.clerk
   ? clerkAuth({ ...config.clerk, authorizedParties: config.authorizedParties, allowedEmails: config.allowedEmails })
   : config.vmsWithoutLogin
     ? localDevAuth
     : null
 
 const db = await openDatabase()
+const cliCredentials = browserAuthenticate ? new CliCredentials(db) : undefined
+const authenticate = browserAuthenticate && cliCredentials ? withCliAuthentication(browserAuthenticate, cliCredentials,
+  config.clerk ? clerkCliAccess({ secretKey: config.clerk.secretKey, allowedEmails: config.allowedEmails }) : async (id) => id === 'local-dev') : null
 
 const owners = new Owners(db)
 const tickets = new Tickets()
 const capabilities = new Capabilities(db)
 const jobs = new Jobs(db)
-// Account SSH keys and Windows workspaces stay in the control box's SQLite
-// file for now; the rest moved to `db` (Phase 2).
-const sshAccess = new SshAccess(config.db)
+const sshAccess = new SshAccess(db)
 await jobs.start()
 const users = new Users(db)
 const events = new Events(db)
@@ -58,11 +61,11 @@ const github = secrets
 
 const hostd: Hostd | null = config.hostd ? (config.hostInstanceId ? rotatingHostd(config.hostd, config.region) : config.hostd) : null
 
-// Tasks and fork-and-compare, kept in the control box's SQLite file like
-// SSH keys and Windows workspaces.
+// Tasks and fork-and-compare share the configured control database.
 const workflows = hostd && authenticate ? new Workflows({
-  store: new WorkflowStore(config.db), owners, jobs, hostd, maxVmsPerUser: config.maxVmsPerUser,
+  store: new WorkflowStore(db), owners, jobs, hostd, maxVmsPerUser: config.maxVmsPerUser,
   maxVms: async (userId) => (await quotas.of(userId)).maxVms,
+  quotas, usage,
 }) : undefined
 workflows?.start()
 const callHostd = (path: string, init: RequestInit = {}) =>
@@ -115,7 +118,7 @@ async function setUpWindows(windows: NonNullable<typeof config.windows>, authent
   const ssh = new WindowsSsh(windows.sshDir)
   await ssh.init()
   const workspaces = new WindowsWorkspaces({
-    store: new WindowsStore(config.db),
+    store: new WindowsStore(db),
     cloud: awsWindowsCloud({ region: config.region, ...windows }),
     ssh,
     terminals: new WindowsTerminals(),
@@ -136,6 +139,7 @@ const app = createApp({
   readHost: createHostReader(config.hostInstanceId, config.region),
   clerkPublishableKey: config.clerk?.publishableKey ?? null,
   windows,
+  cli: cliCredentials && browserAuthenticate && authenticate ? cliRoutes({ credentials: cliCredentials, browserAuthenticate, authenticate, requireBrowserBearer: !!config.clerk }) : undefined,
   previews: hostd && config.previewOrigin ? previewRoutes({ hostd, owners, tickets, capabilities }) : undefined,
   account: authenticate
     ? accountRoutes({ authenticate, users, events, usage, quotas, owners, vmsOf, secrets, github, keysChanged, admins: config.admins })

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { Hono } from 'hono'
 import { websocket } from 'hono/bun'
+import { testDatabase } from '../db.ts'
 import { Tickets } from '../tickets.ts'
 import type { InstanceInfo, WindowsCloud } from './cloud.ts'
 import { windowsRoutes } from './routes.ts'
@@ -47,9 +48,9 @@ function fakeCloud() {
   return cloud
 }
 
-function setup({ maxRunning = 1, maxPerUser = 2, ready = true, vncPort = 5900 } = {}) {
+async function setup({ maxRunning = 1, maxPerUser = 2, ready = true, vncPort = 5900 } = {}) {
   let now = Date.parse('2026-10-24T00:00:00Z')
-  const store = new WindowsStore(':memory:')
+  const store = new WindowsStore(await testDatabase())
   const cloud = fakeCloud()
   const ssh = {
     isReady: ready,
@@ -71,19 +72,19 @@ function setup({ maxRunning = 1, maxPerUser = 2, ready = true, vncPort = 5900 } 
 }
 
 // Creates a workspace and brings it to running.
-async function running(s: ReturnType<typeof setup>, owner = 'ann', name = 'one') {
+async function running(s: Awaited<ReturnType<typeof setup>>, owner = 'ann', name = 'one') {
   const w = await s.workspaces.create(owner, { name })
-  s.cloud.instances.get(s.store.get(w.id)!.instanceId!)!.state = 'running'
+  s.cloud.instances.get((await s.store.get(w.id))!.instanceId!)!.state = 'running'
   await s.workspaces.tick()
-  return s.store.get(w.id)!
+  return (await s.store.get(w.id))!
 }
 
 describe('Windows workspaces', () => {
   test('creating one starts an instance whose first boot has its own passwords and our key', async () => {
-    const s = setup()
+    const s = (await setup())
     const w = await s.workspaces.create('ann', { name: 'one' })
     expect(w).toMatchObject({ name: 'one', state: 'creating', instanceType: 'm8i.4xlarge', idleStopMinutes: 30 })
-    const row = s.store.get(w.id)!
+    const row = (await s.store.get(w.id))!
     expect(row.instanceId).toBe('i-1')
     expect(s.cloud.userData[0]).toContain(row.password)
     expect(s.cloud.userData[0]).toContain(`VALUE_OF_PASSWORD=${row.vncPassword}`)
@@ -93,7 +94,7 @@ describe('Windows workspaces', () => {
   })
 
   test('each size is a size of the configured family; large by default', async () => {
-    const s = setup({ maxRunning: 3 })
+    const s = (await setup({ maxRunning: 3 }))
     expect(await s.workspaces.create('ann', { name: 'big' })).toMatchObject({ instanceType: 'm8i.4xlarge', size: 'large' })
     expect(await s.workspaces.create('bob', { name: 'small', size: 'small' })).toMatchObject({ instanceType: 'm8i.xlarge', size: 'small' })
     expect(await s.workspaces.create('cat', { name: 'mid', size: 'medium' })).toMatchObject({ instanceType: 'm8i.2xlarge', size: 'medium' })
@@ -101,29 +102,29 @@ describe('Windows workspaces', () => {
   })
 
   test("it's running once its first boot says it's ready", async () => {
-    const s = setup({ ready: false })
+    const s = (await setup({ ready: false }))
     const w = await s.workspaces.create('ann', { name: 'one' })
     s.cloud.instances.get('i-1')!.state = 'running'
     await s.workspaces.tick()
-    expect(s.store.get(w.id)!.state).toBe('creating')
+    expect((await s.store.get(w.id))!.state).toBe('creating')
     s.ssh.isReady = true
     await s.workspaces.tick()
-    expect(s.store.get(w.id)).toMatchObject({ state: 'running', privateIp: '10.40.0.101' })
+    expect((await s.store.get(w.id))).toMatchObject({ state: 'running', privateIp: '10.40.0.101' })
   })
 
   test('a first boot that never finishes fails, and its instance is stopped', async () => {
-    const s = setup({ ready: false })
+    const s = (await setup({ ready: false }))
     const w = await s.workspaces.create('ann', { name: 'one' })
     s.cloud.instances.get('i-1')!.state = 'running'
     s.advance(31 * MINUTE)
     await s.workspaces.tick()
-    expect(s.store.get(w.id)).toMatchObject({ state: 'failed', error: "its first boot didn't finish within 30 minutes" })
+    expect((await s.store.get(w.id))).toMatchObject({ state: 'failed', error: "its first boot didn't finish within 30 minutes" })
     await s.workspaces.tick()
     expect(s.cloud.calls).toContain('stop i-1')
   })
 
   test('only one is on at a time, and each user has a limit', async () => {
-    const s = setup({ maxRunning: 1, maxPerUser: 2 })
+    const s = (await setup({ maxRunning: 1, maxPerUser: 2 }))
     const first = await running(s)
     const err = await s.workspaces.create('bob', { name: 'two' }).catch((e) => e)
     expect(err).toBeInstanceOf(WindowsError)
@@ -133,23 +134,23 @@ describe('Windows workspaces', () => {
     await s.workspaces.stop('ann', first.id)
     s.cloud.instances.get('i-1')!.state = 'stopped'
     await s.workspaces.tick()
-    expect(s.store.get(first.id)!.state).toBe('stopped')
+    expect((await s.store.get(first.id))!.state).toBe('stopped')
     await s.workspaces.create('ann', { name: 'two' })
     expect((await s.workspaces.create('ann', { name: 'three' }).catch((e) => e)).message).toContain('the most each user may have')
     expect((await s.workspaces.start('ann', first.id).catch((e) => e)).message).toContain('already on')
   })
 
   test("running out of the account's vCPUs says so plainly", async () => {
-    const s = setup()
+    const s = (await setup())
     s.cloud.launch = async () => { throw Object.assign(new Error('You have requested more vCPU capacity than your current vCPU limit'), { name: 'VcpuLimitExceeded' }) }
     const err = await s.workspaces.create('ann', { name: 'one' }).catch((e) => e)
     expect(err.status).toBe(409)
     expect(err.message).toContain('may still be shutting down')
-    expect(s.workspaces.list('ann')).toEqual([])
+    expect((await s.workspaces.list('ann'))).toEqual([])
   })
 
   test('a stopped one starts again', async () => {
-    const s = setup()
+    const s = (await setup())
     const w = await running(s)
     await s.workspaces.stop('ann', w.id)
     s.cloud.instances.get('i-1')!.state = 'stopped'
@@ -157,11 +158,11 @@ describe('Windows workspaces', () => {
     expect((await s.workspaces.start('ann', w.id)).state).toBe('starting')
     s.cloud.instances.get('i-1')!.state = 'running'
     await s.workspaces.tick()
-    expect(s.store.get(w.id)!.state).toBe('running')
+    expect((await s.store.get(w.id))!.state).toBe('running')
   })
 
   test('an idle one stops itself, unless its CPU is busy or someone is typing', async () => {
-    const s = setup()
+    const s = (await setup())
     const w = await running(s)
     s.advance(20 * MINUTE)
     await s.workspaces.tick()
@@ -182,33 +183,33 @@ describe('Windows workspaces', () => {
     s.advance(31 * MINUTE)
     await s.workspaces.tick()
     expect(s.cloud.calls).toContain('stop i-1')
-    expect(s.store.get(w.id)!.state).toBe('stopping')
+    expect((await s.store.get(w.id))!.state).toBe('stopping')
   })
 
   test('idle stop can be turned off', async () => {
-    const s = setup()
+    const s = (await setup())
     const w = await running(s)
-    s.workspaces.update('ann', w.id, { idleStopMinutes: null })
+    await s.workspaces.update('ann', w.id, { idleStopMinutes: null })
     s.advance(10 * 60 * MINUTE)
     await s.workspaces.tick()
     expect(s.cloud.calls).not.toContain('stop i-1')
   })
 
   test("deleting one terminates its instance; others' workspaces look like they don't exist", async () => {
-    const s = setup()
+    const s = (await setup())
     const w = await running(s)
-    expect(() => s.workspaces.own('bob', w.id)).toThrow('no Windows workspace')
+    await expect(s.workspaces.own('bob', w.id)).rejects.toThrow('no Windows workspace')
     await s.workspaces.remove('ann', w.id)
     expect(s.cloud.calls).toContain('terminate i-1')
-    expect(s.workspaces.list('ann')).toEqual([])
+    expect((await s.workspaces.list('ann'))).toEqual([])
   })
 
   test('an instance that disappears fails its workspace', async () => {
-    const s = setup()
+    const s = (await setup())
     const w = await running(s)
     s.cloud.instances.delete('i-1')
     await s.workspaces.tick()
-    expect(s.store.get(w.id)).toMatchObject({ state: 'failed', error: 'its instance is gone' })
+    expect((await s.store.get(w.id))).toMatchObject({ state: 'failed', error: 'its instance is gone' })
   })
 
   test('passwords are long and mixed, and the first boot takes nothing odd', () => {
@@ -230,7 +231,7 @@ describe('Windows routes, end to end', () => {
     for (const cleanup of cleanups.splice(0)) cleanup()
   })
 
-  async function serve(s: ReturnType<typeof setup>) {
+  async function serve(s: Awaited<ReturnType<typeof setup>>) {
     const tickets = new Tickets()
     const authenticate = async (req: Request) => {
       const user = req.headers.get('authorization')?.replace(/^Bearer /, '')
@@ -254,7 +255,7 @@ describe('Windows routes, end to end', () => {
   }
 
   test('create, a terminal, credentials, and delete', async () => {
-    const s = setup()
+    const s = (await setup())
     const { base, api } = await serve(s)
     expect((await api('/windows', '')).status).toBe(401)
     expect((await api('/windows', 'ann', { method: 'POST', body: JSON.stringify({ name: 'odd', size: 'huge' }) })).status).toBe(400)
@@ -265,7 +266,7 @@ describe('Windows routes, end to end', () => {
 
     s.cloud.instances.get('i-1')!.state = 'running'
     await s.workspaces.tick()
-    expect(await (await api(`/windows/${id}/credentials`)).json()).toEqual({ username: 'Administrator', password: s.store.get(id)!.password })
+    expect(await (await api(`/windows/${id}/credentials`)).json()).toEqual({ username: 'Administrator', password: (await s.store.get(id))!.password })
     expect((await api(`/windows/${id}/credentials`, 'bob')).status).toBe(404)
 
     const terminal = (await (await api(`/windows/${id}/terminals`, 'ann', { method: 'POST' })).json()) as { id: string }
@@ -291,7 +292,7 @@ describe('Windows routes, end to end', () => {
       socket: { data(socket, data) { socket.write(Buffer.from(data).toString().toUpperCase()) } },
     })
     cleanups.push(() => vnc.stop(true))
-    const s = setup({ vncPort: vnc.port })
+    const s = (await setup({ vncPort: vnc.port }))
     const { base, api } = await serve(s)
     const created = (await (await api('/windows', 'ann', { method: 'POST', body: JSON.stringify({ name: 'one' }) })).json()) as { id: string }
     s.cloud.instances.get('i-1')!.state = 'running'
@@ -300,7 +301,7 @@ describe('Windows routes, end to end', () => {
 
     const { ticket, password } = (await (await api(`/windows/${created.id}/desktop/ticket`, 'ann', { method: 'POST' })).json()) as { ticket: string; password: string }
     // noVNC signs in with it.
-    expect(password).toBe(s.store.get(created.id)!.vncPassword)
+    expect(password).toBe((await s.store.get(created.id))!.vncPassword)
 
     s.advance(20 * MINUTE)
     const ws = new WebSocket(`${base.replace('http', 'ws')}/api/windows/${created.id}/desktop?ticket=${ticket}`)
