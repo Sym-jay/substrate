@@ -22,6 +22,7 @@ import {
 } from '@substrate/protocol'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { hostCapacity } from './capacity.ts'
+import { LifecycleProfile } from './lifecycle-profile.ts'
 import { config } from './config.ts'
 import { HttpError, message } from './errors.ts'
 import * as firecracker from './firecracker.ts'
@@ -98,74 +99,81 @@ export class VmManager implements VmService {
   }
 
   async create(input: CreateVm, githubToken?: string, targetId?: string) {
-    const image = await currentImage()
-    if (!image) throw new HttpError(409, 'no VM image yet: run `bun run images:build`')
-    const size = VmSizes[input.size ?? DEFAULT_VM_SIZE]
-    const diskGib = await this.checkDiskSize(input.diskGib ?? DEFAULT_DISK_GIB, image.rootfs)
+    const profile = new LifecycleProfile('create', targetId ?? null)
+    let ok = false
+    try {
+      const image = await profile.measure('image', () => currentImage())
+      if (!image) throw new HttpError(409, 'no VM image yet: run `bun run images:build`')
+      const size = VmSizes[input.size ?? DEFAULT_VM_SIZE]
+      const diskGib = await this.checkDiskSize(input.diskGib ?? DEFAULT_DISK_GIB, image.rootfs)
 
-    return this.lock.run(async () => {
-      const records = await listRecords()
-      if (input.name && records.some((r) => r.name === input.name)) {
-        throw new HttpError(409, `a VM named ${input.name} already exists`)
-      }
-      await this.ensureFits(size.memMib)
-
-      const id = targetId ?? newVmId()
-      if (await zfs.datasetExists(dataset(id))) throw new HttpError(409, 'workspace destination already exists')
-      const record: VmRecord = {
-        id,
-        name: input.name ?? id,
-        ...size,
-        diskGib,
-        slot: lowestFreeSlot(records.map((r) => r.slot)),
-        token: randomBytes(32).toString('hex'),
-        image: image.version,
-        kernel: image.kernel,
-        createdAt: new Date().toISOString(),
-        startedAt: null,
-        bootMs: null,
-        lastError: null,
-        checkpoint: null,
-        paused: false,
-        pauseMs: null,
-        resumeMs: null,
-        awakeSince: null,
-        autoPauseMinutes: DEFAULT_AUTO_PAUSE_MINUTES,
-        runCheckpoints: [],
-        repository: input.repository ?? null,
-        parentId: null,
-        rootPath: `${config.paths.run}/rootfs`,
-        forkCapable: false,
-        balloonEnabled: true,
-        activeTaskAtSave: false,
-        maxAwakeHours: DEFAULT_MAX_AWAKE_HOURS,
-        shouldRun: true,
-        isolation: 'none',
-        egress: input.egress ?? { mode: 'open', allow: [] },
-      }
-      try {
-        await zfs.createFilesystem(dataset(id))
-        await writeRecord(record)
-        await zfs.cloneVolume(image.rootfs, rootVolume(id), record.diskGib)
-        await zfs.waitForDevice(zfs.zvolDevice(rootVolume(id)))
-        await zfs.growFilesystem(zfs.zvolDevice(rootVolume(id)))
-        await this.launch(record)
-      } catch (err) {
-        await this.cleanUp(record).catch(() => {})
-        throw err
-      }
-      await this.awaitBoot(record)
-      if (record.repository) {
-        try { await importRepository(record, githubToken) }
-        catch (error) {
-          record.lastError = error instanceof Error ? error.message : String(error)
-          await writeRecord(record)
-          // Preserve the newly created VM for retry instead of leaking an
-          // unreachable workspace behind a failed create response.
+      return await this.lock.run(async () => {
+        const records = await profile.measure('records', () => listRecords())
+        if (input.name && records.some((r) => r.name === input.name)) {
+          throw new HttpError(409, `a VM named ${input.name} already exists`)
         }
-      }
-      return this.get(record.id)
-    })
+        await profile.measure('capacity', () => this.ensureFits(size.memMib))
+
+        const id = targetId ?? newVmId()
+        profile.vmId = id
+        if (await zfs.datasetExists(dataset(id))) throw new HttpError(409, 'workspace destination already exists')
+        const record: VmRecord = {
+          id,
+          name: input.name ?? id,
+          ...size,
+          diskGib,
+          slot: lowestFreeSlot(records.map((r) => r.slot)),
+          token: randomBytes(32).toString('hex'),
+          image: image.version,
+          kernel: image.kernel,
+          createdAt: new Date().toISOString(),
+          startedAt: null,
+          bootMs: null,
+          lastError: null,
+          checkpoint: null,
+          paused: false,
+          pauseMs: null,
+          resumeMs: null,
+          awakeSince: null,
+          autoPauseMinutes: DEFAULT_AUTO_PAUSE_MINUTES,
+          runCheckpoints: [],
+          repository: input.repository ?? null,
+          parentId: null,
+          rootPath: `${config.paths.run}/rootfs`,
+          forkCapable: false,
+          balloonEnabled: true,
+          activeTaskAtSave: false,
+          maxAwakeHours: DEFAULT_MAX_AWAKE_HOURS,
+          shouldRun: true,
+          isolation: 'none',
+          egress: input.egress ?? { mode: 'open', allow: [] },
+        }
+        try {
+          await profile.measure('dataset', () => zfs.createFilesystem(dataset(id)))
+          await profile.measure('initialRecord', () => writeRecord(record))
+          await profile.measure('diskClone', () => zfs.cloneVolume(image.rootfs, rootVolume(id), record.diskGib))
+          await profile.measure('deviceReady', () => zfs.waitForDevice(zfs.zvolDevice(rootVolume(id))))
+          await profile.measure('filesystemResize', () => zfs.growFilesystem(zfs.zvolDevice(rootVolume(id))))
+          await this.launch(record, { profile })
+        } catch (err) {
+          await this.cleanUp(record).catch(() => {})
+          throw err
+        }
+        await this.awaitBoot(record, profile)
+        if (record.repository) {
+          try { await profile.measure('repository', () => importRepository(record, githubToken)) }
+          catch (error) {
+            record.lastError = error instanceof Error ? error.message : String(error)
+            await profile.measure('initialRecord', () => writeRecord(record))
+            // Preserve the newly created VM for retry instead of leaking an
+            // unreachable workspace behind a failed create response.
+          }
+        }
+        const vm = await profile.measure('response', () => this.get(record.id))
+        ok = true
+        return vm
+      })
+    } finally { profile.finish(ok ? 'ok' : 'failed') }
   }
 
   async start(id: string) {
@@ -625,15 +633,15 @@ export class VmManager implements VmService {
 
   // `resumeSessions` asks guestd to reopen the sessions the VM had (see sessions.ts).
   // A cold boot is when a VM changes isolation (config.isolation).
-  private async launch(record: VmRecord, { resumeSessions = false } = {}) {
+  private async launch(record: VmRecord, { resumeSessions = false, profile }: { resumeSessions?: boolean; profile?: LifecycleProfile } = {}) {
     this.balloons.forget(record.id)
     record.balloonEnabled = true
     record.isolation = vmm.isolationForBoot()
     await writeRecord(record)
-    await vmm.startNetwork(record)
+    await (profile ? profile.measure('network', () => vmm.startNetwork(record)) : vmm.startNetwork(record))
     this.transitions.set(record.id, 'starting')
     try {
-      await vmm.launch(record, resumeSessions)
+      await (profile ? profile.measure('firecrackerLaunch', () => vmm.launch(record, resumeSessions)) : vmm.launch(record, resumeSessions))
     } catch (err) {
       this.transitions.delete(record.id)
       await deleteTap(record.slot)
@@ -643,14 +651,15 @@ export class VmManager implements VmService {
   }
 
   // Waits for the guest agent and records how long the boot took.
-  private async awaitBoot(record: VmRecord): Promise<Vm> {
+  private async awaitBoot(record: VmRecord, profile?: LifecycleProfile): Promise<Vm> {
     const launched = performance.now()
     const client = guestClient(slotAddresses(record.slot).guestIp, record.token)
     try {
-      const health = await waitForGuest(client, {
+      const ready = () => waitForGuest(client, {
         timeoutMs: config.bootTimeoutMs,
         alive: () => firecracker.isRunning(record.id),
       })
+      const health = await (profile ? profile.measure('guestReady', ready) : ready())
       if (health.vmId !== record.id) throw new Error('guest identity does not match this VM')
       record.forkCapable = health.features?.forkNetwork === true
       record.bootMs = Math.round(performance.now() - launched)

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readdir, rm } from 'node:fs/promises'
+import { LifecycleProfile } from './lifecycle-profile.ts'
 import { config } from './config.ts'
 import { message } from './errors.ts'
 import * as firecracker from './firecracker.ts'
@@ -93,37 +94,40 @@ export class Snapshots {
     const checkpoint = record.checkpoint
     if (!checkpoint) throw new Error('no saved snapshot for this VM')
     const files = this.paths(record, checkpoint)
+    const profile = new LifecycleProfile('resume', record.id, started)
+    let ok = false
     try {
-      if (await d.firecracker.isRunning(record.id)) await d.firecracker.kill(record.id)
+      if (await profile.measure('processCheck', () => d.firecracker.isRunning(record.id))) await profile.measure('processStop', () => d.firecracker.kill(record.id))
       // Also resets disk writes made by a restore that failed after unpausing.
-      await d.zfs.rollback(files.disk)
-      await d.startNetwork(record)
-      await d.launchForRestore(record)
-      const info = await d.firecracker.waitForApi(record.id)
+      await profile.measure('diskRollback', () => d.zfs.rollback(files.disk))
+      await profile.measure('network', () => d.startNetwork(record))
+      await profile.measure('firecrackerLaunch', () => d.launchForRestore(record))
+      const info = await profile.measure('apiReady', () => d.firecracker.waitForApi(record.id))
       if (info.vmm_version !== checkpoint.firecrackerVersion) {
         throw new Error(`snapshot needs Firecracker ${checkpoint.firecrackerVersion}; installed ${info.vmm_version}`)
       }
       const api = d.firecracker.api(record.id)
-      await api('PUT /snapshot/load', {
+      await profile.measure('snapshotLoad', () => api('PUT /snapshot/load', {
         snapshot_path: files.load.state, mem_backend: { backend_type: 'File', backend_path: files.load.memory },
         network_overrides: [{ iface_id: 'eth0', host_dev_name: vmm.tapName(record) }],
         resume_vm: false, clock_realtime: true,
-      })
+      }))
       // MMDS configuration survives a snapshot; its contents do not.
       const net = slotAddresses(record.slot)
-      await api('PUT /mmds', vmm.metadata(record))
-      await api('PATCH /vm', { state: 'Resumed' })
-      const health = await d.waitForGuest(d.guestClient(net.guestIp, record.token), {
+      await profile.measure('metadata', () => api('PUT /mmds', vmm.metadata(record)))
+      await profile.measure('unpause', () => api('PATCH /vm', { state: 'Resumed' }))
+      const health = await profile.measure('guestReady', () => d.waitForGuest(d.guestClient(net.guestIp, record.token), {
         timeoutMs: config.bootTimeoutMs,
         alive: () => d.firecracker.isRunning(record.id),
-      })
+      }))
       if (health.vmId !== record.id) throw new Error('restored guest identity does not match this VM')
       const next = {
         ...record, paused: false, lastError: null, resumeMs: Math.round(performance.now() - started),
         awakeSince: new Date().toISOString(),
       }
-      await d.writeRecord(next)
+      await profile.measure('recordCommit', () => d.writeRecord(next))
       Object.assign(record, next)
+      ok = true
     } catch (error) {
       // Keep the original checkpoint for retry; never silently cold-boot.
       // Don't release the TAP or mark it down until the VMM is really gone.
@@ -132,7 +136,7 @@ export class Snapshots {
       record.lastError = error instanceof Error ? error.message : String(error)
       await d.writeRecord(record)
       throw error
-    }
+    } finally { profile.finish(ok ? 'ok' : 'failed') }
   }
 
   async reconcile(record: VmRecord) {
